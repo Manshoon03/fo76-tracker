@@ -1,0 +1,619 @@
+{% extends 'base.html' %}
+{% block title %}Builds{% endblock %}
+{% block content %}
+
+<style>
+  /* ── Page header ── */
+  .builds-header { display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .builds-header h1 { font-size:20px; color:var(--accent); margin:0; }
+  .builds-header .count-badge { margin-right:auto; }
+  .builds-header a { font-size:12px; }
+
+  /* ── Add/Edit panel (keep existing styles) ── */
+  .sp-row { display:grid; grid-template-columns:repeat(8,1fr); gap:8px; margin:10px 0; }
+
+  /* ── Filter ── */
+  .builds-filter { margin-bottom:16px; }
+  .builds-filter input { width:100%; max-width:360px; }
+
+  /* ── Build cards grid ── */
+  .build-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+
+  .build-card  { background:var(--bg-card); border:1px solid var(--border);
+                 border-radius:8px; overflow:hidden;
+                 display:flex; flex-direction:column; }
+  .bc-head     { padding:14px 16px 10px; border-bottom:1px solid var(--border); }
+  .bc-name     { font-size:15px; font-weight:700; color:var(--accent); margin:0 0 3px; }
+  .bc-playstyle{ font-size:11px; color:var(--text-dim);
+                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* SPECIAL row */
+  .bc-special  { display:flex; padding:10px 16px; gap:6px;
+                 border-bottom:1px solid var(--border); background:var(--bg-main,#111); }
+  .bc-sp       { flex:1; text-align:center; }
+  .bc-sp-lbl   { font-size:9px; font-weight:700; letter-spacing:.04em; }
+  .bc-sp-val   { font-size:17px; font-weight:700; line-height:1.1; }
+  .bc-sp-bar   { height:3px; border-radius:2px; margin-top:2px; }
+  .sp-s .bc-sp-lbl,.sp-s .bc-sp-val{color:#e05050} .sp-s .bc-sp-bar{background:#e05050}
+  .sp-p .bc-sp-lbl,.sp-p .bc-sp-val{color:#e08040} .sp-p .bc-sp-bar{background:#e08040}
+  .sp-e .bc-sp-lbl,.sp-e .bc-sp-val{color:#50c050} .sp-e .bc-sp-bar{background:#50c050}
+  .sp-c .bc-sp-lbl,.sp-c .bc-sp-val{color:#e0c040} .sp-c .bc-sp-bar{background:#e0c040}
+  .sp-i .bc-sp-lbl,.sp-i .bc-sp-val{color:#4090e0} .sp-i .bc-sp-bar{background:#4090e0}
+  .sp-a .bc-sp-lbl,.sp-a .bc-sp-val{color:#40c0c0} .sp-a .bc-sp-bar{background:#40c0c0}
+  .sp-l .bc-sp-lbl,.sp-l .bc-sp-val{color:#c040e0} .sp-l .bc-sp-bar{background:#c040e0}
+  .bc-total    { flex:0 0 auto; text-align:center; padding-left:6px;
+                 border-left:1px solid var(--border); }
+  .bc-total .bc-sp-lbl { color:var(--text-dim); }
+  .bc-total .bc-sp-val { font-size:14px; color:var(--text); }
+
+  /* Perk card images strip */
+  .bc-perks    { display:flex; gap:6px; padding:10px 12px;
+                 overflow-x:auto; border-bottom:1px solid var(--border);
+                 min-height:96px; align-items:center;
+                 scrollbar-width:thin; }
+  .bc-perks::-webkit-scrollbar { height:4px; }
+  .bc-perks::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .bc-perk-img { width:72px; height:72px; object-fit:contain;
+                 border-radius:4px; flex-shrink:0;
+                 background:var(--bg-main,#111);
+                 image-rendering:pixelated; }
+  .bc-perk-fb  { width:72px; height:72px; border-radius:4px; flex-shrink:0;
+                 background:var(--bg-main,#111); border:1px solid var(--border);
+                 display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .bc-perk-wrap { text-align:center; flex-shrink:0; }
+  .bc-perk-name { font-size:9px; color:var(--text-dim); margin-top:3px;
+                  width:72px; white-space:nowrap; overflow:hidden;
+                  text-overflow:ellipsis; text-align:center; }
+  .bc-perk-rank { font-size:9px; color:var(--accent); text-align:center; line-height:1; }
+  .bc-no-perks { font-size:12px; color:var(--text-dim); }
+
+  /* Footer */
+  .bc-foot     { padding:10px 14px; display:flex; justify-content:space-between;
+                 align-items:center; margin-top:auto; }
+  .bc-notes    { font-size:11px; color:var(--text-dim);
+                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                 max-width:180px; }
+  .bc-actions  { display:flex; gap:6px; flex-shrink:0; }
+
+  /* Empty state */
+  .builds-empty { text-align:center; padding:60px 20px; color:var(--text-dim); }
+  .builds-empty a { color:var(--accent); }
+
+  /* ── Card clickable ── */
+  .build-card  { cursor:pointer; transition:border-color .15s, box-shadow .15s; }
+  .build-card:hover { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent)22; }
+
+  /* ── Modal overlay ── */
+  .bm-overlay  { display:none; position:fixed; inset:0; z-index:1000;
+                 background:rgba(0,0,0,.75); align-items:center; justify-content:center;
+                 padding:16px; }
+  .bm-overlay.open { display:flex; }
+  .bm-modal    { background:var(--bg-card); border:1px solid var(--border);
+                 border-radius:10px; width:100%; max-width:860px;
+                 max-height:90vh; overflow-y:auto; display:flex; flex-direction:column; }
+  .bm-head     { padding:18px 20px 14px; border-bottom:1px solid var(--border);
+                 display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .bm-title    { font-size:20px; font-weight:700; color:var(--accent); margin:0 0 4px; }
+  .bm-playstyle{ font-size:13px; color:var(--text-dim); line-height:1.5; }
+  .bm-close    { background:none; border:none; color:var(--text-dim); font-size:20px;
+                 cursor:pointer; padding:0 4px; flex-shrink:0; line-height:1; }
+  .bm-close:hover { color:var(--text); }
+  .bm-body     { padding:20px; }
+
+  /* Modal SPECIAL */
+  .bm-special  { display:flex; gap:8px; margin-bottom:20px; }
+  .bm-sp       { flex:1; text-align:center; background:var(--bg-main,#111);
+                 border-radius:6px; padding:8px 4px; }
+  .bm-sp-lbl   { font-size:10px; font-weight:700; letter-spacing:.04em; }
+  .bm-sp-val   { font-size:26px; font-weight:700; line-height:1.1; }
+  .bm-sp-bar   { height:4px; border-radius:2px; margin:4px auto 0; max-width:80%; }
+  .bm-s .bm-sp-lbl,.bm-s .bm-sp-val{color:#e05050} .bm-s .bm-sp-bar{background:#e05050}
+  .bm-p .bm-sp-lbl,.bm-p .bm-sp-val{color:#e08040} .bm-p .bm-sp-bar{background:#e08040}
+  .bm-e .bm-sp-lbl,.bm-e .bm-sp-val{color:#50c050} .bm-e .bm-sp-bar{background:#50c050}
+  .bm-c .bm-sp-lbl,.bm-c .bm-sp-val{color:#e0c040} .bm-c .bm-sp-bar{background:#e0c040}
+  .bm-i .bm-sp-lbl,.bm-i .bm-sp-val{color:#4090e0} .bm-i .bm-sp-bar{background:#4090e0}
+  .bm-a .bm-sp-lbl,.bm-a .bm-sp-val{color:#40c0c0} .bm-a .bm-sp-bar{background:#40c0c0}
+  .bm-l .bm-sp-lbl,.bm-l .bm-sp-val{color:#c040e0} .bm-l .bm-sp-bar{background:#c040e0}
+
+  /* Modal perk grid */
+  .bm-section  { font-size:11px; color:var(--text-dim); text-transform:uppercase;
+                 letter-spacing:.06em; margin:0 0 12px; }
+  .bm-perk-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
+                 gap:10px; margin-bottom:20px; }
+  .bm-perk     { background:var(--bg-main,#111); border:1px solid var(--border);
+                 border-radius:6px; padding:10px 8px; text-align:center; }
+  .bm-perk img { width:90px; height:90px; object-fit:contain; image-rendering:pixelated; }
+  .bm-perk-fb  { width:90px; height:90px; background:var(--bg-card); border:1px solid var(--border);
+                 border-radius:4px; display:flex; align-items:center; justify-content:center;
+                 font-size:24px; margin:0 auto; }
+  .bm-perk-name{ font-size:11px; font-weight:600; color:var(--text); margin-top:6px;
+                 line-height:1.3; }
+  .bm-perk-rank  { font-size:10px; color:var(--accent); margin-top:2px; }
+  .bm-perk-reason{ font-size:10px; color:var(--text-dim); margin-top:3px; line-height:1.4; }
+
+  /* Legendary perks */
+  .bm-leg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+                 gap:10px; margin-bottom:20px; }
+  .bm-leg-card { background:var(--bg-main,#111); border:1px solid #e0c04044;
+                 border-radius:6px; padding:10px 12px; }
+  .bm-leg-name { font-size:12px; font-weight:700; color:#e0c040; margin-bottom:4px; }
+  .bm-leg-rank { font-size:11px; color:var(--text-dim); margin-bottom:4px; }
+  .bm-leg-reason{ font-size:11px; color:var(--text-muted); line-height:1.5; }
+
+  /* Modal detail grid */
+  .bm-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+  .bm-detail   { background:var(--bg-main,#111); border:1px solid var(--border);
+                 border-radius:6px; padding:12px 14px; }
+  .bm-detail h3{ font-size:11px; color:var(--text-dim); text-transform:uppercase;
+                 letter-spacing:.05em; margin:0 0 8px; }
+  .bm-detail p { margin:0; font-size:13px; color:var(--text-muted); line-height:1.6; white-space:pre-wrap; }
+
+  /* Modal actions */
+  .bm-actions  { display:flex; gap:10px; padding:0 20px 20px; flex-wrap:wrap; }
+
+  @media(max-width:640px) {
+    .build-cards { grid-template-columns:1fr; }
+    .bm-special  { flex-wrap:wrap; }
+    .bm-sp       { flex:0 0 calc(25% - 6px); }
+    .bm-detail-grid { grid-template-columns:1fr; }
+  }
+</style>
+
+<!-- Build detail modal -->
+<div class="bm-overlay" id="bmOverlay" onclick="closeBuildModal(event)">
+  <div class="bm-modal" id="bmModal">
+    <div class="bm-head">
+      <div>
+        <div class="bm-title"  id="bm-name"></div>
+        <div class="bm-playstyle" id="bm-playstyle"></div>
+      </div>
+      <button class="bm-close" onclick="closeBuildModal()">✕</button>
+    </div>
+    <div class="bm-body">
+      <div class="bm-section">SPECIAL</div>
+      <div class="bm-special" id="bm-special"></div>
+      <div class="bm-section">Perk Cards</div>
+      <div class="bm-perk-grid" id="bm-perks"></div>
+      <div id="bm-legendary-perks" style="display:none">
+        <div class="bm-section">Legendary Perks</div>
+        <div class="bm-leg-grid" id="bm-leg-grid"></div>
+      </div>
+      <div class="bm-detail-grid" id="bm-details"></div>
+    </div>
+    <div class="bm-actions" id="bm-actions"></div>
+  </div>
+</div>
+
+<!-- Embed build data for JS -->
+<script>
+const BUILDS_DATA = {{ items | tojson }};
+</script>
+
+<div class="builds-header">
+  <h1>🔨 BUILDS</h1>
+  <span class="count-badge">{{ items|length }} builds</span>
+  <a href="/build-generator" class="btn btn-primary" style="font-size:12px;padding:5px 12px">🤖 Generate New</a>
+</div>
+
+<!-- Add / Edit panel -->
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Build Manually{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/builds/{{ edit_item['id'] }}/update{% else %}/builds/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Build Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+        </div>
+        <div class="form-group span2">
+          <label>Playstyle / Summary</label>
+          <input type="text" name="playstyle" value="{{ edit_item['playstyle'] if edit_item else '' }}"
+                 placeholder="e.g. Stealth rifleman, full-health PA melee...">
+        </div>
+      </div>
+      <div class="section-title" style="margin:10px 0 8px">SPECIAL POINTS (max 56 total)</div>
+      <div class="form-grid">
+        {% set sp_labels = [('s','Strength','S'),('p','Perception','P'),('e','Endurance','E'),
+                            ('c','Charisma','C'),('i','Intelligence','I'),('a','Agility','A'),('l','Luck','L')] %}
+        {% for field, label, code in sp_labels %}
+        <div class="form-group">
+          <label><span class="special-{{ code }}">{{ code }}</span> {{ label }}</label>
+          <input type="number" name="{{ field }}" id="special_{{ field }}" min="1" max="15"
+                 value="{{ edit_item[field] if edit_item else 1 }}" oninput="updateSpecialTotal()">
+        </div>
+        {% endfor %}
+        <div class="form-group">
+          <label>Total</label>
+          <div style="padding:5px 8px;border:1px solid var(--border);border-radius:3px;">
+            <span id="specialTotal" class="pts-ok">—</span>
+          </div>
+        </div>
+      </div>
+      <!-- Perk Cards with ranks -->
+      <div style="margin-top:12px">
+        <label style="font-size:.75rem;color:var(--fg-dim);text-transform:uppercase;letter-spacing:.05em">
+          Key Perk Cards
+          <span style="font-weight:400;color:var(--fg-dim);margin-left:.5rem">— add each card with its recommended rank</span>
+        </label>
+        <div id="perkRowList" style="display:flex;flex-direction:column;gap:6px;margin:8px 0"></div>
+        <button type="button" class="btn btn-secondary" style="font-size:12px;padding:4px 12px" onclick="addPerkRow()">+ Add Perk Card</button>
+        <!-- Hidden fields written by JS before submit -->
+        <input type="hidden" name="key_cards" id="keyCardsHidden">
+        <input type="hidden" name="perk_cards_json" id="perkCardsJsonHidden">
+      </div>
+
+      <div class="form-grid wide" style="margin-top:10px">
+        <div class="form-group span3">
+          <label>Notes</label>
+          <textarea name="notes">{{ edit_item['notes'] if edit_item else '' }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" onclick="serializePerks()">{% if edit_item %}Update{% else %}Add Build{% endif %}</button>
+        {% if edit_item %}<a href="/builds" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+
+<style>
+.perk-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+}
+.perk-row input[type=text] {
+  flex: 1;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 3px 7px;
+  border-radius: 3px;
+  font-size: .82rem;
+}
+.perk-row select {
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 3px 5px;
+  border-radius: 3px;
+  font-size: .82rem;
+  width: 72px;
+}
+.perk-row label { font-size: .72rem; color: var(--fg-dim); white-space: nowrap; }
+.perk-row-del {
+  background: none;
+  border: none;
+  color: var(--red);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+</style>
+
+<script>
+// Pre-populate perk rows from edit_item if present
+(function initPerkRows() {
+  {% if edit_item and edit_item['perk_cards_json'] %}
+  try {
+    const saved = JSON.parse({{ edit_item['perk_cards_json'] | tojson }});
+    saved.forEach(p => addPerkRow(p.name, p.rank || 1, p.max_rank || 3));
+    return;
+  } catch(e) {}
+  {% endif %}
+  {% if edit_item and edit_item['key_cards'] %}
+  const names = {{ edit_item['key_cards'] | tojson }}.split(',').map(n => n.trim()).filter(Boolean);
+  names.forEach(n => addPerkRow(n, 1, 3));
+  {% endif %}
+})();
+
+function addPerkRow(name='', rank=1, maxRank=3) {
+  const list = document.getElementById('perkRowList');
+  const div  = document.createElement('div');
+  div.className = 'perk-row';
+  div.innerHTML = `
+    <input type="text" placeholder="Perk card name..." value="${name}" list="perkNameListBuilds">
+    <label>Rank</label>
+    <select class="pr-rank">${[1,2,3,4,5].map(r=>`<option value="${r}"${r==rank?' selected':''}>${r}</option>`).join('')}</select>
+    <label>/ Max</label>
+    <select class="pr-max">${[1,2,3,4,5,6].map(r=>`<option value="${r}"${r==maxRank?' selected':''}>${r}</option>`).join('')}</select>
+    <button type="button" class="perk-row-del" onclick="this.parentElement.remove()">✕</button>
+  `;
+  list.appendChild(div);
+}
+
+function serializePerks() {
+  const rows = document.querySelectorAll('#perkRowList .perk-row');
+  const cards = [];
+  rows.forEach(row => {
+    const name    = row.querySelector('input').value.trim();
+    const rank    = parseInt(row.querySelector('.pr-rank').value);
+    const maxRank = parseInt(row.querySelector('.pr-max').value);
+    if (name) cards.push({name, rank, max_rank: maxRank, reason: ''});
+  });
+  document.getElementById('keyCardsHidden').value    = cards.map(c => c.name).join(', ');
+  document.getElementById('perkCardsJsonHidden').value = JSON.stringify(cards);
+}
+</script>
+<datalist id="perkNameListBuilds">
+  {% if wiki_perks_list is defined %}{% for p in wiki_perks_list %}<option value="{{ p }}">{% endfor %}{% endif %}
+</datalist>
+  </div>
+</section>
+
+<!-- Filter -->
+<div class="builds-filter">
+  <input type="text" id="buildFilter" placeholder="Filter by name or playstyle..."
+         oninput="filterBuilds(this.value)">
+</div>
+
+<!-- Cards grid -->
+<div class="build-cards" id="buildGrid"></div>
+
+<div class="builds-empty" id="buildsEmpty" style="display:none">
+  No builds yet. <a href="/build-generator">Generate one with AI</a> or add manually above.
+</div>
+
+<script>
+const SP_KEYS  = ['s','p','e','c','i','a','l'];
+const SP_NAMES = ['STR','PER','END','CHA','INT','AGI','LCK'];
+const SP_CLS   = ['sp-s','sp-p','sp-e','sp-c','sp-i','sp-a','sp-l'];
+
+let manifest = {};
+let filtered = [...BUILDS_DATA];
+
+// Parse perk JSON stored with build — returns array of {name, rank, max_rank, reason}
+function parsePerkJson(b) {
+  if (b.perk_cards_json) {
+    try { return JSON.parse(b.perk_cards_json); } catch(e) {}
+  }
+  // Fallback: name-only from key_cards
+  return (b.key_cards || '').split(',').map(n => n.trim()).filter(Boolean)
+    .map(n => ({name: n, rank: 1, max_rank: 3, reason: ''}));
+}
+
+function parseLegendaryJson(b) {
+  if (b.legendary_perks_json) {
+    try { return JSON.parse(b.legendary_perks_json); } catch(e) {}
+  }
+  return [];
+}
+
+function rankStars(rank, max) {
+  rank = parseInt(rank) || 1;
+  max  = parseInt(max)  || rank;
+  return '★'.repeat(rank) + '☆'.repeat(Math.max(0, max - rank));
+}
+
+// Load perk image manifest
+fetch('/static/img/perks/manifest.json')
+  .then(r => r.json())
+  .then(d => { manifest = d; renderCards(filtered); })
+  .catch(() => renderCards(filtered));
+
+function normalize(s) {
+  return (s || '').toLowerCase()
+    .replace(/\bperk\b/g,'').replace(/_/g,' ')
+    .replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+}
+
+function findImg(name) {
+  const n = normalize(name);
+  for (const [k,v] of Object.entries(manifest)) {
+    if (normalize(k) === n) return v;
+  }
+  for (const [k,v] of Object.entries(manifest)) {
+    const nk = normalize(k);
+    if (nk.includes(n) || n.includes(nk)) return v;
+  }
+  return null;
+}
+
+function buildCard(b) {
+  const total = SP_KEYS.reduce((a,k) => a + (b[k]||0), 0);
+
+  // SPECIAL
+  const spHtml = SP_KEYS.map((k,i) => {
+    const v = b[k] || 1;
+    const pct = Math.round((v/15)*100);
+    return `<div class="bc-sp ${SP_CLS[i]}">
+      <div class="bc-sp-lbl">${SP_NAMES[i]}</div>
+      <div class="bc-sp-val">${v}</div>
+      <div class="bc-sp-bar" style="width:${pct}%"></div>
+    </div>`;
+  }).join('') + `<div class="bc-sp bc-total">
+    <div class="bc-sp-lbl">TOT</div>
+    <div class="bc-sp-val">${total}</div>
+  </div>`;
+
+  // Perk images — use JSON data for ranks if available
+  const perkData = parsePerkJson(b);
+  let perksHtml = '';
+  if (perkData.length) {
+    perksHtml = perkData.map(p => {
+      const name = p.name || p;
+      const rank = p.rank || 1;
+      const max  = p.max_rank || rank;
+      const img  = findImg(name);
+      return `<div class="bc-perk-wrap">
+        ${img
+          ? `<img class="bc-perk-img" src="${img}" alt="${name}" title="${name} (Rank ${rank})" onerror="this.parentElement.innerHTML='<div class=\\'bc-perk-fb\\'>🃏</div><div class=\\'bc-perk-name\\'>${name}</div><div class=\\'bc-perk-rank\\'>${rankStars(rank,max)}</div>'">`
+          : `<div class="bc-perk-fb" title="${name}">🃏</div>`}
+        <div class="bc-perk-name">${name}</div>
+        <div class="bc-perk-rank">${rankStars(rank, max)}</div>
+      </div>`;
+    }).join('');
+  } else {
+    perksHtml = '<span class="bc-no-perks">No perk cards logged</span>';
+  }
+
+  const notesPreview = (b.notes || '').replace(/\n/g,' ').substring(0, 60) + (b.notes && b.notes.length > 60 ? '…' : '');
+
+  return `<div class="build-card" data-name="${(b.name||'').toLowerCase()}" data-playstyle="${(b.playstyle||'').toLowerCase()}"
+              onclick="openBuildModal(${b.id})">
+    <div class="bc-head">
+      <div class="bc-name">${b.name || 'Unnamed Build'}</div>
+      <div class="bc-playstyle">${b.playstyle || 'No playstyle set'}</div>
+    </div>
+    <div class="bc-special">${spHtml}</div>
+    <div class="bc-perks">${perksHtml}</div>
+    <div class="bc-foot">
+      <div class="bc-notes">${notesPreview || '<em style="opacity:.4">No notes</em>'}</div>
+      <div class="bc-actions">
+        <a href="/builds?edit_id=${b.id}" class="btn-sm btn-edit" onclick="event.stopPropagation()">✎</a>
+        <form method="POST" action="/builds/${b.id}/delete" class="inline-form" style="display:inline"
+              onclick="event.stopPropagation()">
+          <button class="btn-sm btn-delete" onclick="return confirmDelete()">✕</button>
+        </form>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderCards(data) {
+  const grid  = document.getElementById('buildGrid');
+  const empty = document.getElementById('buildsEmpty');
+  if (!data.length) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.innerHTML = data.map(buildCard).join('');
+}
+
+function filterBuilds(q) {
+  q = q.toLowerCase().trim();
+  filtered = q
+    ? BUILDS_DATA.filter(b =>
+        (b.name||'').toLowerCase().includes(q) ||
+        (b.playstyle||'').toLowerCase().includes(q) ||
+        (b.key_cards||'').toLowerCase().includes(q))
+    : [...BUILDS_DATA];
+  renderCards(filtered);
+}
+
+// Initial render (manifest may not be loaded yet — will re-render when it is)
+renderCards(BUILDS_DATA);
+updateSpecialTotal();
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+function openBuildModal(id) {
+  const b = BUILDS_DATA.find(x => x.id === id);
+  if (!b) return;
+
+  document.getElementById('bm-name').textContent     = b.name || 'Unnamed';
+  document.getElementById('bm-playstyle').textContent = b.playstyle || '';
+
+  // SPECIAL
+  const spKeys  = ['s','p','e','c','i','a','l'];
+  const spNames = ['STR','PER','END','CHA','INT','AGI','LCK'];
+  const spCls   = ['bm-s','bm-p','bm-e','bm-c','bm-i','bm-a','bm-l'];
+  document.getElementById('bm-special').innerHTML = spKeys.map((k,i) => {
+    const v = b[k] || 1;
+    return `<div class="bm-sp ${spCls[i]}">
+      <div class="bm-sp-lbl">${spNames[i]}</div>
+      <div class="bm-sp-val">${v}</div>
+      <div class="bm-sp-bar" style="width:${Math.round((v/15)*100)}%"></div>
+    </div>`;
+  }).join('');
+
+  // Perk cards — use JSON for rank display
+  const perkData = parsePerkJson(b);
+  document.getElementById('bm-perks').innerHTML = perkData.length
+    ? perkData.map(p => {
+        const name   = p.name || p;
+        const rank   = p.rank    || 1;
+        const maxR   = p.max_rank || rank;
+        const reason = p.reason  || '';
+        const img    = findImg(name);
+        return `<div class="bm-perk">
+          ${img
+            ? `<img src="${img}" alt="${name}" title="${name}"
+                   onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+            : ''}
+          <div class="bm-perk-fb" style="${img ? 'display:none' : ''}">🃏</div>
+          <div class="bm-perk-name">${name}</div>
+          <div class="bm-perk-rank">${rankStars(rank, maxR)} Rank ${rank}/${maxR}</div>
+          ${reason ? `<div class="bm-perk-reason">${reason}</div>` : ''}
+        </div>`;
+      }).join('')
+    : '<span style="font-size:12px;color:var(--text-dim)">No perk cards logged</span>';
+
+  // Legendary perks section
+  const legPerks = parseLegendaryJson(b);
+  const legSection = document.getElementById('bm-legendary-perks');
+  if (legSection) {
+    if (legPerks.length) {
+      legSection.style.display = 'block';
+      document.getElementById('bm-leg-grid').innerHTML = legPerks.map(lp => `
+        <div class="bm-leg-card">
+          <div class="bm-leg-name">⭐ ${lp.name}</div>
+          <div class="bm-leg-rank">${rankStars(lp.rank, lp.max_rank || 6)} Rank ${lp.rank}/${lp.max_rank || 6}</div>
+          ${lp.reason ? `<div class="bm-leg-reason">${lp.reason}</div>` : ''}
+        </div>`).join('');
+    } else {
+      legSection.style.display = 'none';
+    }
+  }
+
+  // Parse notes into sections
+  const notes = b.notes || '';
+  const lines  = notes.split('\n');
+  let weapons = '', armor = '', mutations = '', tips = '';
+  const other = [];
+  lines.forEach(l => {
+    if      (l.startsWith('Weapons:'))   weapons   = l.replace('Weapons:','').trim();
+    else if (l.startsWith('Armor:'))     armor     = l.replace('Armor:','').trim();
+    else if (l.startsWith('Mutations:')) mutations = l.replace('Mutations:','').trim();
+    else if (l.trim())                   other.push(l);
+  });
+  tips = other.join('\n').trim();
+
+  document.getElementById('bm-details').innerHTML = `
+    <div class="bm-detail">
+      <h3>⚔ Weapons</h3>
+      <p>${weapons || '—'}</p>
+    </div>
+    <div class="bm-detail">
+      <h3>🛡 Armor</h3>
+      <p>${armor || '—'}</p>
+    </div>
+    <div class="bm-detail">
+      <h3>🧬 Mutations</h3>
+      <p>${mutations || '—'}</p>
+    </div>
+    <div class="bm-detail">
+      <h3>📋 Notes / Tips</h3>
+      <p>${tips || '—'}</p>
+    </div>`;
+
+  document.getElementById('bm-actions').innerHTML = `
+    <a href="/builds?edit_id=${b.id}" class="btn btn-secondary">✎ Edit Build</a>
+    <form method="POST" action="/builds/${b.id}/delete" class="inline-form" style="display:inline">
+      <button class="btn btn-secondary" style="color:#e04040;border-color:#e04040"
+              onclick="return confirmDelete()">✕ Delete</button>
+    </form>`;
+
+  document.getElementById('bmOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBuildModal(e) {
+  if (e && e.target !== document.getElementById('bmOverlay')) return;
+  document.getElementById('bmOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeBuildModal();
+});
+</script>
+
+{% endblock %}

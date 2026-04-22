@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+{% block title %}Ammo Counter{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🔫 AMMO COUNTER</h1>
+  <span class="count-badge">{{ items|length }} types</span>
+</div>
+
+{% if low %}
+<div style="background:var(--bg-card);border:2px solid var(--red);border-radius:4px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+  <span style="color:var(--red);font-size:16px;font-weight:bold">⚠</span>
+  <span style="font-size:12px">
+    <span style="color:var(--red);font-weight:bold">Low Stock: </span>
+    <span style="color:var(--gold)">{{ low | map(attribute='ammo_type') | join(', ') }}</span>
+  </span>
+</div>
+{% endif %}
+
+<!-- Add / Edit panel -->
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['ammo_type'] }}{% else %}+ Add Ammo{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/ammo/{{ edit_item['id'] }}/update{% else %}/ammo/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Ammo Type *</label>
+          <input type="text" name="ammo_type" required
+                 value="{{ edit_item['ammo_type'] if edit_item else '' }}"
+                 placeholder="e.g. 5.56mm, .308 Rounds, Fusion Cells">
+        </div>
+        <div class="form-group">
+          <label>Quantity</label>
+          <input type="number" name="qty" min="0"
+                 value="{{ edit_item['qty'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Low Alert Threshold
+            <span class="dim" style="font-size:10px;font-weight:normal"> — 0 = no alert</span>
+          </label>
+          <input type="number" name="low_threshold" min="0"
+                 value="{{ edit_item['low_threshold'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes"
+                 value="{{ edit_item['notes'] if edit_item else '' }}"
+                 placeholder="e.g. For Railway Rifle build, stash overflow OK">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">
+          {% if edit_item %}Update{% else %}Add Ammo{% endif %}
+        </button>
+        {% if edit_item %}
+          <a href="/ammo" class="btn btn-secondary">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Ammo table -->
+<div class="table-wrap">
+  <table class="data-table" id="ammoTable">
+    <thead>
+      <tr>
+        <th>Ammo Type</th>
+        <th>Qty</th>
+        <th>Low Alert</th>
+        <th>Updated</th>
+        <th>Notes</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      {% set is_low = item['low_threshold'] > 0 and item['qty'] < item['low_threshold'] %}
+      <tr id="ammo-row-{{ item['id'] }}" class="{{ 'low-stock-row' if is_low else '' }}"
+          style="{{ 'border-left: 3px solid var(--red);' if is_low else '' }}">
+        <td class="hi">{{ item['ammo_type'] }}</td>
+        <td id="qty-cell-{{ item['id'] }}">
+          <span id="qty-val-{{ item['id'] }}" class="{{ 'gold' if not is_low else '' }}"
+                style="{{ 'color:var(--red);font-weight:bold;' if is_low else '' }}">
+            {{ "{:,}".format(item['qty']) }}
+          </span>
+          {% if is_low %}
+            <span class="badge" style="background:var(--red);color:#fff;margin-left:6px;font-size:10px">⚠ LOW</span>
+          {% endif %}
+        </td>
+        <td class="dim">
+          {% if item['low_threshold'] > 0 %}
+            <span class="accent">{{ "{:,}".format(item['low_threshold']) }}</span>
+          {% else %}
+            <span class="dim">—</span>
+          {% endif %}
+        </td>
+        <td class="dim" style="font-size:11px">{{ item['updated_at'] }}</td>
+        <td class="dim">{{ item['notes'] or '—' }}</td>
+        <td class="actions" style="white-space:nowrap">
+          <a href="/ammo?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <button class="btn-sm btn-keep"
+                  onclick="adjustQty({{ item['id'] }}, 100)"
+                  title="Add 100">+100</button>
+          <button class="btn-sm btn-secondary"
+                  onclick="adjustQty({{ item['id'] }}, -100)"
+                  title="Remove 100">-100</button>
+          <form method="POST" action="/ammo/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" class="no-data">No ammo tracked yet. Add some above!</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if items %}
+<div style="margin-top:12px;padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text-dim)">
+  💡 <strong style="color:var(--accent)">Quick Adjust</strong> — Use the <span class="accent">+100</span> and <span class="dim">-100</span> buttons to rapidly update your stash count without opening the edit panel. The quantity updates live without a page reload.
+</div>
+{% endif %}
+
+<script>
+function adjustQty(id, delta) {
+  fetch(`/ammo/${id}/qty`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `delta=${delta}`
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      showToast(data.error, 'error');
+      return;
+    }
+
+    const newQty = data.qty;
+    const threshold = data.low_threshold || 0;
+    const isLow = threshold > 0 && newQty < threshold;
+
+    // Update the qty value display
+    const valEl = document.getElementById('qty-val-' + id);
+    if (valEl) {
+      valEl.textContent = newQty.toLocaleString();
+      valEl.className = isLow ? '' : 'gold';
+      valEl.style.color = isLow ? 'var(--red)' : '';
+      valEl.style.fontWeight = isLow ? 'bold' : '';
+    }
+
+    // Update or remove the LOW badge
+    const cell = document.getElementById('qty-cell-' + id);
+    if (cell) {
+      let badge = cell.querySelector('.badge');
+      if (isLow) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.style.cssText = 'background:var(--red);color:#fff;margin-left:6px;font-size:10px';
+          badge.textContent = '⚠ LOW';
+          cell.appendChild(badge);
+        }
+      } else {
+        if (badge) badge.remove();
+      }
+    }
+
+    // Update row highlight
+    const row = document.getElementById('ammo-row-' + id);
+    if (row) {
+      row.style.borderLeft = isLow ? '3px solid var(--red)' : '';
+    }
+
+    const sign = delta > 0 ? '+' : '';
+    showToast(`${sign}${delta} — now ${newQty.toLocaleString()}`, isLow ? 'warn' : 'ok');
+  })
+  .catch(() => showToast('Request failed', 'error'));
+}
+
+function showToast(msg, type) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const t = document.createElement('div');
+  t.className = 'flash flash-' + (type === 'ok' ? 'success' : type === 'warn' ? 'warning' : 'error');
+  t.style.cssText = 'margin-bottom:6px;animation:none;opacity:1';
+  t.textContent = msg;
+  container.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+</script>
+
+{% endblock %}

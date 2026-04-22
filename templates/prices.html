@@ -1,0 +1,289 @@
+{% extends 'base.html' %}
+{% block title %}Price Research{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>💰 PRICE RESEARCH</h1>
+  <span class="count-badge">{{ total_count }} records</span>
+</div>
+
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['item_name'] }}{% else %}+ Log a Price{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/prices/{{ edit_item['id'] }}/update{% else %}/prices/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Item Name *</label>
+          <input type="text" name="item_name" required value="{{ edit_item['item_name'] if edit_item else '' }}" placeholder="e.g. Fixer Bloodied/FFR/25">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category">
+            {% for c in ['','Weapon','Armor','Apparel','Mod','Power Armor','Plan','Aid','Ammo','Food/Drink','Misc'] %}
+            <option value="{{ c }}" {{ 'selected' if edit_item and edit_item['category']==c else '' }}>{{ c or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Description</label>
+          <input type="text" name="description" value="{{ edit_item['description'] if edit_item else '' }}" placeholder="Extra detail about the roll or item">
+        </div>
+        <div class="form-group">
+          <label>Price Seen (caps) *</label>
+          <input type="number" name="price_seen" required min="0" value="{{ edit_item['price_seen'] if edit_item else '' }}" placeholder="0">
+        </div>
+        <div class="form-group span2">
+          <label>Where / Source</label>
+          <input type="text" name="source" value="{{ edit_item['source'] if edit_item else '' }}" placeholder="e.g. Server hop, Trade chat, Reddit">
+        </div>
+        <div class="form-group">
+          <label>Date Seen</label>
+          <input type="date" name="date_seen" value="{{ edit_item['date_seen'] if edit_item else '' }}">
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Log Price{% endif %}</button>
+        {% if edit_item %}<a href="/prices" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="add-panel" id="importPanel">
+  <div class="panel-toggle" onclick="togglePanel('importPanel')">
+    <span>⬆ Bulk Import CSV</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <p class="dim" style="font-size:11px;margin-bottom:10px">
+      Upload a CSV with columns: <code>item_name, category, description, price_seen, source, date_seen, notes</code>.
+      Rows without an item name are skipped.
+    </p>
+    <form method="POST" action="/prices/import" enctype="multipart/form-data" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="file" name="csvfile" accept=".csv" required style="flex:1;min-width:200px">
+      <button class="btn btn-primary" type="submit">⬆ Import</button>
+    </form>
+  </div>
+</section>
+
+<section class="add-panel" id="alertPanel">
+  <div class="panel-toggle" onclick="togglePanel('alertPanel')">
+    <span>🔔 Price Alerts</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/prices/alert/add" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
+      <div class="form-group" style="flex:2;min-width:160px;margin:0">
+        <label>Item Name</label>
+        <input type="text" name="item_name" required placeholder="e.g. Bloodied FFR Fixer" style="width:100%">
+      </div>
+      <div class="form-group" style="flex:1;min-width:100px;margin:0">
+        <label>Max Price (caps)</label>
+        <input type="number" name="target_price" required min="0" placeholder="e.g. 25000" style="width:100%">
+      </div>
+      <button class="btn btn-primary" type="submit" style="white-space:nowrap">Set Alert</button>
+    </form>
+    {% if alerts %}
+    <table class="data-table" style="font-size:11px">
+      <thead><tr><th>Item</th><th>Alert At</th><th></th></tr></thead>
+      <tbody>
+        {% for a in alerts %}
+        <tr>
+          <td class="hi">{{ a['item_name'] }}</td>
+          <td class="gold">≤ {{ "{:,}".format(a['target_price']) }}</td>
+          <td>
+            <form method="POST" action="/prices/alert/{{ a['id'] }}/delete" class="inline-form">
+              <button class="btn-sm btn-delete" title="Remove alert" onclick="return confirm('Remove alert?')">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="dim" style="font-size:11px">No active alerts. Set one above to get notified when a price hits your target.</p>
+    {% endif %}
+  </div>
+</section>
+
+<div class="two-col" style="grid-template-columns: 3fr 2fr">
+
+  <div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+      <span class="section-title" style="margin-bottom:0">📋 ALL LOGGED PRICES</span>
+      {% if total_count > 0 %}
+      <span class="dim" style="font-size:11px">
+        {{ (page-1)*100+1 }}–{{ [page*100, total_count]|min }} of {{ total_count }}{% if q %} matching "{{ q }}"{% endif %}
+      </span>
+      {% endif %}
+    </div>
+    <form method="GET" action="/prices" style="display:flex;gap:8px;margin-bottom:8px">
+      <input type="text" name="q" value="{{ q }}" placeholder="Search by item name..." style="flex:1">
+      <button type="submit" class="btn btn-secondary" style="white-space:nowrap;padding:6px 12px">Search</button>
+      {% if q %}<a href="/prices" class="btn btn-secondary" style="white-space:nowrap;padding:6px 12px">Clear</a>{% endif %}
+    </form>
+    <div class="table-wrap table-scrollable">
+      <table class="data-table" id="priceTable">
+        <thead>
+          <tr><th>Item</th><th>Cat</th><th>Price</th><th>Source</th><th>Date</th><th>Notes</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          {% set alerted = item['item_name'] in alert_targets %}
+          {% set hit = alerted and item['price_seen'] <= alert_targets[item['item_name']] %}
+          <tr class="{{ 'completed-row' if edit_item and edit_item['id']==item['id'] else '' }}"
+              style="{{ 'background:rgba(255,200,0,0.07);' if hit else '' }}">
+            <td class="hi">
+              {{ item['item_name'] }}
+              {% if hit %}<span title="At or below alert price!" style="margin-left:4px">🔔</span>{% endif %}
+            </td>
+            <td class="dim" style="font-size:11px">{{ item['category'] }}</td>
+            <td class="{{ 'gold' if not hit else '' }}" style="{{ 'color:var(--gold);font-weight:bold' if hit else '' }}">{{ "{:,}".format(item['price_seen']) }}</td>
+            <td class="dim">{{ item['source'] }}</td>
+            <td class="dim">{{ item['date_seen'] }}</td>
+            <td class="dim">{{ item['notes'] }}</td>
+            <td class="actions" style="white-space:nowrap">
+              <a href="/prices?edit_id={{ item['id'] }}" class="btn-sm btn-edit" title="Edit">✎</a>
+              <form method="POST" action="/prices/{{ item['id'] }}/copy" class="inline-form">
+                <button class="btn-sm btn-secondary" title="Copy this entry">⎘</button>
+              </form>
+              <form method="POST" action="/prices/{{ item['id'] }}/delete" class="inline-form">
+                <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="no-data">No prices logged yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if total_pages > 1 %}
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+      {% if page > 1 %}
+      <a href="/prices?q={{ q|urlencode }}&page={{ page-1 }}" class="btn btn-secondary" style="font-size:11px;padding:4px 10px">← Prev</a>
+      {% endif %}
+      <span class="dim" style="font-size:11px">Page {{ page }} / {{ total_pages }}</span>
+      {% if page < total_pages %}
+      <a href="/prices?q={{ q|urlencode }}&page={{ page+1 }}" class="btn btn-secondary" style="font-size:11px;padding:4px 10px">Next →</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="section-title" style="margin-bottom:10px">📊 PRICE AVERAGES {% if not q %}<span class="dim" style="font-size:10px;font-weight:normal">(top 50 by entries — search to filter)</span>{% endif %}</div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Item</th><th>#</th><th>Min</th><th>Avg</th><th>Max</th><th>Suggested</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for r in avgs %}
+          <tr>
+            <td class="hi">{{ r['item_name'] }}</td>
+            <td class="dim">{{ r['cnt'] }}</td>
+            <td>{{ "{:,}".format(r['min_p']) }}</td>
+            <td class="gold">{{ "{:,}".format(r['avg_p']|int) }}</td>
+            <td>{{ "{:,}".format(r['max_p']) }}</td>
+            <td class="accent">{{ "{:,}".format(r['suggested']|int) }}</td>
+            <td><button class="btn-sm btn-secondary" onclick="showChart({{ r['item_name']|tojson }})" title="Price history chart">📈</button></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="no-data">Log some prices to see averages.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="dim" style="font-size:10px;margin-top:8px">Suggested = 10% below average (competitive)</p>
+  </div>
+
+</div>
+
+<!-- Chart Modal -->
+<div id="chartModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg-card);border:1px solid var(--accent);border-radius:6px;padding:20px;width:min(700px,90vw);max-height:90vh;overflow-y:auto;position:relative">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span id="chartTitle" class="section-title" style="margin:0;font-size:12px"></span>
+      <button onclick="closeChart()" class="btn-sm btn-secondary">✕ Close</button>
+    </div>
+    <div id="chartNoData" class="no-data" style="display:none;padding:20px;text-align:center">Not enough data for this item.</div>
+    <canvas id="priceChart" style="max-height:300px"></canvas>
+  </div>
+</div>
+
+<script>
+let priceChartInst = null;
+let _chartJsLoaded = false;
+let _chartJsLoading = false;
+let _pendingChartItem = null;
+
+function _loadChartJs(cb) {
+  if (_chartJsLoaded) { cb(); return; }
+  if (_chartJsLoading) { _pendingChartItem = cb; return; }
+  _chartJsLoading = true;
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
+  s.onload = function() { _chartJsLoaded = true; _chartJsLoading = false; cb(); };
+  document.head.appendChild(s);
+}
+
+function showChart(item) {
+  document.getElementById('chartModal').style.display = 'flex';
+  document.getElementById('chartTitle').textContent = '📈 ' + item + ' — Price History';
+  document.getElementById('chartNoData').style.display = 'none';
+  document.getElementById('priceChart').style.display = 'block';
+  _loadChartJs(function() {
+    fetch('/prices/chart-data?item=' + encodeURIComponent(item))
+      .then(r => r.json())
+      .then(data => {
+        if (!data.prices || data.prices.length < 2) {
+          document.getElementById('chartNoData').style.display = 'block';
+          document.getElementById('priceChart').style.display = 'none';
+          return;
+        }
+        const style = getComputedStyle(document.documentElement);
+        const accent = style.getPropertyValue('--accent').trim() || '#00ff41';
+        const gold   = style.getPropertyValue('--gold').trim()   || '#ffc107';
+        if (priceChartInst) priceChartInst.destroy();
+        priceChartInst = new Chart(document.getElementById('priceChart'), {
+        type: 'line',
+        data: {
+          labels: data.labels,
+          datasets: [
+            { label: 'Price Seen', data: data.prices, borderColor: accent, backgroundColor: accent+'22',
+              pointRadius: 3, tension: 0.3, fill: true },
+            { label: 'Avg (' + data.avg.toLocaleString() + ')', data: Array(data.prices.length).fill(data.avg),
+              borderColor: gold, borderDash: [6,3], pointRadius: 0, borderWidth: 1.5 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: true,
+          plugins: { legend: { labels: { color: '#aaa', font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { color: '#666', maxRotation: 45, maxTicksLimit: 12 }, grid: { color: '#222' } },
+            y: { ticks: { color: '#aaa', callback: v => v.toLocaleString() }, grid: { color: '#222' } }
+          }
+        }
+        });
+      });
+  });
+}
+
+function closeChart() {
+  document.getElementById('chartModal').style.display = 'none';
+  if (priceChartInst) { priceChartInst.destroy(); priceChartInst = null; }
+}
+
+document.getElementById('chartModal').addEventListener('click', function(e) {
+  if (e.target === this) closeChart();
+});
+</script>
+
+{% endblock %}

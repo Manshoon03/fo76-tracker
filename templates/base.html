@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en" id="htmlRoot">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FO76 Tracker{% if self.title() %} — {% block title %}{% endblock %}{% endif %}</title>
+  <!-- Apply saved theme before render to prevent flash -->
+  <script>
+    (function(){
+      var t = localStorage.getItem('fo76theme') || 'green';
+      document.documentElement.setAttribute('data-theme', t);
+      if (localStorage.getItem('sidebarOpen') !== 'false') {
+        document.documentElement.classList.add('sidebar-open');
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header class="app-header">
+  <button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle menu (M)">☰</button>
+  <div class="app-logo">☢ FO76</div>
+  <form class="search-form" action="/search" method="GET">
+    <input type="search" name="q" placeholder="Search..." value="{{ request.args.get('q','') }}" autocomplete="off">
+    <button type="submit">⌕</button>
+  </form>
+  <div class="header-themes">
+    <button class="theme-dot" data-theme="green" onclick="setTheme('green')" title="Vault Green"></button>
+    <button class="theme-dot" data-theme="blue"  onclick="setTheme('blue')"  title="Brotherhood Blue"></button>
+    <button class="theme-dot" data-theme="red"   onclick="setTheme('red')"   title="Nuka Red"></button>
+    <button class="theme-dot" data-theme="teal"  onclick="setTheme('teal')"  title="Ghoul Teal"></button>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;margin-left:auto;padding-right:4px;flex-shrink:0">
+    <a href="/change-password" style="font-size:11px;color:var(--text-dim);text-decoration:none" title="Account">🔒</a>
+    <a href="/logout" style="font-size:11px;color:var(--text-dim);text-decoration:none" title="Log out">⏻</a>
+  </div>
+</header>
+
+<!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+<nav class="app-sidebar" id="sidebar">
+
+  <div class="sidebar-section">
+    {% set ni = request.path %}
+    <a href="/"           class="sidebar-item {% if ni == '/' %}active{% endif %}"          title="Dashboard">   <span class="si-icon">📋</span><span class="si-label">Dashboard</span></a>
+    <a href="/character"  class="sidebar-item {% if '/character' in ni %}active{% endif %}"  title="Character">   <span class="si-icon">👤</span><span class="si-label">Character</span></a>
+    <a href="/challenges"  class="sidebar-item {% if '/challenges' in ni and '/daily' not in ni %}active{% endif %}" title="Challenges">  <span class="si-icon">🎯</span><span class="si-label">Challenges</span></a>
+    <a href="/daily"       class="sidebar-item {% if '/daily' in ni %}active{% endif %}"       title="Daily Checklist"><span class="si-icon">✅</span><span class="si-label">Daily</span></a>
+    <a href="/nuke-codes"  class="sidebar-item {% if '/nuke-codes' in ni %}active{% endif %}"  title="Nuke Codes">  <span class="si-icon">☢</span><span class="si-label">Nuke Codes</span></a>
+    <a href="/legend-runs" class="sidebar-item {% if '/legend-runs' in ni %}active{% endif %}" title="Legendary Runs"><span class="si-icon">⚔</span><span class="si-label">Legend Runs</span></a>
+    <a href="/fishing"     class="sidebar-item {% if '/fishing' in ni %}active{% endif %}"     title="Fishing Log">   <span class="si-icon">🎣</span><span class="si-label">Fishing</span></a>
+    <a href="/server-hops"  class="sidebar-item {% if '/server-hops' in ni %}active{% endif %}"  title="Server Hops"><span class="si-icon">🌐</span><span class="si-label">Server Hops</span></a>
+    <a href="/vendor-route" class="sidebar-item {% if '/vendor-route' in ni %}active{% endif %}" title="Vendor Route"><span class="si-icon">🗺</span><span class="si-label">Vendor Route</span></a>
+    <a href="/notices"      class="sidebar-item {% if '/notices' in ni %}active{% endif %}"      title="Notices">     <span class="si-icon">📌</span><span class="si-label">Notices</span></a>
+    <a href="/season"       class="sidebar-item {% if '/season' in ni %}active{% endif %}"       title="Season">      <span class="si-icon">🏆</span><span class="si-label">Season</span></a>
+    <a href="/analytics"    class="sidebar-item {% if '/analytics' in ni %}active{% endif %}"    title="Analytics">   <span class="si-icon">📊</span><span class="si-label">Analytics</span></a>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <a href="/perk-cards" class="sidebar-item {% if '/perk-cards' in ni %}active{% endif %}" title="Perk Cards"><span class="si-icon">🃏</span><span class="si-label">Perk Cards</span></a>
+    <a href="/builds"           class="sidebar-item {% if '/builds' in ni and '/compare' not in ni and '/build-generator' not in ni %}active{% endif %}" title="Builds"><span class="si-icon">🔨</span><span class="si-label">Builds</span></a>
+    <a href="/build-generator" class="sidebar-item {% if '/build-generator' in ni %}active{% endif %}" title="Build Generator"><span class="si-icon">🤖</span><span class="si-label">Build Gen</span></a>
+    <a href="/weapon-advisor"  class="sidebar-item {% if '/weapon-advisor'  in ni %}active{% endif %}" title="Weapon Advisor"><span class="si-icon">🔫</span><span class="si-label">Wep Advisor</span></a>
+    <a href="/builds/compare" class="sidebar-item {% if '/builds/compare' in ni %}active{% endif %}" title="Compare Builds"><span class="si-icon">⚖</span><span class="si-label">Compare</span></a>
+    <a href="/legendary-mods" class="sidebar-item {% if '/legendary-mods' in ni %}active{% endif %}" title="Legendary Mods"><span class="si-icon">⭐</span><span class="si-label">Leg. Mods</span></a>
+    <a href="/mutations"  class="sidebar-item {% if '/mutations' in ni %}active{% endif %}"  title="Mutations">  <span class="si-icon">🧬</span><span class="si-label">Mutations</span></a>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <a href="/weapons"     class="sidebar-item {% if '/weapons' in ni %}active{% endif %}"     title="Weapons">    <span class="si-icon">⚔</span><span class="si-label">Weapons</span></a>
+    <a href="/armor"       class="sidebar-item {% if '/armor' in ni and '/power-armor' not in ni %}active{% endif %}"       title="Armor">      <span class="si-icon">🛡</span><span class="si-label">Armor</span></a>
+    <a href="/power-armor" class="sidebar-item {% if '/power-armor' in ni %}active{% endif %}" title="Power Armor"><span class="si-icon">⚙</span><span class="si-label">Power Armor</span></a>
+    <a href="/mods"        class="sidebar-item {% if '/mods' in ni %}active{% endif %}"        title="Mods">       <span class="si-icon">🔩</span><span class="si-label">Mods</span></a>
+    <a href="/inventory" class="sidebar-item {% if '/inventory' in ni %}active{% endif %}" title="Inventory"><span class="si-icon">🎒</span><span class="si-label">Inventory</span></a>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <a href="/vendor"  class="sidebar-item {% if '/vendor' in ni %}active{% endif %}"  title="My Vendor"><span class="si-icon">🏪</span><span class="si-label">My Vendor</span></a>
+    <a href="/prices"  class="sidebar-item {% if '/prices' in ni %}active{% endif %}"  title="Prices">   <span class="si-icon">💰</span><span class="si-label">Prices</span></a>
+    <a href="/caps"    class="sidebar-item {% if '/caps' in ni %}active{% endif %}"    title="Caps Ledger"><span class="si-icon">💵</span><span class="si-label">Caps Ledger</span></a>
+    <a href="/plans"   class="sidebar-item {% if '/plans' in ni %}active{% endif %}"   title="Plans">    <span class="si-icon">📜</span><span class="si-label">Plans</span></a>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <a href="/decode"          class="sidebar-item {% if '/decode' in ni %}active{% endif %}"          title="Shorthand Decoder"><span class="si-icon">🔍</span><span class="si-label">Decoder</span></a>
+    <a href="/trade-post"      class="sidebar-item {% if '/trade-post' in ni %}active{% endif %}"      title="Trade Post"><span class="si-icon">📢</span><span class="si-label">Trade Post</span></a>
+    <a href="/trade-partners"  class="sidebar-item {% if '/trade-partners' in ni %}active{% endif %}"  title="Trade Partners"><span class="si-icon">🤝</span><span class="si-label">Partners</span></a>
+    <a href="/wishlist"    class="sidebar-item {% if '/wishlist' in ni %}active{% endif %}"    title="Wishlist">    <span class="si-icon">⭐</span><span class="si-label">Wishlist</span></a>
+    <a href="/atom-shop"   class="sidebar-item {% if '/atom-shop' in ni %}active{% endif %}"   title="Atom Shop">   <span class="si-icon">⚛</span><span class="si-label">Atom Shop</span></a>
+    <a href="/ammo"        class="sidebar-item {% if '/ammo' in ni %}active{% endif %}"        title="Ammo Counter"><span class="si-icon">🔫</span><span class="si-label">Ammo</span></a>
+    <a href="/vendor-scan" class="sidebar-item {% if '/vendor-scan' in ni %}active{% endif %}" title="Vendor Scan"><span class="si-icon">📷</span><span class="si-label">Vendor Scan</span></a>
+    <a href="/craft-calc"  class="sidebar-item {% if '/craft-calc' in ni %}active{% endif %}"  title="Craft Calc"><span class="si-icon">🌿</span><span class="si-label">Craft Calc</span></a>
+    <a href="/playtime"    class="sidebar-item {% if '/playtime' in ni %}active{% endif %}"    title="Playtime">   <span class="si-icon">⏱</span><span class="si-label">Playtime</span></a>
+    <a href="/export"      class="sidebar-item {% if '/export' in ni %}active{% endif %}"      title="Export CSV"> <span class="si-icon">⬇</span><span class="si-label">Export CSV</span></a>
+    <a href="/backup"      class="sidebar-item {% if '/backup' in ni %}active{% endif %}"      title="Backup">     <span class="si-icon">💾</span><span class="si-label">Backup</span></a>
+  </div>
+
+
+</nav>
+
+
+<!-- ── Flash messages ─────────────────────────────────────────────────── -->
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% if messages %}
+  <div class="flash-container">
+    {% for category, message in messages %}
+    <div class="flash flash-{{ category }}" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <span>{{ message }}</span>
+      <button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;cursor:pointer;font-size:14px;opacity:0.7;flex-shrink:0;padding:0 4px;line-height:1">✕</button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}
+
+<!-- ── Main content ───────────────────────────────────────────────────── -->
+<main class="app-main">
+  {% block content %}{% endblock %}
+</main>
+
+<!-- ── Quick Log FAB ──────────────────────────────────────────────────── -->
+<button class="ql-fab" title="Quick Log (Q) — drag to move">+</button>
+
+<!-- ── Toast container ────────────────────────────────────────────────── -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ── Scroll to top ──────────────────────────────────────────────────── -->
+<button id="scrollTopBtn"
+        style="display:none;position:fixed;bottom:78px;right:20px;z-index:890;
+               width:36px;height:36px;border-radius:50%;
+               background:var(--bg-card);border:1px solid var(--border);
+               color:var(--accent);cursor:pointer;font-size:18px;
+               align-items:center;justify-content:center;
+               box-shadow:0 2px 8px rgba(0,0,0,0.4);
+               font-family:var(--font)"
+        title="Back to top">↑</button>
+
+<!-- ── Quick Log Modal ────────────────────────────────────────────────── -->
+<div class="ql-overlay" id="qlOverlay" onclick="closeQuickLogIfOverlay(event)">
+  <div class="ql-modal">
+    <div class="ql-modal-header">
+      <span>⚡ QUICK LOG</span>
+      <button class="ql-close" onclick="closeQuickLog()">✕</button>
+    </div>
+    <div class="ql-tabs" id="qlTabs">
+      <button class="ql-tab active" onclick="switchQlSection('price',this)">💰 Price</button>
+      <button class="ql-tab" onclick="switchQlSection('weapon',this)">⚔ Weapon</button>
+      <button class="ql-tab" onclick="switchQlSection('armor',this)">🛡 Armor</button>
+      <button class="ql-tab" onclick="switchQlSection('plan',this)">📜 Plan</button>
+      <button class="ql-tab" onclick="switchQlSection('inventory',this)">🎒 Item</button>
+      <button class="ql-tab" onclick="switchQlSection('challenge',this)">🎯 Challenge</button>
+      <button class="ql-tab" onclick="switchQlSection('repeatable',this)">↺ Repeat</button>
+    </div>
+    <form id="qlForm" onsubmit="submitQuickLog(event)">
+      <input type="hidden" name="ql_section" id="qlSection" value="price">
+      <div class="ql-body">
+        <div class="ql-fields active" id="ql-price">
+          <input type="text"   name="ql_item_name" placeholder="Item name *" autocomplete="off">
+          <input type="number" name="ql_price"     placeholder="Price seen (caps) *" min="0">
+          <input type="text"   name="ql_source"    placeholder="Source" value="Vendor">
+          <select name="ql_category">
+            <option value="">Category (optional)</option>
+            <option>Weapon</option><option>Armor</option><option>Apparel</option><option>Mod</option>
+            <option>Power Armor</option><option>Plan</option><option>Aid</option>
+            <option>Ammo</option><option>Food/Drink</option><option>Misc</option>
+          </select>
+        </div>
+        <div class="ql-fields" id="ql-weapon">
+          <input type="text" name="ql_name" placeholder="Weapon name *" autocomplete="off">
+          <select name="ql_wtype">
+            <option value="">Type</option>
+            <option>Rifle</option><option>Pistol</option><option>Shotgun</option>
+            <option>SMG</option><option>Heavy</option><option>Melee 1H</option>
+            <option>Melee 2H</option><option>Bow</option><option>Flamer</option>
+          </select>
+          <input type="text" name="ql_star1" list="qlWStar1" placeholder="★ 1st star" autocomplete="off">
+          <input type="text" name="ql_star2" list="qlWStar2" placeholder="★★ 2nd star" autocomplete="off">
+          <input type="text" name="ql_star3" list="qlWStar3" placeholder="★★★ 3rd star" autocomplete="off">
+          <input type="text" name="ql_star4" list="qlWStar4" placeholder="★★★★ 4th star" autocomplete="off">
+          <select name="ql_status">
+            <option>Keep</option><option>Sell</option><option>Scrap</option><option>Stash</option>
+          </select>
+        </div>
+        <div class="ql-fields" id="ql-armor">
+          <input type="text" name="ql_name" placeholder="Armor name *" autocomplete="off">
+          <select name="ql_slot">
+            <option value="">Slot</option>
+            <option>Head</option><option>Chest</option><option>Left Arm</option>
+            <option>Right Arm</option><option>Left Leg</option><option>Right Leg</option>
+            <option>Underarmor</option><option>Backpack</option>
+          </select>
+          <input type="text" name="ql_star1" list="qlAStar1" placeholder="★ 1st star" autocomplete="off">
+          <input type="text" name="ql_star2" list="qlAStar2" placeholder="★★ 2nd star" autocomplete="off">
+          <input type="text" name="ql_star3" list="qlAStar3" placeholder="★★★ 3rd star" autocomplete="off">
+          <input type="text" name="ql_star4" list="qlAStar4" placeholder="★★★★ 4th star" autocomplete="off">
+          <select name="ql_status">
+            <option>Keep</option><option>Sell</option><option>Scrap</option><option>Stash</option>
+          </select>
+        </div>
+
+        {# Weapon datalists #}
+        <datalist id="qlWStar1">{% for x in ref.WEAPON_STAR1 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="qlWStar2">{% for x in ref.WEAPON_STAR2 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="qlWStar3">{% for x in ref.WEAPON_STAR3 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="qlWStar4">{% for x in ref.WEAPON_STAR4 %}<option value="{{ x }}">{% endfor %}</datalist>
+        {# Armor datalists #}
+        <datalist id="qlAStar1">{% for x in ref.ARMOR_STAR1 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="qlAStar2">{% for x in ref.ARMOR_STAR2 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="qlAStar3">{% for x in ref.ARMOR_STAR3 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="qlAStar4">{% for x in ref.ARMOR_STAR4 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <div class="ql-fields" id="ql-plan">
+          <input type="text" name="ql_name" placeholder="Plan / Recipe name *" autocomplete="off">
+          <select name="ql_category">
+            <option value="">Category</option>
+            <option>Weapon</option><option>Armor</option><option>Power Armor</option>
+            <option>CAMP</option><option>Food</option><option>Chem</option><option>Misc</option>
+          </select>
+          <label class="toggle-label" style="margin-top:0">
+            <input type="checkbox" name="ql_learned" value="1"> Already learned
+          </label>
+          <input type="number" name="ql_qty_unlearned" placeholder="Unlearned dupes" min="0" value="0">
+        </div>
+        <div class="ql-fields" id="ql-inventory">
+          <input type="text" name="ql_name" placeholder="Item name *" autocomplete="off">
+          <select name="ql_category">
+            <option value="">Category</option>
+            <option>Aid</option><option>Ammo</option><option>Junk</option>
+            <option>Food/Drink</option><option>Chem</option>
+            <option>Component</option><option>Apparel</option><option>Misc</option>
+          </select>
+          <input type="number" name="ql_qty" placeholder="Quantity" min="1" value="1">
+          <select name="ql_status">
+            <option>Keep</option><option>Sell</option><option>Scrap</option><option>Use</option>
+          </select>
+        </div>
+        <div class="ql-fields" id="ql-repeatable">
+          <div id="qlRepeatableList" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;padding-right:4px">
+            <span class="dim" style="font-size:11px">Loading...</span>
+          </div>
+        </div>
+        <div class="ql-fields" id="ql-challenge">
+          <select name="ql_challenge_id" id="qlChallengeSelect">
+            <option value="">Loading challenges...</option>
+          </select>
+          <div style="display:flex;gap:12px;margin-top:4px">
+            <label class="toggle-label" style="margin-top:0">
+              <input type="radio" name="ql_action" value="increment" checked> +1 Progress
+            </label>
+            <label class="toggle-label" style="margin-top:0">
+              <input type="radio" name="ql_action" value="complete"> Mark Complete
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="ql-footer">
+        <label class="ql-keep-open">
+          <input type="checkbox" id="qlKeepOpen"> Keep open
+        </label>
+        <span class="ql-status" id="qlStatus"></span>
+        <button class="btn btn-primary" type="submit" style="padding:5px 16px">Log It</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+document.addEventListener('keydown', e => {
+  if (e.key === 'q' && !e.ctrlKey && !e.metaKey &&
+      !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {
+    openQuickLog();
+  }
+  if (e.key === 'm' && !e.ctrlKey && !e.metaKey &&
+      !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {
+    toggleSidebar();
+  }
+  if (e.key === 'Escape') { closeQuickLog(); }
+});
+</script>
+</body>
+</html>

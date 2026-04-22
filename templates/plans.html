@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% block title %}Plans & Recipes{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📜 PLANS & RECIPES</h1>
+  <span class="count-badge">{{ items|length }} plans</span>
+  {% set dupes = items|selectattr('qty_unlearned','gt',0)|list|length %}
+  {% if dupes > 0 %}<span class="badge badge-sell">{{ dupes }} with dupes to sell</span>{% endif %}
+</div>
+
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Plan / Recipe{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/plans/{{ edit_item['id'] }}/update{% else %}/plans/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Plan / Recipe Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category">
+            {% for c in ['','Weapon','Armor','Power Armor','CAMP','Food','Chem','Explosive','Misc'] %}
+            <option value="{{ c }}" {{ 'selected' if edit_item and edit_item['category']==c else '' }}>{{ c or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Unlocks / Crafts</label>
+          <input type="text" name="unlocks" value="{{ edit_item['unlocks'] if edit_item else '' }}" placeholder="What does this plan unlock?">
+        </div>
+        <div class="form-group">
+          <label>Qty Unlearned (dupes)</label>
+          <input type="number" name="qty_unlearned" min="0" value="{{ edit_item['qty_unlearned'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Sell Price (caps)</label>
+          <input type="number" name="sell_price" min="0" value="{{ edit_item['sell_price'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            {% for s in ['Keep','Sell','Trade','Donate'] %}
+            <option value="{{ s }}" {{ 'selected' if edit_item and edit_item['status']==s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="justify-content:flex-end">
+          <label class="toggle-label">
+            <input type="checkbox" name="learned" value="1" {{ 'checked' if edit_item and edit_item['learned'] else '' }}>
+            Learned
+          </label>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Plan{% endif %}</button>
+        {% if edit_item %}<a href="/plans" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="table-controls">
+  <input type="text" placeholder="Filter plans..." oninput="filterTable(this.value,'planTable')">
+</div>
+
+<form method="POST" action="/plans/bulk" id="bulkForm">
+</form>
+<div class="bulk-bar" id="bulkBar" style="display:none">
+  <span class="dim" id="bulkCount">0 selected</span>
+  <select id="bulkAction">
+    <option value="">— Action —</option>
+    <option>Keep</option><option>Sell</option><option>Scrap</option>
+    <option value="delete">🗑 Delete selected</option>
+  </select>
+  <button class="btn btn-secondary" type="button" onclick="confirmBulk()">Apply</button>
+  <button class="btn btn-secondary" type="button" onclick="clearBulk()">Clear</button>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="planTable">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+        <th>Plan Name</th><th>Category</th><th>Unlocks</th>
+        <th>Learned</th><th>Dupes</th><th>Sell Price</th><th>Status</th><th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="s-{{ item['status']|lower }} {{ 'warn-row' if item['qty_unlearned'] > 0 else '' }}">
+        <td><input type="checkbox" class="row-cb" data-id="{{ item['id'] }}" onchange="updateBulkBar()"></td>
+        <td class="hi">{{ item['name'] }}</td>
+        <td class="dim">{{ item['category'] }}</td>
+        <td class="dim" style="max-width:160px;white-space:normal">{{ item['unlocks'] }}</td>
+        <td>
+          {% if item['learned'] %}
+            <span class="badge badge-keep">Yes</span>
+          {% else %}
+            <span class="badge badge-no">No</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if item['qty_unlearned'] > 0 %}
+            <span class="gold">{{ item['qty_unlearned'] }} dupe{{ 's' if item['qty_unlearned'] > 1 }}</span>
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ "{:,}".format(item['sell_price']) if item['sell_price'] else '—' }}</td>
+        <td><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
+        <td class="dim">{{ item['notes'] }}</td>
+        <td class="actions">
+          <a href="/plans?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/plans/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" class="no-data">No plans yet. Add one above!</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

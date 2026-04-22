@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% block title %}Daily / Weekly Checklist{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>✅ DAILY / WEEKLY CHECKLIST</h1>
+  <span class="count-badge dim" style="font-size:11px">{{ today }}</span>
+</div>
+
+<!-- Two-column task layout -->
+<div class="two-col" style="gap:20px;align-items:start">
+
+  <!-- ── DAILY TASKS ──────────────────────────────────────────── -->
+  <div>
+    <div class="section-title" style="margin-bottom:12px">Daily Tasks</div>
+
+    {% set daily_tasks = tasks | selectattr('freq', 'equalto', 'daily') | list %}
+    {% set daily_done_count = namespace(v=0) %}
+    {% for task in daily_tasks %}
+      {% if task['id'] in done_daily %}{% set daily_done_count.v = daily_done_count.v + 1 %}{% endif %}
+    {% endfor %}
+    {% set daily_total = daily_tasks | length %}
+    {% set daily_pct = ((daily_done_count.v / daily_total * 100) | int) if daily_total > 0 else 0 %}
+
+    <div id="daily-task-list">
+      {% for task in daily_tasks %}
+      {% set is_done = task['id'] in done_daily %}
+      <div class="task-row {% if is_done %}task-done{% endif %}"
+           id="task-row-{{ task['id'] }}"
+           style="display:flex;align-items:center;gap:10px;padding:10px 12px;
+                  margin-bottom:6px;border-radius:4px;
+                  background:var(--bg-card);
+                  border:1px solid var(--border);
+                  border-left: 4px solid {% if is_done %}var(--accent){% else %}var(--border){% endif %};
+                  transition:border-color 0.2s,opacity 0.2s">
+        <label style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;min-width:0">
+          <input type="checkbox"
+                 class="task-checkbox"
+                 data-id="{{ task['id'] }}"
+                 data-freq="daily"
+                 {% if is_done %}checked{% endif %}
+                 style="width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;cursor:pointer">
+          <span class="task-label" id="task-label-{{ task['id'] }}"
+                style="font-size:13px;{% if is_done %}text-decoration:line-through;color:var(--text-dim);{% endif %}">
+            {{ task['name'] }}
+          </span>
+        </label>
+        <form method="POST" action="/daily/task/{{ task['id'] }}/delete" class="inline-form"
+              onsubmit="return confirm('Remove this task?')">
+          <button class="btn-sm btn-delete" title="Remove task" type="submit">🗑</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="no-data" style="padding:12px">No daily tasks yet. Add one below!</div>
+      {% endfor %}
+    </div>
+
+    <!-- Daily count + progress -->
+    <div style="margin-top:10px;font-size:12px;color:var(--text-dim)">
+      <span id="daily-count">
+        <span class="accent" style="font-weight:bold">{{ daily_done_count.v }}</span>
+        <span class="dim"> / {{ daily_total }} done</span>
+      </span>
+    </div>
+    <div class="progress-bar-wrap" style="height:8px;margin-top:6px">
+      <div class="progress-bar {% if daily_pct >= 100 %}complete{% endif %}"
+           id="daily-progress-bar"
+           style="width:{{ daily_pct }}%;background:{% if daily_pct >= 100 %}var(--gold){% else %}var(--accent){% endif %}">
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--text-dim);margin-top:3px">
+      <span id="daily-pct">{{ daily_pct }}</span>% complete
+    </div>
+  </div>
+
+  <!-- ── WEEKLY TASKS ─────────────────────────────────────────── -->
+  <div>
+    <div class="section-title" style="margin-bottom:12px">Weekly Tasks</div>
+
+    {% set weekly_tasks = tasks | selectattr('freq', 'equalto', 'weekly') | list %}
+    {% set weekly_done_count = namespace(v=0) %}
+    {% for task in weekly_tasks %}
+      {% if task['id'] in done_weekly %}{% set weekly_done_count.v = weekly_done_count.v + 1 %}{% endif %}
+    {% endfor %}
+    {% set weekly_total = weekly_tasks | length %}
+    {% set weekly_pct = ((weekly_done_count.v / weekly_total * 100) | int) if weekly_total > 0 else 0 %}
+
+    <div id="weekly-task-list">
+      {% for task in weekly_tasks %}
+      {% set is_done = task['id'] in done_weekly %}
+      <div class="task-row {% if is_done %}task-done{% endif %}"
+           id="task-row-{{ task['id'] }}"
+           style="display:flex;align-items:center;gap:10px;padding:10px 12px;
+                  margin-bottom:6px;border-radius:4px;
+                  background:var(--bg-card);
+                  border:1px solid var(--border);
+                  border-left: 4px solid {% if is_done %}var(--accent){% else %}var(--border){% endif %};
+                  transition:border-color 0.2s,opacity 0.2s">
+        <label style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;min-width:0">
+          <input type="checkbox"
+                 class="task-checkbox"
+                 data-id="{{ task['id'] }}"
+                 data-freq="weekly"
+                 {% if is_done %}checked{% endif %}
+                 style="width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;cursor:pointer">
+          <span class="task-label" id="task-label-{{ task['id'] }}"
+                style="font-size:13px;{% if is_done %}text-decoration:line-through;color:var(--text-dim);{% endif %}">
+            {{ task['name'] }}
+          </span>
+        </label>
+        <form method="POST" action="/daily/task/{{ task['id'] }}/delete" class="inline-form"
+              onsubmit="return confirm('Remove this task?')">
+          <button class="btn-sm btn-delete" title="Remove task" type="submit">🗑</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="no-data" style="padding:12px">No weekly tasks yet. Add one below!</div>
+      {% endfor %}
+    </div>
+
+    <!-- Weekly count + progress -->
+    <div style="margin-top:10px;font-size:12px;color:var(--text-dim)">
+      <span id="weekly-count">
+        <span class="accent" style="font-weight:bold">{{ weekly_done_count.v }}</span>
+        <span class="dim"> / {{ weekly_total }} done</span>
+      </span>
+    </div>
+    <div class="progress-bar-wrap" style="height:8px;margin-top:6px">
+      <div class="progress-bar {% if weekly_pct >= 100 %}complete{% endif %}"
+           id="weekly-progress-bar"
+           style="width:{{ weekly_pct }}%;background:{% if weekly_pct >= 100 %}var(--gold){% else %}var(--accent){% endif %}">
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--text-dim);margin-top:3px">
+      <span id="weekly-pct">{{ weekly_pct }}</span>% complete
+    </div>
+  </div>
+
+</div><!-- end two-col -->
+
+<!-- Add Custom Task panel -->
+<section class="add-panel" id="addTaskPanel" style="margin-top:20px">
+  <div class="panel-toggle" onclick="togglePanel('addTaskPanel')">
+    <span>+ Add Custom Task</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/daily/task/add">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Task Name *</label>
+          <input type="text" name="name" required placeholder="e.g. Complete Daily Quest, Collect Bread from CAMP">
+        </div>
+        <div class="form-group">
+          <label>Frequency</label>
+          <select name="freq">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Add Task</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<style>
+.task-done .task-label {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+.task-row.task-done {
+  border-left-color: var(--accent) !important;
+  opacity: 0.75;
+}
+</style>
+
+<script>
+// Track counts in JS so we can update without reload
+const _counts = {
+  daily:  { done: {{ daily_done_count.v }},  total: {{ daily_total }} },
+  weekly: { done: {{ weekly_done_count.v }}, total: {{ weekly_total }} }
+};
+
+function updateProgress(freq) {
+  const c = _counts[freq];
+  const pct = c.total > 0 ? Math.round(c.done / c.total * 100) : 0;
+  const pctClamped = Math.min(pct, 100);
+
+  const countEl = document.getElementById(freq + '-count');
+  if (countEl) {
+    countEl.innerHTML = `<span class="accent" style="font-weight:bold">${c.done}</span> <span class="dim"> / ${c.total} done</span>`;
+  }
+
+  const bar = document.getElementById(freq + '-progress-bar');
+  if (bar) {
+    bar.style.width = pctClamped + '%';
+    bar.style.background = pctClamped >= 100 ? 'var(--gold)' : 'var(--accent)';
+    if (pctClamped >= 100) {
+      bar.classList.add('complete');
+    } else {
+      bar.classList.remove('complete');
+    }
+  }
+
+  const pctEl = document.getElementById(freq + '-pct');
+  if (pctEl) pctEl.textContent = pctClamped;
+}
+
+document.querySelectorAll('.task-checkbox').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    const id = this.dataset.id;
+    const freq = this.dataset.freq;
+    const checked = this.checked;
+    const url = checked
+      ? `/daily/complete/${id}`
+      : `/daily/uncomplete/${id}`;
+
+    fetch(url, { method: 'POST', headers: { 'Accept': 'application/json' } })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          // Revert checkbox on error
+          cb.checked = !checked;
+          return;
+        }
+
+        const row = document.getElementById('task-row-' + id);
+        const label = document.getElementById('task-label-' + id);
+
+        if (checked) {
+          if (row) {
+            row.classList.add('task-done');
+            row.style.borderLeftColor = 'var(--accent)';
+            row.style.opacity = '0.75';
+          }
+          if (label) {
+            label.style.textDecoration = 'line-through';
+            label.style.color = 'var(--text-dim)';
+          }
+          _counts[freq].done = Math.min(_counts[freq].done + 1, _counts[freq].total);
+        } else {
+          if (row) {
+            row.classList.remove('task-done');
+            row.style.borderLeftColor = 'var(--border)';
+            row.style.opacity = '';
+          }
+          if (label) {
+            label.style.textDecoration = '';
+            label.style.color = '';
+          }
+          _counts[freq].done = Math.max(_counts[freq].done - 1, 0);
+        }
+
+        updateProgress(freq);
+      })
+      .catch(function() {
+        // Revert on network failure
+        cb.checked = !checked;
+      });
+  });
+});
+</script>
+
+{% endblock %}

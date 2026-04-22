@@ -1,0 +1,571 @@
+{% extends 'base.html' %}
+{% block title %}Shorthand Decoder{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🔍 SHORTHAND DECODER</h1>
+  <span class="count-badge">paste & decode</span>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+  <!-- ── Input ─────────────────────────────────────────────────────── -->
+  <section class="add-panel open">
+    <div class="panel-toggle"><span>Paste Community Shorthand</span></div>
+    <div class="panel-body">
+      <div class="form-group">
+        <label>Shorthand <span style="color:var(--text-dim);font-size:11px">e.g. B2525 Rail &nbsp;·&nbsp; AA 50c 15r HM &nbsp;·&nbsp; Q2590 Fixer</span></label>
+        <input type="text" id="decodeInput" placeholder="Type or paste shorthand here..."
+               autocomplete="off" style="font-size:15px;letter-spacing:1px"
+               oninput="runDecode(this.value)">
+      </div>
+      <p style="font-size:11px;color:var(--text-dim);margin:4px 0 0">
+        Handles compact (B2525) and spaced (B 25 25) formats. Weapon name optional.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Result ────────────────────────────────────────────────────── -->
+  <section class="add-panel open" id="resultPanel">
+    <div class="panel-toggle"><span>Decoded Result</span></div>
+    <div class="panel-body" id="resultBody">
+      <p style="color:var(--text-dim);font-size:12px">Result will appear here as you type.</p>
+    </div>
+  </section>
+
+</div>
+
+<!-- ── Generator ─────────────────────────────────────────────────── -->
+<section class="add-panel open" style="margin-bottom:16px">
+  <div class="panel-toggle"><span>⚙ Build Your Notation</span></div>
+  <div class="panel-body">
+    <p style="font-size:11px;color:var(--text-dim);margin:0 0 12px">Select your weapon's attributes and get your readable label instantly.</p>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Weapon Name</label>
+        <input type="text" id="genWeapon" list="genWeaponList" placeholder="e.g. Railway Rifle" autocomplete="off" oninput="runGen()">
+        <datalist id="genWeaponList">
+          {% for w in weapon_aliases %}<option value="{{ w }}">{% endfor %}
+        </datalist>
+      </div>
+      <div class="form-group">
+        <label>★ Star 1 — Prefix</label>
+        <select id="genS1" onchange="runGen()">
+          <option value="">— none —</option>
+          {% for x in weapon_star1 %}<option value="{{ x }}">{{ x }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>★★ Star 2 — Effect</label>
+        <select id="genS2" onchange="runGen()">
+          <option value="">— none —</option>
+          {% for x in weapon_star2 %}<option value="{{ x }}">{{ x }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>★★★ Star 3 — Perk</label>
+        <select id="genS3" onchange="runGen()">
+          <option value="">— none —</option>
+          {% for x in weapon_star3 %}<option value="{{ x }}">{{ x }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>★★★★ Star 4</label>
+        <select id="genS4" onchange="runGen()">
+          <option value="">— none —</option>
+          {% for x in weapon_star4 %}<option value="{{ x }}">{{ x }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div id="genResult" style="display:none;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:4px">
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">YOUR NOTATION</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <code id="genNotation" style="font-size:15px;letter-spacing:1px;flex:1"></code>
+        <button class="btn btn-secondary" style="padding:5px 10px;font-size:11px" onclick="copyGen()">Copy</button>
+      </div>
+      <div id="genBreakdown" style="font-size:11px;color:var(--text-dim);line-height:1.8"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Reference Table ───────────────────────────────────────────── -->
+<section class="add-panel" id="refPanel">
+  <div class="panel-toggle" onclick="togglePanel('refPanel')">
+    <span>📖 Shorthand Reference Table</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+
+      <div>
+        <h3 style="color:var(--accent);font-size:12px;margin-bottom:8px">★ STAR 1 — Prefix / Damage</h3>
+        <table class="data-table" style="font-size:11px">
+          <thead><tr><th>Code</th><th>Full Name</th></tr></thead>
+          <tbody>
+            {% for codes, name in ref_star1 %}
+            <tr><td style="color:var(--accent);letter-spacing:1px">{{ codes }}</td><td>{{ name }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h3 style="color:var(--accent);font-size:12px;margin-bottom:8px">★★ STAR 2 — Effect</h3>
+        <table class="data-table" style="font-size:11px">
+          <thead><tr><th>Code</th><th>Full Name</th></tr></thead>
+          <tbody>
+            {% for codes, name in ref_star2 %}
+            <tr><td style="color:var(--accent);letter-spacing:1px">{{ codes }}</td><td>{{ name }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <h3 style="color:var(--accent);font-size:12px;margin:12px 0 8px">★★★ STAR 3 — Perk / Utility</h3>
+        <table class="data-table" style="font-size:11px">
+          <thead><tr><th>Code</th><th>Full Name</th></tr></thead>
+          <tbody>
+            {% for codes, name in ref_star3 %}
+            <tr><td style="color:var(--accent);letter-spacing:1px">{{ codes }}</td><td>{{ name }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h3 style="color:var(--accent);font-size:12px;margin-bottom:8px">★★★★ STAR 4</h3>
+        <table class="data-table" style="font-size:11px">
+          <thead><tr><th>Code</th><th>Full Name</th></tr></thead>
+          <tbody>
+            {% for codes, name in ref_star4 %}
+            <tr><td style="color:var(--accent);letter-spacing:1px">{{ codes }}</td><td>{{ name }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <h3 style="color:var(--accent);font-size:12px;margin:12px 0 8px">📦 Weapon Aliases</h3>
+        <table class="data-table" style="font-size:11px">
+          <thead><tr><th>Code</th><th>Weapon</th></tr></thead>
+          <tbody>
+            {% for code, name in ref_weapons %}
+            <tr><td style="color:var(--accent);letter-spacing:1px">{{ code }}</td><td>{{ name }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<script>
+// ── Shorthand maps (client-side for instant decode) ───────────────────────────
+
+const STAR1 = {
+  'B':'Bloodied','BL':'Bloodied','BLD':'Bloodied',
+  'AA':'Anti-Armor','AAR':'Anti-Armor',
+  'Q':'Quad','QD':'Quad',
+  'TS':'Two Shot','2S':'Two Shot',
+  'V':"Vampire's",'VMP':"Vampire's",'VAMP':"Vampire's",
+  'J':"Junkie's",'JNK':"Junkie's",'JUNK':"Junkie's",
+  'F':'Furious','FUR':'Furious',
+  'E':"Executioner's",'EXE':"Executioner's",'EXEC':"Executioner's",
+  'ARI':"Aristocrat's",'ARIS':"Aristocrat's",'ARS':"Aristocrat's",
+  'INS':'Instigating','INST':'Instigating',
+  'BER':"Berserker's",'BERS':"Berserker's",
+  'AS':"Assassin's",'ASS':"Assassin's",'ASN':"Assassin's",
+  'SUP':"Suppressor's",
+  'EXT':"Exterminator's",
+  'MS':"Mutant Slayer's",'MTS':"Mutant Slayer's",'MUTS':"Mutant Slayer's",
+  'MUT':"Mutant's",
+  'NOC':'Nocturnal','NOCT':'Nocturnal',
+  'HUNT':"Hunter's",'HNT':"Hunter's",
+  'MED':"Medic's",
+  'JUG':"Juggernaut's",'JUGG':"Juggernaut's",
+  'TRO':"Troubleshooter's",'TRB':"Troubleshooter's",
+  'STK':"Stalker's",'STALK':"Stalker's",
+  'SNP':"Sniper's",'SNIP':"Sniper's",
+  'ADR':'Adrenal','ADREN':'Adrenal',
+  'GOR':"Gourmand's",'GOUR':"Gourmand's",
+  'FRL':"Feral's",'FER':"Feral's",
+  'Z':"Zealot's",'ZLT':"Zealot's",'ZEAL':"Zealot's",
+  'GS':"Ghoul Slayer's",'GSS':"Ghoul Slayer's",'GHS':"Ghoul Slayer's",
+};
+
+const STAR1_DESC = {
+  'Bloodied':'Damage scales up as your health drops — max +95% at 1 HP',
+  'Anti-Armor':'Ignores 50% of the target\'s armor',
+  'Quad':'+300% magazine capacity',
+  'Two Shot':'Fires an extra projectile per shot',
+  "Vampire's":'Heals you on every hit',
+  "Junkie's":'+Damage for each active addiction',
+  'Furious':'+Damage per consecutive hit on the same target',
+  "Executioner's":'+50% damage when target is below 40% health',
+  "Aristocrat's":'+Damage when at max caps (30,000)',
+  'Instigating':'Double damage if target is at full health',
+  "Berserker's":'+Damage the less armor you wear',
+  "Assassin's":'+10% damage vs players',
+  "Suppressor's":'Reduces target damage output by 20% for 3 seconds',
+  "Exterminator's":'+50% damage vs bugs, bots, and mirelurks',
+  "Mutant Slayer's":'+50% damage vs super mutants',
+  "Mutant's":'+Damage for each active mutation you have',
+  'Nocturnal':'+Damage at night, -Damage during the day',
+  "Hunter's":'+50% damage vs animals',
+  "Medic's":'Stimpaks restore more health when used',
+  "Juggernaut's":'+Damage the more items you have in your inventory',
+  "Troubleshooter's":'+50% damage vs robots',
+  "Stalker's":'+50% VATS accuracy when not in combat',
+  "Sniper's":'+10% critical damage, better stability',
+  'Adrenal':'Increases fire rate when health drops below 50%',
+  "Gourmand's":'+Damage when well-fed and hydrated',
+  "Feral's":'+Damage vs feral ghouls',
+  "Zealot's":'+50% damage vs scorched',
+  "Ghoul Slayer's":'+50% damage vs ghouls',
+};
+
+const STAR2 = {
+  '25':'Rapid','FFR':'Rapid','RAPID':'Rapid',
+  '50C':'Vital','CRIT':'Vital','VIT':'Vital',
+  'E':'Explosive','EXP':'Explosive','EXPL':'Explosive',
+  'LS':'Last Shot','LAST':'Last Shot',
+  'VE':'V.A.T.S. Enhanced',
+  'BASH':"Basher's",'BSH':"Basher's",
+  'CRIP':'Crippling','CRP':'Crippling',
+  'HH':"Heavy Hitter's",'HHT':"Heavy Hitter's",
+  'HIT':"Hitman's",'HTM':"Hitman's",'HITMAN':"Hitman's",
+  'INERT':'Inertial','IRT':'Inertial',
+  'STEADY':'Steady','STD':'Steady',
+};
+
+const STAR2_DESC = {
+  'Rapid':'25% faster fire rate',
+  'Vital':'50% more critical hit damage',
+  'Explosive':'Bullets explode on impact for area damage',
+  'Last Shot':'Last round in the magazine deals 25% more damage',
+  'V.A.T.S. Enhanced':'+33% hit chance in VATS',
+  "Basher's":'+40% bash damage',
+  'Crippling':'+50% limb damage',
+  "Heavy Hitter's":'+40% damage but -20% attack speed (melee)',
+  "Hitman's":'+10% damage while aiming down sights',
+  'Inertial':'+30% VATS AP refill on kill',
+  'Steady':'+25% aim stability while targeting',
+};
+
+const STAR3 = {
+  '25':'V.A.T.S. Optimized','VAP':'V.A.T.S. Optimized','AP':'V.A.T.S. Optimized','VATS':'V.A.T.S. Optimized',
+  '90':'Lightweight','LWT':'Lightweight','LIGHT':'Lightweight','WT':'Lightweight',
+  '15R':'Swift','RLD':'Swift','RELOAD':'Swift','SWIFT':'Swift',
+  'DUR':'Durability',
+  'LUCKY':'Lucky','LCK':'Lucky',
+  'NIMBLE':'Nimble','NMB':'Nimble',
+  'BARB':'Barbarian','BRB':'Barbarian',
+  'BELTED':'Belted','BLT':'Belted',
+  'ARK':"Arms Keeper's",'AK':"Arms Keeper's",'ARMS':"Arms Keeper's",
+};
+
+const STAR3_DESC = {
+  'V.A.T.S. Optimized':'-25% VATS AP cost per shot',
+  'Lightweight':'-90% weapon weight',
+  'Swift':'+15% faster reload speed',
+  'Durability':'Weapon breaks 50% slower',
+  'Lucky':'+50% chance of legendary items from enemies',
+  'Nimble':'+75% movement speed while in VATS',
+  'Barbarian':'+40 Damage Resistance when not wearing armor',
+  'Belted':'Chance to gain bonus ammo from enemies',
+  "Arms Keeper's":'-20% ammo weight',
+};
+
+const OUR_CODE = {
+  // Star 1
+  'Bloodied':'BLD','Anti-Armor':'AAR','Quad':'QD','Two Shot':'TS',
+  "Vampire's":'VMP',"Junkie's":'JNK','Furious':'FUR',
+  "Executioner's":'EXE',"Aristocrat's":'ARS','Instigating':'INS',
+  "Berserker's":'BER',"Assassin's":'ASN',"Suppressor's":'SUP',
+  "Exterminator's":'EXT',"Mutant Slayer's":'MTS',"Mutant's":'MUT',
+  'Nocturnal':'NOC',"Hunter's":'HNT',"Medic's":'MED',
+  "Juggernaut's":'JUG',"Troubleshooter's":'TRB',"Stalker's":'STK',
+  "Sniper's":'SNP','Adrenal':'ADR',"Gourmand's":'GOR',
+  "Feral's":'FRL',"Zealot's":'ZLT',"Ghoul Slayer's":'GHS',
+  // Star 2
+  'Rapid':'FFR','Vital':'CRT','Explosive':'EXP','Last Shot':'LST',
+  'V.A.T.S. Enhanced':'VEH',"Basher's":'BSH','Crippling':'CRP',
+  "Heavy Hitter's":'HHT',"Hitman's":'HTM','Inertial':'IRT','Steady':'STD',
+  // Star 3
+  'V.A.T.S. Optimized':'VAP','Lightweight':'LWT','Swift':'RLD',
+  'Durability':'DUR','Lucky':'LCK','Nimble':'NMB',
+  'Barbarian':'BRB','Belted':'BLT',"Arms Keeper's":'ARK',
+};
+
+const WEAPONS = {
+  'RAIL':'Railway Rifle','RAILWAY':'Railway Rifle',
+  'HM':'Handmade Rifle','HANDMADE':'Handmade Rifle',
+  'FIXER':'The Fixer','FIX':'The Fixer',
+  'CR':'Combat Rifle','LEVER':'Lever Action Rifle','LAR':'Lever Action Rifle',
+  'HR':'Hunting Rifle','HUNTING':'Hunting Rifle',
+  'AR':'Assault Rifle','ASSLT':'Assault Rifle',
+  'GAUSS':'Gauss Rifle','GR':'Gauss Rifle','TESLA':'Tesla Rifle',
+  '10MM':'10mm Pistol','44':'.44 Pistol','REVOLVER':'.44 Pistol',
+  'PIPE':'Pipe Pistol','GPP':'Gauss Plasma Pistol',
+  'ENCL':'Enclave Plasma Gun','EPG':'Enclave Plasma Gun',
+  'MINI':'Minigun','MINIGUN':'Minigun','LMG':'Light Machine Gun',
+  '50CAL':'.50 Cal Machine Gun',
+  'GAT':'Gatling Gun','GATLING':'Gatling Gun',
+  'GP':'Gatling Plasma','GL':'Gatling Laser','GLP':'Gatling Laser',
+  'FAT':'Fat Man','FATMAN':'Fat Man',
+  'ML':'Missile Launcher','MISSILE':'Missile Launcher',
+  'PC':'Plasma Caster','GMINI':'Gauss Minigun',
+  'BOW':'Compound Bow','CBOW':'Compound Bow',
+  'XBOW':'Crossbow','CROSSBOW':'Crossbow',
+  'SHOTGUN':'Combat Shotgun','DB':'Double-Barrel Shotgun','PUMP':'Pump Shotgun',
+  'GSHOT':'Gauss Shotgun',
+  'PLASMA':'Plasma Rifle','FLAMER':'Flamer','CRYO':'Cryolator',
+  'SS':'Super Sledge','SLEDGE':'Super Sledge','PF':'Power Fist',
+  'BEAR':'Bear Arm','MMG':'Mole Miner Gauntlet','DCG':'Deathclaw Gauntlet',
+  'RIPPER':'Ripper','CHAINSAW':'Chainsaw',
+};
+
+// ── Parser ────────────────────────────────────────────────────────────────────
+
+function tokenize(input) {
+  // Split by spaces first, then split each part into alpha/numeric chunks
+  const raw = input.trim().toUpperCase().split(/\s+/);
+  const tokens = [];
+  raw.forEach(part => {
+    const chunks = part.match(/[A-Z]+|[0-9]+[A-Z]?/g);
+    if (chunks) chunks.forEach(c => tokens.push(c));
+    else if (part) tokens.push(part);
+  });
+  return tokens;
+}
+
+function decode(input) {
+  if (!input.trim()) return null;
+  const tokens = tokenize(input);
+  let s1 = null, s2 = null, s3 = null, weaponTokens = [];
+  let i = 0;
+
+  // Star 1
+  if (i < tokens.length && STAR1[tokens[i]]) {
+    s1 = STAR1[tokens[i++]];
+  }
+
+  // Star 2 (try), if not found try Star 3 directly
+  if (i < tokens.length) {
+    if (STAR2[tokens[i]]) {
+      s2 = STAR2[tokens[i++]];
+    } else if (STAR3[tokens[i]]) {
+      s3 = STAR3[tokens[i++]];
+    }
+  }
+
+  // Star 3
+  if (i < tokens.length && !s3 && STAR3[tokens[i]]) {
+    s3 = STAR3[tokens[i++]];
+  }
+
+  // Remaining = weapon
+  const weapStr = tokens.slice(i).join(' ');
+  const weapon = WEAPONS[weapStr] || (weapStr ? toTitleCase(weapStr) : null);
+
+  // Build our notation
+  const parts = [];
+  if (s1) parts.push(OUR_CODE[s1] || s1.slice(0,3).toUpperCase());
+  if (s2) parts.push(OUR_CODE[s2] || s2.slice(0,3).toUpperCase());
+  if (s3) parts.push(OUR_CODE[s3] || s3.slice(0,3).toUpperCase());
+  if (weapon) parts.push(weapon);
+  const ourNotation = parts.join(' | ');
+
+  return { s1, s2, s3, weapon, ourNotation };
+}
+
+function toTitleCase(str) {
+  return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function starRow(stars, name, desc) {
+  if (!name) return '';
+  const code = OUR_CODE[name] || '';
+  return `
+    <div style="display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--accent);font-size:13px;min-width:36px;letter-spacing:1px">${stars}</span>
+      <div>
+        <span style="font-size:14px;font-weight:bold">${name}</span>
+        ${code ? `<span style="margin-left:8px;font-size:10px;color:var(--text-dim);background:var(--surface);padding:1px 5px;border-radius:3px">${code}</span>` : ''}
+        ${desc ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${desc}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function runDecode(val) {
+  const body = document.getElementById('resultBody');
+  if (!val.trim()) {
+    body.innerHTML = '<p style="color:var(--text-dim);font-size:12px">Result will appear here as you type.</p>';
+    return;
+  }
+  const r = decode(val);
+  if (!r || (!r.s1 && !r.s2 && !r.s3 && !r.weapon)) {
+    body.innerHTML = '<p style="color:var(--text-dim);font-size:12px">Nothing recognised yet — keep typing.</p>';
+    return;
+  }
+
+  const hasAny = r.s1 || r.s2 || r.s3 || r.weapon;
+  if (!hasAny) { body.innerHTML = ''; return; }
+
+  const rows = [
+    starRow('★', r.s1, STAR1_DESC[r.s1]),
+    starRow('★★', r.s2, STAR2_DESC[r.s2]),
+    starRow('★★★', r.s3, STAR3_DESC[r.s3]),
+  ].join('');
+
+  const weaponRow = r.weapon
+    ? `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+         <span style="color:var(--accent);font-size:13px;min-width:36px;margin-right:10px">📦</span>
+         <span style="font-size:14px;font-weight:bold">${r.weapon}</span>
+       </div>` : '';
+
+  const notationBox = r.ourNotation
+    ? `<div style="margin-top:14px">
+         <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">YOUR NOTATION</div>
+         <div style="display:flex;align-items:center;gap:8px">
+           <code id="ourNotation" style="font-size:14px;letter-spacing:1px;background:var(--surface);padding:6px 10px;border-radius:4px;border:1px solid var(--border);flex:1">${r.ourNotation}</code>
+           <button class="btn btn-secondary" style="padding:5px 10px;font-size:11px" onclick="copyNotation()">Copy</button>
+         </div>
+       </div>` : '';
+
+  // Log This Weapon button
+  const logBtn = r.s1 || r.weapon
+    ? `<div style="margin-top:12px">
+        <button class="btn btn-secondary" style="font-size:11px;padding:5px 10px"
+                onclick="showLogForm(${JSON.stringify(r.weapon||'')},${JSON.stringify(r.s1||'')},${JSON.stringify(r.s2||'')},${JSON.stringify(r.s3||'')},'')">
+          ➕ Log This Weapon
+        </button>
+       </div>
+       <div id="logForm" style="display:none;margin-top:10px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:4px"></div>`
+    : '';
+
+  body.innerHTML = `<div>${rows}${weaponRow}</div>${notationBox}${logBtn}`;
+}
+
+function showLogForm(name, s1, s2, s3, s4) {
+  const div = document.getElementById('logForm');
+  if (!div) return;
+  div.style.display = 'block';
+  div.innerHTML = `
+    <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;letter-spacing:1px">➕ ADD TO WEAPONS</div>
+    <form method="POST" action="/weapons/add">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <label style="font-size:10px;color:var(--text-dim)">Name</label>
+          <input type="text" name="name" value="${name}" required style="width:100%;padding:4px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text-dim)">Type</label>
+          <select name="wtype" style="width:100%;padding:4px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px">
+            <option value="">— select —</option>
+            ${['Rifle','Pistol','Shotgun','SMG','Heavy','Melee 1H','Melee 2H','Bow','Crossbow','Thrown','Flamer'].map(t=>`<option>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text-dim)">★ Star 1</label>
+          <input type="text" name="star1" value="${s1}" style="width:100%;padding:4px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text-dim)">★★ Star 2</label>
+          <input type="text" name="star2" value="${s2}" style="width:100%;padding:4px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text-dim)">★★★ Star 3</label>
+          <input type="text" name="star3" value="${s3}" style="width:100%;padding:4px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text-dim)">★★★★ Star 4</label>
+          <input type="text" name="star4" value="${s4||''}" style="width:100%;padding:4px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px">
+        </div>
+      </div>
+      <input type="hidden" name="damage_type" value="Ballistic">
+      <input type="hidden" name="condition_pct" value="100">
+      <input type="hidden" name="weight" value="0">
+      <input type="hidden" name="value" value="0">
+      <input type="hidden" name="mods" value="">
+      <input type="hidden" name="notes" value="">
+      <input type="hidden" name="status" value="Keep">
+      <button class="btn btn-primary" type="submit" style="font-size:11px;padding:5px 12px">Add Weapon</button>
+      <button type="button" class="btn btn-secondary" style="font-size:11px;padding:5px 10px" onclick="document.getElementById('logForm').style.display='none'">Cancel</button>
+    </form>
+  `;
+}
+
+// ── Generator ─────────────────────────────────────────────────────────────────
+
+const STAR4_DESC = {
+  "Battle-Loader's":'Reloading refills AP',
+  "Bruiser's":'+Damage scaling with STR for melee',
+  "Bully's":'+Damage vs humans',
+  'Charged':'Shots have a chance to shock nearby enemies',
+  "Choo-Choo's":'Shots ricochet to nearby enemies',
+  "Combo-Breaker's":'Chance to stagger on consecutive hits',
+  "Conductor's":'Kills build a damage aura',
+  "Electrician's":'+Energy damage on hits',
+  "Encircler's":'+Damage when surrounded by enemies',
+  "Fencer's":'Melee attacks have a chance to disarm',
+  "Fracturer's":'+Damage vs armored targets',
+  "Icemen's":'Slows targets on hit',
+  "Pin-Pointer's":'+Limb damage in VATS',
+  'Polished':'+Charisma when weapon is drawn',
+  "Pounder's":'Melee attacks deal bonus concussive damage',
+  "Pyromaniac's":'Shots have a chance to ignite targets',
+  "Ranger's":'+Damage when moving',
+  "Stabilizer's":'+Accuracy and less recoil while aiming',
+  "Thrill-Seeker's":'+Damage when on a kill streak',
+  "Viper's":'Attacks cause bleeding damage over time',
+};
+
+const OUR_CODE_S4 = {
+  "Battle-Loader's":'BTL',"Bruiser's":'BRS',"Bully's":'BLY',
+  'Charged':'CHG',"Choo-Choo's":'CCH',"Combo-Breaker's":'CMB',
+  "Conductor's":'CND',"Electrician's":'ELC',"Encircler's":'ENC',
+  "Fencer's":'FNC',"Fracturer's":'FRC',"Icemen's":'ICE',
+  "Pin-Pointer's":'PIN','Polished':'POL',"Pounder's":'PND',
+  "Pyromaniac's":'PYR',"Ranger's":'RNG',"Stabilizer's":'STB',
+  "Thrill-Seeker's":'THL',"Viper's":'VPR',
+};
+
+function runGen() {
+  const weapon = document.getElementById('genWeapon').value.trim();
+  const s1 = document.getElementById('genS1').value;
+  const s2 = document.getElementById('genS2').value;
+  const s3 = document.getElementById('genS3').value;
+  const s4 = document.getElementById('genS4').value;
+
+  if (!s1 && !s2 && !s3 && !s4 && !weapon) {
+    document.getElementById('genResult').style.display = 'none';
+    return;
+  }
+
+  const parts = [];
+  const breakdown = [];
+
+  if (s1) { const c = OUR_CODE[s1]||s1.slice(0,3).toUpperCase(); parts.push(c); breakdown.push(`<b>${c}</b> = ${s1} — ${STAR1_DESC[s1]||''}`); }
+  if (s2) { const c = OUR_CODE[s2]||s2.slice(0,3).toUpperCase(); parts.push(c); breakdown.push(`<b>${c}</b> = ${s2} — ${STAR2_DESC[s2]||''}`); }
+  if (s3) { const c = OUR_CODE[s3]||s3.slice(0,3).toUpperCase(); parts.push(c); breakdown.push(`<b>${c}</b> = ${s3} — ${STAR3_DESC[s3]||''}`); }
+  if (s4) { const c = OUR_CODE_S4[s4]||s4.slice(0,3).toUpperCase(); parts.push(c); breakdown.push(`<b>${c}</b> = ${s4} — ${STAR4_DESC[s4]||''}`); }
+  if (weapon) parts.push(weapon);
+
+  document.getElementById('genNotation').textContent = parts.join(' | ');
+  document.getElementById('genBreakdown').innerHTML = breakdown.join('<br>');
+  document.getElementById('genResult').style.display = 'block';
+}
+
+function copyGen() {
+  const el = document.getElementById('genNotation');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => showToast('Copied!', 'success'));
+}
+
+function copyNotation() {
+  const el = document.getElementById('ourNotation');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => showToast('Copied!', 'success'));
+}
+</script>
+
+{% endblock %}

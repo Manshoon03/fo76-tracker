@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+{% block title %}Server Hop Log{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🌐 SERVER HOP LOG</h1>
+  <span class="count-badge">{{ hops|length }} total</span>
+</div>
+
+<!-- ── Stats row ────────────────────────────────────────────────────────── -->
+<div class="stat-grid" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr));margin-bottom:16px">
+  <div class="stat-card">
+    <span class="stat-num">{{ hops|length }}</span>
+    <span class="stat-label">Total Hops</span>
+  </div>
+  {% set today_hops = hops | selectattr('hop_date', 'equalto', today) | list %}
+  <div class="stat-card">
+    <span class="stat-num">{{ today_hops|length }}</span>
+    <span class="stat-label">Today</span>
+  </div>
+  {% set week_dates = [] %}
+  {% for h in hops %}
+    {# count hops in the last 7 days — we check in JS; show all for server-side #}
+  {% endfor %}
+  <div class="stat-card">
+    <span class="stat-num gold" id="thisWeekCount">—</span>
+    <span class="stat-label">This Week</span>
+  </div>
+</div>
+
+<!-- ── Quick Add Form (open by default) ─────────────────────────────────── -->
+<section class="add-panel open" id="addHopPanel">
+  <div class="panel-toggle" onclick="togglePanel('addHopPanel')">
+    <span>+ Log Server Hop</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/server-hops/add">
+      <div class="form-grid wide">
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" name="hop_date" value="{{ today }}" required>
+        </div>
+        <div class="form-group span2">
+          <label>Notes — what were you hunting? what happened?</label>
+          <textarea name="notes" rows="3" placeholder="e.g. Hunting Strangler Heart — found boss on hop 4, dropped Queen armor piece. Server full of griefers on hop 2."></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">+ Log Hop</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ── Filter bar ────────────────────────────────────────────────────────── -->
+<div class="table-controls">
+  <input type="text" id="hopFilter" placeholder="Filter by notes..." oninput="filterHops(this.value)">
+  <span class="dim" id="filteredCount" style="font-size:11px"></span>
+</div>
+
+<!-- ── Hop cards ─────────────────────────────────────────────────────────── -->
+<div id="hopList" style="display:flex;flex-direction:column;gap:10px">
+  {% for hop in hops | sort(attribute='hop_date', reverse=True) %}
+  <div class="hop-card" data-notes="{{ hop['notes']|lower }}" data-date="{{ hop['hop_date'] }}"
+       style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:14px;display:flex;gap:14px;align-items:flex-start">
+
+    <!-- Date column -->
+    <div style="flex-shrink:0;text-align:center;min-width:80px">
+      <div class="gold" style="font-size:18px;font-weight:bold;letter-spacing:0.5px;line-height:1.2">
+        {{ hop['hop_date'] }}
+      </div>
+      {% if hop['hop_date'] == today %}
+      <span class="badge" style="border-color:var(--accent);color:var(--accent);font-size:9px;margin-top:4px">TODAY</span>
+      {% endif %}
+    </div>
+
+    <!-- Divider -->
+    <div style="width:1px;background:var(--border);flex-shrink:0;align-self:stretch"></div>
+
+    <!-- Content -->
+    <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+      {% if hop['notes'] %}
+        <div class="hi" style="font-size:13px;line-height:1.6;white-space:pre-wrap">{{ hop['notes'] }}</div>
+      {% else %}
+        <div class="dim" style="font-size:12px;font-style:italic">No notes recorded.</div>
+      {% endif %}
+      {% if hop['created_at'] %}
+        <div class="dim" style="font-size:10px">Logged: {{ hop['created_at'] }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Delete -->
+    <form method="POST" action="/server-hops/{{ hop['id'] }}/delete" class="inline-form" style="flex-shrink:0">
+      <button class="btn-sm btn-delete" onclick="return confirmDelete()" title="Delete this hop">🗑</button>
+    </form>
+
+  </div>
+  {% else %}
+  <div class="no-data">No server hops logged yet. Log one above!</div>
+  {% endfor %}
+</div>
+
+<script>
+// Week count — count hops whose date is within the last 7 days
+(function(){
+  const cards = document.querySelectorAll('.hop-card');
+  const now = new Date();
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - 6);
+  const cutoffStr = cutoff.toISOString().slice(0,10);
+  let weekCount = 0;
+  cards.forEach(c => {
+    if (c.dataset.date >= cutoffStr) weekCount++;
+  });
+  const el = document.getElementById('thisWeekCount');
+  if (el) el.textContent = weekCount;
+})();
+
+function filterHops(query) {
+  const q = query.trim().toLowerCase();
+  const cards = document.querySelectorAll('.hop-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const notesText = card.dataset.notes || '';
+    const dateText  = card.dataset.date  || '';
+    const match = !q || notesText.includes(q) || dateText.includes(q);
+    card.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  const countEl = document.getElementById('filteredCount');
+  if (countEl) {
+    countEl.textContent = q ? visible + ' match' + (visible !== 1 ? 'es' : '') : '';
+  }
+}
+</script>
+
+{% endblock %}

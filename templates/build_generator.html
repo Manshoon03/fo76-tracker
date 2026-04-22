@@ -1,0 +1,382 @@
+{% extends 'base.html' %}
+{% block title %}Build Generator{% endblock %}
+
+{% block content %}
+<style>
+  .bg-wrap        { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+  .bg-header      { display:flex; align-items:baseline; gap:12px; margin-bottom:20px; }
+  .bg-header h1   { font-size:20px; color:var(--accent); margin:0; }
+  .bg-header span { font-size:12px; color:var(--text-dim); }
+
+  /* ── Input card ── */
+  .bg-card        { background:var(--bg-card); border:1px solid var(--border);
+                    border-radius:8px; padding:20px; margin-bottom:16px; }
+  .bg-card h2     { font-size:13px; color:var(--text-dim); text-transform:uppercase;
+                    letter-spacing:.06em; margin:0 0 16px; }
+
+  .gen-form       { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .gen-form .span3{ grid-column:1/-1; }
+  .gen-form label { font-size:11px; color:var(--text-dim); display:block; margin-bottom:4px;
+                    text-transform:uppercase; letter-spacing:.05em; }
+  .gen-form select,
+  .gen-form textarea { width:100%; box-sizing:border-box; }
+  .gen-form textarea  { height:60px; resize:vertical; }
+
+  .gen-btn        { margin-top:14px; display:flex; gap:10px; align-items:center; }
+  .gen-btn button { padding:8px 24px; font-size:13px; }
+  .gen-status     { font-size:12px; color:var(--text-dim); }
+
+  /* ── Results ── */
+  .result-wrap    { display:none; }
+  .result-wrap.show { display:block; }
+
+  .build-title    { font-size:18px; font-weight:700; color:var(--accent); margin:0 0 6px; }
+  .build-summary  { font-size:13px; color:var(--text-muted); line-height:1.6; margin-bottom:18px; }
+
+  /* SPECIAL bars */
+  .special-grid   { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; margin-bottom:20px; }
+  .sp-block       { text-align:center; }
+  .sp-label       { font-size:11px; font-weight:700; margin-bottom:4px; }
+  .sp-val         { font-size:24px; font-weight:700; line-height:1; margin-bottom:4px; }
+  .sp-bar-wrap    { background:var(--bg-main,#111); border-radius:3px; height:6px; overflow:hidden; }
+  .sp-bar         { height:100%; border-radius:3px; transition:width .4s; }
+  .sp-S .sp-label,.sp-S .sp-val { color:#e05050; } .sp-S .sp-bar { background:#e05050; }
+  .sp-P .sp-label,.sp-P .sp-val { color:#e08040; } .sp-P .sp-bar { background:#e08040; }
+  .sp-E .sp-label,.sp-E .sp-val { color:#50c050; } .sp-E .sp-bar { background:#50c050; }
+  .sp-C .sp-label,.sp-C .sp-val { color:#e0c040; } .sp-C .sp-bar { background:#e0c040; }
+  .sp-I .sp-label,.sp-I .sp-val { color:#4090e0; } .sp-I .sp-bar { background:#4090e0; }
+  .sp-A .sp-label,.sp-A .sp-val { color:#40c0c0; } .sp-A .sp-bar { background:#40c0c0; }
+  .sp-L .sp-label,.sp-L .sp-val { color:#c040e0; } .sp-L .sp-bar { background:#c040e0; }
+
+  /* Edit SPECIAL */
+  .sp-input       { width:48px; text-align:center; font-size:13px; margin-top:4px; display:none; }
+  .editing .sp-val   { display:none; }
+  .editing .sp-input { display:block; margin:0 auto; }
+
+  /* Perk cards grid */
+  .perk-grid      { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:12px; margin-bottom:20px; }
+  .perk-card      { background:var(--bg-main,#111); border:1px solid var(--border);
+                    border-radius:6px; padding:10px 8px; text-align:center; position:relative; }
+  .perk-card img  { width:110px; height:110px; object-fit:contain; margin-bottom:6px;
+                    image-rendering:pixelated; }
+  .perk-card .pc-name   { font-size:11px; font-weight:600; color:var(--text); line-height:1.3; }
+  .perk-card .pc-rank   { font-size:10px; color:var(--accent); margin:2px 0; }
+  .perk-card .pc-reason { font-size:10px; color:var(--text-dim); line-height:1.4; margin-top:4px; }
+  .perk-card .pc-sp     { position:absolute; top:6px; right:6px; font-size:9px;
+                           font-weight:700; opacity:.7; }
+  .perk-card.no-img img { display:none; }
+  .perk-fallback  { width:110px; height:110px; background:var(--bg-card);
+                    border:1px solid var(--border); border-radius:4px;
+                    display:flex; align-items:center; justify-content:center;
+                    font-size:22px; margin:0 auto 6px; }
+
+  /* Other sections */
+  .detail-grid    { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+  .detail-box     { background:var(--bg-main,#111); border:1px solid var(--border);
+                    border-radius:6px; padding:12px 14px; }
+  .detail-box h3  { font-size:11px; color:var(--text-dim); text-transform:uppercase;
+                    letter-spacing:.05em; margin:0 0 8px; }
+  .detail-box ul  { margin:0; padding:0 0 0 16px; font-size:13px; line-height:1.7; }
+  .detail-box p   { margin:0; font-size:13px; line-height:1.6; color:var(--text-muted); }
+
+  /* Actions */
+  .result-actions { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
+  .result-actions button { padding:7px 18px; font-size:13px; }
+  .edit-name-wrap { margin-bottom:12px; display:none; }
+  .edit-name-wrap.show { display:flex; gap:8px; align-items:center; }
+  .edit-name-wrap input { flex:1; font-size:15px; font-weight:600; }
+
+  .save-ok  { color:#4caf50; font-size:12px; }
+  .save-err { color:#e04040; font-size:12px; }
+
+  @media(max-width:640px) {
+    .gen-form    { grid-template-columns:1fr 1fr; }
+    .special-grid{ grid-template-columns:repeat(4,1fr); }
+    .detail-grid { grid-template-columns:1fr; }
+    .perk-grid   { grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); }
+  }
+</style>
+
+<div class="bg-wrap">
+  <div class="bg-header">
+    <h1>🤖 Build Generator</h1>
+    <span>AI-powered — Claude Haiku</span>
+  </div>
+
+  <!-- Input card -->
+  <div class="bg-card">
+    <h2>Build Preferences</h2>
+    <div class="gen-form">
+      <div>
+        <label>Race</label>
+        <select id="g-race">
+          <option>Human</option>
+          <option>Ghoul</option>
+        </select>
+      </div>
+      <div>
+        <label>Health Style</label>
+        <select id="g-health">
+          <option>Full Health</option>
+          <option>Bloodied</option>
+        </select>
+      </div>
+      <div>
+        <label>Primary Weapon</label>
+        <select id="g-weapon">
+          <option>Two-Handed Melee</option>
+          <option>One-Handed Melee</option>
+          <option>Unarmed</option>
+          <option>Rifle</option>
+          <option>Commando (Auto Rifle)</option>
+          <option>Pistol</option>
+          <option>Shotgun</option>
+          <option>Heavy Gun</option>
+          <option>Bow / Crossbow</option>
+          <option>Sniper</option>
+        </select>
+      </div>
+      <div class="span3">
+        <label>Additional Notes (optional)</label>
+        <textarea id="g-notes" placeholder="e.g. No Power Armor, want stealth, must include Aristocrat's weapons..."></textarea>
+      </div>
+    </div>
+    <div class="gen-btn">
+      <button class="btn btn-primary" id="gen-btn" onclick="generate()">Generate Build</button>
+      <span class="gen-status" id="gen-status"></span>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="result-wrap" id="result-wrap">
+
+    <div class="edit-name-wrap" id="edit-name-wrap">
+      <input type="text" id="edit-name-input" placeholder="Build name">
+    </div>
+
+    <div class="bg-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div>
+          <div class="build-title" id="r-name"></div>
+          <div class="build-summary" id="r-summary"></div>
+        </div>
+        <div class="result-actions">
+          <button class="btn btn-secondary" id="edit-btn" onclick="toggleEdit()">✎ Edit</button>
+          <button class="btn btn-primary" id="save-btn" onclick="saveBuild()">💾 Save to Builds</button>
+          <span id="save-msg"></span>
+        </div>
+      </div>
+
+      <!-- SPECIAL -->
+      <h2>SPECIAL</h2>
+      <div class="special-grid" id="r-special"></div>
+
+      <!-- Perk Cards -->
+      <h2>Perk Cards</h2>
+      <div class="perk-grid" id="r-perks"></div>
+
+      <!-- Weapons / Armor / Mutations / Tips -->
+      <div class="detail-grid" id="r-details"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentBuild = null;
+let manifest     = {};
+let editing      = false;
+
+// Load manifest on page load
+fetch('/static/img/perks/manifest.json')
+  .then(r => r.json())
+  .then(d => { manifest = d; })
+  .catch(() => {});
+
+// ── Fuzzy image lookup ───────────────────────────────────────────────────────
+function normalize(s) {
+  return s.toLowerCase()
+    .replace(/\bperk\b/g, '').replace(/_/g, ' ')
+    .replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function findPerkImage(name) {
+  const n = normalize(name);
+  // Try exact normalized match
+  for (const [key, path] of Object.entries(manifest)) {
+    if (normalize(key) === n) return path;
+  }
+  // Try contains
+  for (const [key, path] of Object.entries(manifest)) {
+    if (normalize(key).includes(n) || n.includes(normalize(key))) return path;
+  }
+  return null;
+}
+
+// ── Generate ─────────────────────────────────────────────────────────────────
+async function generate() {
+  const btn = document.getElementById('gen-btn');
+  const st  = document.getElementById('gen-status');
+  btn.disabled = true;
+  st.textContent = 'Generating... (~10s)';
+
+  try {
+    const r = await fetch('/build-generator/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        race:   document.getElementById('g-race').value,
+        health: document.getElementById('g-health').value,
+        weapon: document.getElementById('g-weapon').value,
+        notes:  document.getElementById('g-notes').value,
+      })
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    currentBuild = data.build;
+    renderBuild(data.build);
+    st.textContent = 'Done!';
+    setTimeout(() => st.textContent = '', 3000);
+  } catch(e) {
+    st.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function renderBuild(b) {
+  document.getElementById('r-name').textContent    = b.name || 'AI Build';
+  document.getElementById('r-summary').textContent = b.summary || '';
+  document.getElementById('edit-name-input').value = b.name || '';
+
+  renderSpecial(b.special || {});
+  renderPerks(b.perk_cards || []);
+  renderDetails(b);
+
+  document.getElementById('result-wrap').classList.add('show');
+  document.getElementById('save-msg').textContent = '';
+  editing = false;
+  document.getElementById('result-wrap').classList.remove('editing');
+  document.getElementById('edit-name-wrap').classList.remove('show');
+  document.getElementById('edit-btn').textContent = '✎ Edit';
+}
+
+const SP_ORDER = ['s','p','e','c','i','a','l'];
+const SP_NAMES = {s:'Strength',p:'Perception',e:'Endurance',c:'Charisma',i:'Intelligence',a:'Agility',l:'Luck'};
+
+function renderSpecial(sp) {
+  const el = document.getElementById('r-special');
+  el.innerHTML = SP_ORDER.map(k => {
+    const v   = sp[k] || 1;
+    const pct = Math.round((v/15)*100);
+    const key = k.toUpperCase();
+    return `<div class="sp-block sp-${key}">
+      <div class="sp-label">${key}</div>
+      <div class="sp-val">${v}</div>
+      <input class="sp-input" type="number" min="1" max="15" value="${v}"
+             data-sp="${k}" oninput="updateSpInput(this)">
+      <div class="sp-bar-wrap"><div class="sp-bar" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderPerks(cards) {
+  const el = document.getElementById('r-perks');
+  const spColors = {S:'#e05050',P:'#e08040',E:'#50c050',C:'#e0c040',I:'#4090e0',A:'#40c0c0',L:'#c040e0'};
+  el.innerHTML = cards.map(c => {
+    const img = findPerkImage(c.name);
+    const stars = '★'.repeat(c.rank || 1) + '☆'.repeat(3-(c.rank||1));
+    const spColor = spColors[c.special] || 'var(--accent)';
+    return `<div class="perk-card">
+      <span class="pc-sp" style="color:${spColor}">${c.special||''}</span>
+      ${img
+        ? `<img src="${img}" alt="${c.name}" onerror="this.style.display='none'">`
+        : `<div class="perk-fallback">🃏</div>`}
+      <div class="pc-name">${c.name}</div>
+      <div class="pc-rank">${stars}</div>
+      <div class="pc-reason">${c.reason||''}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderDetails(b) {
+  const el = document.getElementById('r-details');
+  const weapons  = (b.weapons  || []).map(w => `<li>${w}</li>`).join('');
+  const muts     = (b.mutations || []).map(m => `<li>${m}</li>`).join('');
+  el.innerHTML = `
+    <div class="detail-box">
+      <h3>⚔ Weapons</h3>
+      <ul>${weapons || '<li>See playstyle notes</li>'}</ul>
+    </div>
+    <div class="detail-box">
+      <h3>🛡 Armor</h3>
+      <p>${b.armor || '—'}</p>
+    </div>
+    <div class="detail-box">
+      <h3>🧬 Mutations</h3>
+      <ul>${muts || '<li>None recommended</li>'}</ul>
+    </div>
+    <div class="detail-box">
+      <h3>📋 Playstyle Tips</h3>
+      <p>${b.playstyle_notes || '—'}</p>
+    </div>`;
+}
+
+// ── Edit mode ─────────────────────────────────────────────────────────────────
+function toggleEdit() {
+  editing = !editing;
+  const wrap = document.getElementById('result-wrap');
+  const nameWrap = document.getElementById('edit-name-wrap');
+  wrap.classList.toggle('editing', editing);
+  nameWrap.classList.toggle('show', editing);
+  document.getElementById('edit-btn').textContent = editing ? '✓ Done' : '✎ Edit';
+}
+
+function updateSpInput(input) {
+  const k   = input.dataset.sp;
+  const val = Math.min(15, Math.max(1, parseInt(input.value) || 1));
+  if (currentBuild && currentBuild.special) {
+    currentBuild.special[k] = val;
+    // Update bar
+    const bar = input.closest('.sp-block').querySelector('.sp-bar');
+    if (bar) bar.style.width = Math.round((val/15)*100) + '%';
+  }
+}
+
+// ── Save ─────────────────────────────────────────────────────────────────────
+async function saveBuild() {
+  if (!currentBuild) return;
+  const msg = document.getElementById('save-msg');
+
+  // Apply any edits
+  if (editing) {
+    const nameInput = document.getElementById('edit-name-input').value.trim();
+    if (nameInput) currentBuild.name = nameInput;
+    // Collect SP inputs
+    document.querySelectorAll('.sp-input').forEach(inp => {
+      const k = inp.dataset.sp;
+      currentBuild.special[k] = Math.min(15, Math.max(1, parseInt(inp.value)||1));
+    });
+    toggleEdit();
+  }
+
+  try {
+    const r = await fetch('/build-generator/save', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(currentBuild)
+    });
+    const data = await r.json();
+    if (data.success) {
+      msg.className = 'save-ok';
+      msg.textContent = '✓ Saved to Builds!';
+    } else {
+      throw new Error(data.error);
+    }
+  } catch(e) {
+    msg.className = 'save-err';
+    msg.textContent = 'Error: ' + e.message;
+  }
+}
+</script>
+{% endblock %}

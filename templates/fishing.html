@@ -1,0 +1,429 @@
+{% extends 'base.html' %}
+{% block title %}Fishing{% endblock %}
+{% block content %}
+
+{# ── Rarity calculations ──────────────────────────────────────────────── #}
+{% set axolotl_caught   = species|selectattr('rarity','eq','Axolotl')     |selectattr('caught','eq',1)|list|length %}
+{% set legend_caught    = species|selectattr('rarity','eq','Local Legend') |selectattr('caught','eq',1)|list|length %}
+{% set glowing_caught   = species|selectattr('rarity','eq','Glowing')      |selectattr('caught','eq',1)|list|length %}
+{% set pct = ((total_caught / total_species * 100)|int) if total_species > 0 else 0 %}
+
+{# ── Tier metadata (used by stats + checklist) ────────────────────────── #}
+{% set tiers = [
+  ('Generic',      'var(--border)',  'dim',           ''),
+  ('Common',       'var(--accent)',  'accent',        ''),
+  ('Uncommon',     '#4fc3f7',        '',              'color:#4fc3f7'),
+  ('Glowing',      'var(--gold)',    'gold',          ''),
+  ('Local Legend', '#ff5555',        '',              'color:#ff5555'),
+  ('Axolotl',      '#e040fb',        '',              'color:#e040fb')
+] %}
+
+{# ── Page header ──────────────────────────────────────────────────────── #}
+<div class="page-header">
+  <h1>🎣 FISHING LOG</h1>
+  <span class="count-badge">{{ total_caught }} / {{ total_species }} caught</span>
+</div>
+
+{# ── Overall progress bar ─────────────────────────────────────────────── #}
+<div style="margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <span class="section-title" style="margin-bottom:0">SPECIES CAUGHT</span>
+    <span class="dim" style="font-size:12px">{{ total_caught }} / {{ total_species }} &nbsp;<span class="accent">({{ pct }}%)</span></span>
+  </div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar {{ 'complete' if total_caught == total_species else '' }}"
+         style="width:{{ pct }}%"></div>
+  </div>
+</div>
+
+{# ── Stat cards ───────────────────────────────────────────────────────── #}
+<div class="stat-grid" style="margin-bottom:20px">
+  <div class="stat-card">
+    <div class="stat-num accent">{{ total_caught }}<span class="dim" style="font-size:14px"> / {{ total_species }}</span></div>
+    <div class="stat-label">Species Caught</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="color:#e040fb">{{ axolotl_caught }}</div>
+    <div class="stat-label">Axolotls Caught</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="color:#ff5555">{{ legend_caught }}</div>
+    <div class="stat-label">Local Legends</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num gold">{{ glowing_caught }}</div>
+    <div class="stat-label">Glowing Caught</div>
+  </div>
+</div>
+
+{# ── Fishing Statistics ───────────────────────────────────────────────── #}
+<section class="add-panel" id="fishStatsPanel" style="margin-bottom:16px">
+  <div class="panel-toggle" onclick="togglePanel('fishStatsPanel')">
+    <span>📊 Fishing Statistics</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <div class="two-col" style="gap:20px;align-items:start">
+
+      {# By Rarity #}
+      <div>
+        <div class="section-title" style="margin-bottom:8px;font-size:11px">CATCHES BY RARITY</div>
+        <table class="data-table" style="font-size:11px">
+          <thead><tr><th>Rarity</th><th>Caught</th><th>Total</th><th>%</th></tr></thead>
+          <tbody>
+          {% for tier_name, border_color, text_class, text_style in tiers %}
+            {% set ts = species|selectattr('rarity','eq',tier_name)|list %}
+            {% if ts %}
+            {% set tc = ts|selectattr('caught','eq',1)|list|length %}
+            {% set rpct = ((tc / ts|length * 100)|int) if ts|length > 0 else 0 %}
+            <tr>
+              <td style="{{ text_style }}" class="{{ text_class }}">{{ tier_name }}</td>
+              <td>{{ tc }}</td>
+              <td class="dim">{{ ts|length }}</td>
+              <td class="accent">{{ rpct }}%</td>
+            </tr>
+            {% endif %}
+          {% endfor %}
+          </tbody>
+        </table>
+        <div style="margin-top:10px;font-size:11px;color:var(--text-dim)">
+          Catch log entries: <span class="accent">{{ log_total }}</span>
+        </div>
+      </div>
+
+      {# By Biome/Region #}
+      <div>
+        <div class="section-title" style="margin-bottom:8px;font-size:11px">CATCHES BY REGION</div>
+        {% if biome_stats %}
+        <table class="data-table" style="font-size:11px">
+          <thead><tr><th>Region</th><th>Caught</th><th>Total</th><th>%</th></tr></thead>
+          <tbody>
+          {% for b in biome_stats %}
+          {% set bpct = ((b['caught_count'] / b['total'] * 100)|int) if b['total'] > 0 else 0 %}
+          <tr>
+            <td class="hi">{{ b['biome'] }}</td>
+            <td>{{ b['caught_count'] }}</td>
+            <td class="dim">{{ b['total'] }}</td>
+            <td class="accent">{{ bpct }}%</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="dim" style="font-size:11px">No region data available.</p>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</section>
+
+{# ── Log a Catch panel ────────────────────────────────────────────────── #}
+<section class="add-panel" id="logPanel">
+  <div class="panel-toggle" onclick="togglePanel('logPanel')">
+    <span>+ Log a Catch</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/fishing/log">
+      <div class="form-grid">
+
+        <div class="form-group span2">
+          <label>Fish Name *</label>
+          <input type="text" name="fish_name" id="fishNameInput" required autocomplete="off"
+                 list="fishNames" placeholder="Start typing or select a species...">
+        </div>
+
+        <div class="form-group">
+          <label>Rarity <span class="dim" style="font-size:10px">(auto-fills)</span></label>
+          <select name="rarity" id="fishRaritySelect">
+            <option value="Generic">Generic</option>
+            <option value="Common">Common</option>
+            <option value="Uncommon">Uncommon</option>
+            <option value="Glowing">Glowing</option>
+            <option value="Local Legend">Local Legend</option>
+            <option value="Axolotl">Axolotl</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Biome / Region <span class="dim" style="font-size:10px">(auto-fills)</span></label>
+          <select name="biome" id="fishBiomeSelect">
+            <option value="">All Regions</option>
+            <option value="The Forest">The Forest</option>
+            <option value="Toxic Valley">Toxic Valley</option>
+            <option value="Savage Divide">Savage Divide</option>
+            <option value="Cranberry Bog">Cranberry Bog</option>
+            <option value="The Mire">The Mire</option>
+            <option value="Ash Heap">Ash Heap</option>
+            <option value="Burning Springs">Burning Springs</option>
+            <option value="Skyline Valley">Skyline Valley</option>
+            <option value="Any Nuke Zone">Any Nuke Zone</option>
+            <option value="Varies (Monthly)">Varies (Monthly)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" name="location" placeholder="Specific fishing spot">
+        </div>
+
+        <div class="form-group">
+          <label>Bait Used</label>
+          <select name="bait_used">
+            <option value="Common Bait">Common Bait</option>
+            <option value="Improved Bait">Improved Bait</option>
+            <option value="Superb Bait">Superb Bait</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Weather</label>
+          <select name="weather">
+            <option value="Clear Sky">Clear Sky</option>
+            <option value="Rain">Rain</option>
+            <option value="Nuke Zone">Nuke Zone</option>
+            <option value="Rad Storm">Rad Storm</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Date Caught</label>
+          <input type="date" name="caught_at">
+        </div>
+
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="Any extra info...">
+        </div>
+
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">🎣 Log Catch</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+{# ── Datalist for autocomplete ────────────────────────────────────────── #}
+<datalist id="fishNames">
+  {% for s in species %}
+  <option value="{{ s['name'] }}">
+  {% endfor %}
+</datalist>
+
+{# ── Species Checklist ────────────────────────────────────────────────── #}
+<div style="margin-top:24px">
+  <span class="section-title">SPECIES CHECKLIST</span>
+
+  {% for tier_name, border_color, text_class, text_style in tiers %}
+    {% set tier_species = species|selectattr('rarity','eq',tier_name)|list %}
+    {% if tier_species %}
+      {% set tier_caught = tier_species|selectattr('caught','eq',1)|list|length %}
+
+      {# Tier header #}
+      <div style="margin:16px 0 8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;
+                     {{ text_style }}" class="{{ text_class }}">{{ tier_name }}</span>
+        <span class="dim" style="font-size:10px">{{ tier_caught }} / {{ tier_species|length }} caught</span>
+        <div style="flex:1;height:1px;background:{{ border_color }};opacity:0.3"></div>
+      </div>
+
+      {# Species grid: 3 columns on wide screens #}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px;margin-bottom:8px">
+        {% for s in tier_species %}
+        <div class="species-card" id="sp-{{ s['id'] }}" style="
+          display:flex;align-items:center;gap:8px;padding:6px 10px;
+          background:var(--bg-card);border-radius:3px;margin-bottom:0;
+          border-left:3px solid {{ border_color }};
+          opacity:{{ '0.55' if s['caught'] else '1' }};
+          transition:opacity 0.2s;
+        ">
+          <button class="btn-sm {{ 'btn-primary' if s['caught'] else 'btn-secondary' }}"
+                  onclick="toggleCatch({{ s['id'] }}, this)"
+                  style="min-width:28px;padding:2px 6px;flex-shrink:0"
+                  title="{{ 'Mark as not caught' if s['caught'] else 'Mark as caught' }}">
+            {{ '✓' if s['caught'] else '○' }}
+          </button>
+          <div style="flex:1;min-width:0">
+            <span class="{{ 'dim' if s['caught'] else 'hi' }}"
+                  style="font-size:12px;{{ 'text-decoration:line-through' if s['caught'] else '' }}">{{ s['name'] }}</span>
+            {% if s['biome'] %}
+            <span class="dim" style="font-size:10px;margin-left:6px">{{ s['biome'] }}</span>
+            {% endif %}
+          </div>
+          {% if s['first_caught'] %}
+          <span class="dim" style="font-size:9px;white-space:nowrap;flex-shrink:0">{{ s['first_caught'] }}</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+    {% endif %}
+  {% endfor %}
+</div>
+
+{# ── Catch Log (collapsible, open if log has entries) ─────────────────── #}
+<section class="add-panel {{ 'open' if log else '' }}" id="catchLogPanel" style="margin-top:24px">
+  <div class="panel-toggle" onclick="togglePanel('catchLogPanel')">
+    <span>📋 CATCH LOG <span class="dim" style="font-size:11px;font-weight:normal">(last 100)</span></span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Fish</th>
+            <th>Rarity</th>
+            <th>Location</th>
+            <th>Bait</th>
+            <th>Weather</th>
+            <th>Notes</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in log %}
+          <tr>
+            <td class="dim" style="white-space:nowrap;font-size:11px">{{ entry['caught_at'] }}</td>
+            <td class="hi">{{ entry['fish_name'] }}</td>
+            <td style="white-space:nowrap">
+              {% set r = entry['rarity'] %}
+              {% if r == 'Common' %}
+                <span class="accent">{{ r }}</span>
+              {% elif r == 'Uncommon' %}
+                <span style="color:#4fc3f7">{{ r }}</span>
+              {% elif r == 'Glowing' %}
+                <span class="gold">{{ r }}</span>
+              {% elif r == 'Local Legend' %}
+                <span style="color:#ff5555">{{ r }}</span>
+              {% elif r == 'Axolotl' %}
+                <span style="color:#e040fb">{{ r }}</span>
+              {% else %}
+                <span class="dim">{{ r }}</span>
+              {% endif %}
+            </td>
+            <td class="dim">{{ entry['location'] or '—' }}</td>
+            <td class="dim" style="font-size:11px">{{ entry['bait_used'] or '—' }}</td>
+            <td class="dim" style="font-size:11px">{{ entry['weather'] or '—' }}</td>
+            <td class="dim" style="font-size:11px;max-width:160px;white-space:normal">{{ entry['notes'] or '' }}</td>
+            <td>
+              <form method="POST" action="/fishing/log/{{ entry['id'] }}/delete" class="inline-form">
+                <button class="btn-sm btn-delete" onclick="return confirmDelete()" title="Delete entry">🗑</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="no-data">No catches logged yet. Go fish!</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+{# ── JavaScript ───────────────────────────────────────────────────────── #}
+<script>
+function toggleCatch(id, btn) {
+  fetch('/fishing/toggle/' + id, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) return;
+      const card = document.getElementById('sp-' + id);
+      if (!card) return;
+
+      if (data.caught) {
+        btn.textContent = '✓';
+        btn.className = btn.className.replace('btn-secondary', 'btn-primary');
+        card.style.opacity = '0.55';
+        const nameEl = card.querySelector('span.hi, span.dim');
+        if (nameEl) {
+          nameEl.className = 'dim';
+          nameEl.style.textDecoration = 'line-through';
+        }
+      } else {
+        btn.textContent = '○';
+        btn.className = btn.className.replace('btn-primary', 'btn-secondary');
+        card.style.opacity = '1';
+        const nameEl = card.querySelector('span.hi, span.dim');
+        if (nameEl) {
+          nameEl.className = 'hi';
+          nameEl.style.textDecoration = '';
+        }
+      }
+
+      // Update header badge from DOM state
+      const badge = document.querySelector('.count-badge');
+      if (badge) {
+        const total  = document.querySelectorAll('[id^="sp-"]').length;
+        const caught = document.querySelectorAll('[id^="sp-"] .btn-primary').length;
+        badge.textContent = caught + ' / ' + total + ' caught';
+      }
+
+      // Update overall progress bar
+      const total  = document.querySelectorAll('[id^="sp-"]').length;
+      const caught = document.querySelectorAll('[id^="sp-"] .btn-primary').length;
+      if (total > 0) {
+        const pct = Math.round(caught / total * 100);
+        const bar = document.querySelector('.progress-bar');
+        if (bar) bar.style.width = pct + '%';
+        // Update the "X / Y (Z%)" text next to the progress bar
+        const pctSpan = document.querySelector('.progress-bar-wrap ~ * .accent, .accent');
+        // simpler: just update the stat card
+        const statNums = document.querySelectorAll('.stat-num');
+        if (statNums[0]) {
+          statNums[0].innerHTML = caught + '<span class="dim" style="font-size:14px"> / ' + total + '</span>';
+        }
+      }
+    })
+    .catch(err => console.error('Toggle failed:', err));
+}
+
+// Species lookup map — built from server-side data at render time
+const FISH_MAP = {
+  {% for s in species %}
+  {{ s['name']|tojson }}: { rarity: {{ s['rarity']|tojson }}, biome: {{ s['biome']|tojson }} },
+  {% endfor %}
+};
+
+// Biome values that exist as select options
+const KNOWN_BIOMES = ['','The Forest','Toxic Valley','Savage Divide','Cranberry Bog',
+                      'The Mire','Ash Heap','Burning Springs','Skyline Valley',
+                      'Any Nuke Zone','Varies (Monthly)'];
+
+function autoFillFish(name) {
+  const data = FISH_MAP[name];
+  if (!data) return;
+  const r = document.getElementById('fishRaritySelect');
+  if (r) r.value = data.rarity;
+  const b = document.getElementById('fishBiomeSelect');
+  if (b) {
+    // 'All Regions' maps to '' (the empty option)
+    const biomeVal = data.biome === 'All Regions' ? '' : data.biome;
+    // Only set if the value exists as a known option
+    if (KNOWN_BIOMES.includes(biomeVal)) {
+      b.value = biomeVal;
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  // Auto-fill today's date
+  const dateField = document.querySelector('input[name="caught_at"]');
+  if (dateField && !dateField.value) {
+    dateField.value = new Date().toISOString().split('T')[0];
+  }
+
+  // Auto-fill rarity + biome when a fish name is entered
+  const nameInput = document.getElementById('fishNameInput');
+  if (nameInput) {
+    nameInput.addEventListener('input', function () { autoFillFish(this.value); });
+    // Also fire on change (catches datalist selection on some browsers)
+    nameInput.addEventListener('change', function () { autoFillFish(this.value); });
+  }
+});
+</script>
+
+{% endblock %}

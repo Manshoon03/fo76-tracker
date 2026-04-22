@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+{% block title %}Vendor Route{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🗺 VENDOR ROUTE</h1>
+  <span class="count-badge">{{ stops|length }} stop{{ 's' if stops|length != 1 else '' }}</span>
+</div>
+
+<p class="dim" style="font-size:11px;margin:-6px 0 16px">
+  Track your server-hop vendor locations. Check off each stop as you visit it.
+</p>
+
+<!-- ── Action bar ─────────────────────────────────────────────────────────── -->
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+  <form method="POST" action="/vendor-route/reset" class="inline-form"
+        onsubmit="return confirm('Clear all check marks for today?')">
+    <button class="btn btn-secondary" type="submit">&#10003; Reset All Checks</button>
+  </form>
+  <button class="btn btn-primary" onclick="togglePanel('addStopPanel')">+ Add Stop</button>
+</div>
+
+<!-- ── Add Stop panel (collapsible, starts closed) ──────────────────────── -->
+<section class="add-panel" id="addStopPanel">
+  <div class="panel-toggle" onclick="togglePanel('addStopPanel')">
+    <span>+ Add Stop</span>
+    <span class="toggle-icon">&#9660;</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/vendor-route/add">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Stop Name *</label>
+          <input type="text" name="stop_name" required
+                 placeholder="e.g. Crater, Watoga Station" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" name="location"
+                 placeholder="e.g. Top of the World – Vendor Bot" autocomplete="off">
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes"
+                 placeholder="Tips, what to look for" autocomplete="off">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Add Stop</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ── Status legend ─────────────────────────────────────────────────────── -->
+{% if stops %}
+<div class="dim" style="font-size:11px;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap">
+  <span>&#128994; Checked today</span>
+  <span>&#128993; This week</span>
+  <span>&#128308; Older</span>
+  <span>&#11036; Never checked</span>
+</div>
+{% endif %}
+
+<!-- ── Stop cards ────────────────────────────────────────────────────────── -->
+<div id="stopList">
+  {% for s in stops %}
+  {% if s.status == 'today' %}
+    {% set border_color = 'var(--accent)' %}
+    {% set btn_label    = '&#10003; Checked' %}
+    {% set btn_class    = 'btn-sm btn-checked' %}
+    {% set btn_disabled = 'disabled' %}
+  {% elif s.status == 'week' %}
+    {% set border_color = 'var(--gold)' %}
+    {% set btn_label    = '&#10003; Check' %}
+    {% set btn_class    = 'btn-sm btn-secondary-sm' %}
+    {% set btn_disabled = '' %}
+  {% elif s.status == 'old' %}
+    {% set border_color = 'var(--red)' %}
+    {% set btn_label    = 'Check &#8594;' %}
+    {% set btn_class    = 'btn-sm btn-secondary-sm' %}
+    {% set btn_disabled = '' %}
+  {% else %}
+    {% set border_color = 'var(--border)' %}
+    {% set btn_label    = 'Check &#8594;' %}
+    {% set btn_class    = 'btn-sm btn-secondary-sm' %}
+    {% set btn_disabled = '' %}
+  {% endif %}
+
+  <div class="stop-card" id="stop-{{ s.row.id }}" style="
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-left:4px solid {{ border_color }};
+    border-radius:4px;
+    padding:12px 14px;
+    margin-bottom:8px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+  ">
+
+    <!-- Index -->
+    <span style="color:var(--text-dim);font-size:11px;min-width:20px;flex-shrink:0">{{ loop.index }}</span>
+
+    <!-- Stop info -->
+    <div style="flex:1;min-width:0">
+      <div class="hi" style="font-size:13px">{{ s.row.stop_name }}</div>
+      {% if s.row.location %}
+      <div class="dim" style="font-size:11px">{{ s.row.location }}</div>
+      {% endif %}
+      {% if s.row.notes %}
+      <div class="dim" style="font-size:10px;margin-top:2px">{{ s.row.notes }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Check button + last checked -->
+    <div style="text-align:right;flex-shrink:0">
+      <button class="{{ btn_class }}"
+              onclick="checkStop({{ s.row.id }}, this)"
+              {{ btn_disabled }}
+              {% if s.status == 'today' %}style="color:var(--accent)"{% endif %}>
+        {{ btn_label }}
+      </button>
+      <div class="dim" style="font-size:10px;margin-top:4px">
+        {% if s.row.last_checked %}{{ s.row.last_checked }}{% else %}never{% endif %}
+      </div>
+    </div>
+
+    <!-- Delete -->
+    <div style="flex-shrink:0">
+      <form method="POST" action="/vendor-route/{{ s.row.id }}/delete" class="inline-form">
+        <button class="btn-sm btn-delete"
+                onclick="return confirmDelete()"
+                title="Remove stop">&#10005;</button>
+      </form>
+    </div>
+
+  </div>
+  {% else %}
+  <div class="no-data" style="padding:40px;text-align:center">
+    No stops added yet. Add your first vendor stop above.
+  </div>
+  {% endfor %}
+</div>
+
+<style>
+.btn-checked {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: default;
+  opacity: 0.9;
+}
+.btn-secondary-sm {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-secondary-sm:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+</style>
+
+<script>
+function checkStop(id, btn) {
+  fetch('/vendor-route/' + id + '/check', {method: 'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        var card = document.getElementById('stop-' + id);
+        card.style.borderLeftColor = 'var(--accent)';
+        btn.innerHTML = '&#10003; Checked';
+        btn.disabled = true;
+        btn.className = 'btn-sm btn-checked';
+        btn.style.color = 'var(--accent)';
+        // Update the "last checked" dim text — it's the last .dim child inside the right column
+        var rightCol = btn.parentElement;
+        var lastCheckedEl = rightCol.querySelector('.dim');
+        if (lastCheckedEl) lastCheckedEl.textContent = data.checked;
+      }
+    })
+    .catch(function(err) {
+      console.error('checkStop error:', err);
+    });
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}Backup{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>💾 BACKUP</h1>
+</div>
+
+<p class="dim" style="font-size:12px;margin-bottom:20px">
+  Everything lives in a single SQLite file. Download it regularly and keep a copy somewhere safe.
+</p>
+
+<div class="section-title" style="margin-bottom:12px">DATABASE</div>
+<div class="alert-grid" style="margin-bottom:24px">
+  <div class="alert-card" style="flex-direction:column;align-items:flex-start;gap:4px">
+    <span style="font-size:12px;color:var(--text-hi)">fo76.db</span>
+    <span class="dim" style="font-size:11px">{{ size_kb }} KB — all your tracker data</span>
+  </div>
+</div>
+
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px">
+  <a href="/backup/download-db" class="btn btn-primary" download>
+    ⬇ Download fo76_backup_<span id="todayDate"></span>.db
+  </a>
+  <a href="/backup/download-zip" class="btn btn-secondary" download>
+    📦 Full Backup (.zip — DB + vendor scan CSVs)
+  </a>
+</div>
+
+{% if auto_backups %}
+<div class="section-title" style="margin-bottom:10px">AUTO-BACKUPS (last {{ auto_backups|length }}, kept on startup)</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table class="data-table">
+    <thead><tr><th>File</th><th></th></tr></thead>
+    <tbody>
+      {% for f in auto_backups %}
+      <tr>
+        <td class="hi">{{ f }}</td>
+        <td><a href="/backup/auto/{{ f }}" class="btn-sm btn-edit" download>⬇</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="section-title" style="margin-bottom:12px">RESTORE</div>
+<div class="notice-card level-info" style="margin-bottom:20px">
+  <div class="notice-card-title">How to restore</div>
+  <div class="notice-card-body">
+    Stop the app → replace <code>fo76.db</code> in <code>E:\Projects\fo76-tracker\</code>
+    with your backup copy → start the app again. That's it.
+  </div>
+</div>
+
+{% if scan_files %}
+<div class="section-title" style="margin-bottom:10px">SAVED VENDOR SCAN CSVs ({{ scan_files|length }})</div>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>File</th><th></th></tr></thead>
+    <tbody>
+      {% for f in scan_files %}
+      <tr>
+        <td class="hi">{{ f }}</td>
+        <td><a href="/vendor-scan/download/{{ f }}" class="btn-sm btn-edit" download>⬇</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+document.getElementById('todayDate').textContent = new Date().toISOString().slice(0,10);
+</script>
+
+{% endblock %}

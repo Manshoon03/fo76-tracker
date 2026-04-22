@@ -1,0 +1,459 @@
+{% extends 'base.html' %}
+{% block title %}Build Comparison{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🔨 BUILD COMPARISON</h1>
+  <span class="count-badge">{{ all_builds|length }} builds</span>
+</div>
+
+<!-- ── Build Selector ─────────────────────────────────────────────────── -->
+<section class="add-panel open" id="selectorPanel">
+  <div class="panel-toggle" onclick="togglePanel('selectorPanel')">
+    <span>Select Two Builds</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="GET" action="/builds/compare">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Build 1</label>
+          <select name="b1" id="selectB1">
+            <option value="">— Select a build —</option>
+            {% for b in all_builds %}
+            <option value="{{ b.id }}" {{ 'selected' if b1 and b1.id == b.id else '' }}>
+              {{ b.name }}{% if b.playstyle %} — {{ b.playstyle }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Build 2</label>
+          <select name="b2" id="selectB2">
+            <option value="">— Select a build —</option>
+            {% for b in all_builds %}
+            <option value="{{ b.id }}" {{ 'selected' if b2 and b2.id == b.id else '' }}>
+              {{ b.name }}{% if b.playstyle %} — {{ b.playstyle }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Compare Builds</button>
+        {% if b1 or b2 %}
+        <a href="/builds/compare" class="btn btn-secondary">Clear</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+{% if not b1 or not b2 %}
+<!-- ── No selection message ────────────────────────────────────────────── -->
+<div style="margin-top:32px;text-align:center;padding:40px 20px;background:var(--bg-card);border:1px solid var(--border);border-radius:5px">
+  <div style="font-size:32px;margin-bottom:12px">⚖</div>
+  <div class="section-title" style="margin-bottom:8px">Select Two Builds to Compare</div>
+  <p class="dim" style="font-size:12px;max-width:400px;margin:0 auto">
+    Use the dropdowns above to pick two builds. SPECIAL stats will be shown side by side with highlights for the higher values.
+  </p>
+  {% if all_builds|length == 0 %}
+  <p style="margin-top:16px">
+    <a href="/builds" class="btn btn-secondary">+ Add Builds First</a>
+  </p>
+  {% elif all_builds|length == 1 %}
+  <p class="dim" style="font-size:12px;margin-top:12px">Only one build exists — add at least two to compare.</p>
+  {% endif %}
+</div>
+
+{% else %}
+<!-- ── Comparison Table ───────────────────────────────────────────────── -->
+{% set b1_total = b1.s + b1.p + b1.e + b1.c + b1.i + b1.a + b1.l %}
+{% set b2_total = b2.s + b2.p + b2.e + b2.c + b2.i + b2.a + b2.l %}
+
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:12px">Side-by-Side Comparison</div>
+
+  <div class="table-wrap">
+    <table class="data-table" id="compareTable">
+      <thead>
+        <tr>
+          <th style="width:160px">Attribute</th>
+          <th style="text-align:center;color:var(--accent)">{{ b1.name }}</th>
+          <th style="text-align:center;color:var(--gold)">{{ b2.name }}</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <!-- Playstyle -->
+        <tr>
+          <td class="dim" style="font-size:11px;letter-spacing:0.5px">PLAYSTYLE</td>
+          <td style="text-align:center">
+            {% if b1.playstyle %}
+              <span class="accent">{{ b1.playstyle }}</span>
+            {% else %}
+              <span class="dim">—</span>
+            {% endif %}
+          </td>
+          <td style="text-align:center">
+            {% if b2.playstyle %}
+              <span style="color:var(--gold)">{{ b2.playstyle }}</span>
+            {% else %}
+              <span class="dim">—</span>
+            {% endif %}
+          </td>
+        </tr>
+
+        <!-- Section divider -->
+        <tr style="background:var(--surface)">
+          <td colspan="3" style="font-size:10px;letter-spacing:1.5px;color:var(--text-dim);padding:6px 12px">
+            S.P.E.C.I.A.L. ATTRIBUTES
+          </td>
+        </tr>
+
+        <!-- S.P.E.C.I.A.L rows -->
+        {% set sp_attrs = [
+          ('s', 'Strength',     'S', 'special-S'),
+          ('p', 'Perception',   'P', 'special-P'),
+          ('e', 'Endurance',    'E', 'special-E'),
+          ('c', 'Charisma',     'C', 'special-C'),
+          ('i', 'Intelligence', 'I', 'special-I'),
+          ('a', 'Agility',      'A', 'special-A'),
+          ('l', 'Luck',         'L', 'special-L'),
+        ] %}
+        {% for field, label, code, css_class in sp_attrs %}
+        {% set v1 = b1[field] %}
+        {% set v2 = b2[field] %}
+        <tr>
+          <td>
+            <span class="{{ css_class }}" style="font-weight:bold;margin-right:6px">{{ code }}</span>
+            <span class="dim" style="font-size:11px">{{ label }}</span>
+          </td>
+          <td style="text-align:center;font-size:16px;font-weight:bold">
+            {% if v1 > v2 %}
+              <span style="color:var(--gold)">{{ v1 }}</span>
+            {% elif v1 == v2 %}
+              <span>{{ v1 }}</span>
+            {% else %}
+              <span class="dim">{{ v1 }}</span>
+            {% endif %}
+          </td>
+          <td style="text-align:center;font-size:16px;font-weight:bold">
+            {% if v2 > v1 %}
+              <span style="color:var(--gold)">{{ v2 }}</span>
+            {% elif v2 == v1 %}
+              <span>{{ v2 }}</span>
+            {% else %}
+              <span class="dim">{{ v2 }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+
+        <!-- Total -->
+        <tr style="border-top:2px solid var(--border)">
+          <td style="font-size:11px;letter-spacing:0.5px;color:var(--text-dim)">TOTAL S.P.E.C.I.A.L.</td>
+          <td style="text-align:center;font-size:15px;font-weight:bold">
+            <span class="{{ 'gold' if b1_total > b2_total else ('' if b1_total < b2_total else 'accent') }}
+                         {{ 'pts-warn' if b1_total > 56 else '' }}">
+              {{ b1_total }}
+            </span>
+            {% if b1_total > 56 %}
+              <span class="badge" style="background:var(--red);color:#fff;font-size:9px;margin-left:4px">OVER</span>
+            {% endif %}
+          </td>
+          <td style="text-align:center;font-size:15px;font-weight:bold">
+            <span class="{{ 'gold' if b2_total > b1_total else ('' if b2_total < b1_total else 'accent') }}
+                         {{ 'pts-warn' if b2_total > 56 else '' }}">
+              {{ b2_total }}
+            </span>
+            {% if b2_total > 56 %}
+              <span class="badge" style="background:var(--red);color:#fff;font-size:9px;margin-left:4px">OVER</span>
+            {% endif %}
+          </td>
+        </tr>
+
+        <!-- Section divider -->
+        <tr style="background:var(--surface)">
+          <td colspan="3" style="font-size:10px;letter-spacing:1.5px;color:var(--text-dim);padding:6px 12px">
+            BUILD DETAILS
+          </td>
+        </tr>
+
+        <!-- Key Cards -->
+        <tr>
+          <td class="dim" style="font-size:11px;letter-spacing:0.5px">KEY PERK CARDS</td>
+          <td style="text-align:left;font-size:11px;white-space:normal;padding:8px 12px;max-width:220px">
+            {% if b1.key_cards %}
+              {% for card in b1.key_cards.split(',') %}
+                <span class="badge" style="margin:2px 2px 2px 0;display:inline-block">{{ card.strip() }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="dim">—</span>
+            {% endif %}
+          </td>
+          <td style="text-align:left;font-size:11px;white-space:normal;padding:8px 12px;max-width:220px">
+            {% if b2.key_cards %}
+              {% for card in b2.key_cards.split(',') %}
+                <span class="badge" style="margin:2px 2px 2px 0;display:inline-block;border-color:var(--gold);color:var(--gold)">{{ card.strip() }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="dim">—</span>
+            {% endif %}
+          </td>
+        </tr>
+
+        <!-- Notes -->
+        <tr>
+          <td class="dim" style="font-size:11px;letter-spacing:0.5px">NOTES</td>
+          <td style="text-align:left;font-size:11px;white-space:normal;padding:8px 12px;color:var(--text-dim)">
+            {{ b1.notes if b1.notes else '—' }}
+          </td>
+          <td style="text-align:left;font-size:11px;white-space:normal;padding:8px 12px;color:var(--text-dim)">
+            {{ b2.notes if b2.notes else '—' }}
+          </td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Visual SPECIAL Bar Charts ─────────────────────────────────────── -->
+<div style="margin-top:20px">
+  <div class="section-title" style="margin-bottom:14px">S.P.E.C.I.A.L. Bar Chart</div>
+
+  <div class="two-col" style="gap:20px">
+
+    <!-- Build 1 bars -->
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:16px">
+      <div style="font-size:12px;font-weight:bold;color:var(--accent);margin-bottom:12px;letter-spacing:0.5px">
+        {{ b1.name }}
+      </div>
+      {% for field, label, code, css_class in [
+        ('s','Strength','S','special-S'),
+        ('p','Perception','P','special-P'),
+        ('e','Endurance','E','special-E'),
+        ('c','Charisma','C','special-C'),
+        ('i','Intelligence','I','special-I'),
+        ('a','Agility','A','special-A'),
+        ('l','Luck','L','special-L')
+      ] %}
+      {% set val = b1[field] %}
+      {% set pct = ((val / 15) * 100)|int %}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span class="{{ css_class }}" style="width:14px;font-size:12px;font-weight:bold;text-align:center;flex-shrink:0">{{ code }}</span>
+        <div style="flex:1;background:var(--surface);border-radius:3px;height:14px;overflow:hidden;border:1px solid var(--border)">
+          <div style="width:{{ pct }}%;height:100%;background:var(--accent);border-radius:3px;transition:width 0.3s ease"></div>
+        </div>
+        <span style="font-size:12px;font-weight:bold;min-width:20px;text-align:right;
+                     color:{% if val >= 13 %}var(--gold){% elif val >= 8 %}var(--text-hi){% else %}var(--text-dim){% endif %}">
+          {{ val }}
+        </span>
+      </div>
+      {% endfor %}
+      <div style="margin-top:10px;font-size:11px;color:var(--text-dim);text-align:right;border-top:1px solid var(--border);padding-top:8px">
+        Total: <span class="{{ 'gold' if b1_total > b2_total else '' }} {{ 'pts-warn' if b1_total > 56 else '' }}" style="font-weight:bold">{{ b1_total }}</span>
+        / 56
+      </div>
+    </div>
+
+    <!-- Build 2 bars -->
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:16px">
+      <div style="font-size:12px;font-weight:bold;color:var(--gold);margin-bottom:12px;letter-spacing:0.5px">
+        {{ b2.name }}
+      </div>
+      {% for field, label, code, css_class in [
+        ('s','Strength','S','special-S'),
+        ('p','Perception','P','special-P'),
+        ('e','Endurance','E','special-E'),
+        ('c','Charisma','C','special-C'),
+        ('i','Intelligence','I','special-I'),
+        ('a','Agility','A','special-A'),
+        ('l','Luck','L','special-L')
+      ] %}
+      {% set val = b2[field] %}
+      {% set pct = ((val / 15) * 100)|int %}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span class="{{ css_class }}" style="width:14px;font-size:12px;font-weight:bold;text-align:center;flex-shrink:0">{{ code }}</span>
+        <div style="flex:1;background:var(--surface);border-radius:3px;height:14px;overflow:hidden;border:1px solid var(--border)">
+          <div style="width:{{ pct }}%;height:100%;background:var(--gold);border-radius:3px;transition:width 0.3s ease"></div>
+        </div>
+        <span style="font-size:12px;font-weight:bold;min-width:20px;text-align:right;
+                     color:{% if val >= 13 %}var(--gold){% elif val >= 8 %}var(--text-hi){% else %}var(--text-dim){% endif %}">
+          {{ val }}
+        </span>
+      </div>
+      {% endfor %}
+      <div style="margin-top:10px;font-size:11px;color:var(--text-dim);text-align:right;border-top:1px solid var(--border);padding-top:8px">
+        Total: <span class="{{ 'gold' if b2_total > b1_total else '' }} {{ 'pts-warn' if b2_total > 56 else '' }}" style="font-weight:bold">{{ b2_total }}</span>
+        / 56
+      </div>
+    </div>
+
+  </div><!-- /.two-col -->
+</div>
+
+<!-- ── Radar / Spider chart (canvas) ──────────────────────────────────── -->
+<div style="margin-top:20px;background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:16px">
+  <div class="section-title" style="margin-bottom:12px">SPECIAL Overlay</div>
+  <div style="display:flex;justify-content:center;align-items:flex-start;gap:16px;flex-wrap:wrap">
+    <canvas id="specialRadar" width="340" height="340"
+            style="max-width:340px;border:1px solid var(--border);border-radius:4px;background:var(--surface)">
+    </canvas>
+    <div style="padding:8px 0">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px">
+        <span style="display:inline-block;width:24px;height:3px;background:var(--accent);border-radius:2px"></span>
+        <span class="accent">{{ b1.name }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <span style="display:inline-block;width:24px;height:3px;background:var(--gold);border-radius:2px"></span>
+        <span style="color:var(--gold)">{{ b2.name }}</span>
+      </div>
+      <div style="margin-top:16px;font-size:10px;color:var(--text-dim);line-height:1.8">
+        Each axis = one S.P.E.C.I.A.L. stat.<br>
+        Outer ring = 15 points max.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit links ─────────────────────────────────────────────────────── -->
+<div style="margin-top:16px;display:flex;gap:12px">
+  <a href="/builds?edit_id={{ b1.id }}" class="btn btn-secondary" style="font-size:11px">
+    ✎ Edit {{ b1.name }}
+  </a>
+  <a href="/builds?edit_id={{ b2.id }}" class="btn btn-secondary" style="font-size:11px">
+    ✎ Edit {{ b2.name }}
+  </a>
+  <a href="/builds" class="btn btn-secondary" style="font-size:11px">
+    ← Back to Builds
+  </a>
+</div>
+
+<script>
+// ── Radar / polygon chart ─────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('specialRadar');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const labels = ['S','P','E','C','I','A','L'];
+  const vals1  = [{{ b1.s }}, {{ b1.p }}, {{ b1.e }}, {{ b1.c }}, {{ b1.i }}, {{ b1.a }}, {{ b1.l }}];
+  const vals2  = [{{ b2.s }}, {{ b2.p }}, {{ b2.e }}, {{ b2.c }}, {{ b2.i }}, {{ b2.a }}, {{ b2.l }}];
+  const MAX    = 15;
+  const N      = labels.length;
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const cx = W / 2;
+  const cy = H / 2;
+  const R  = Math.min(W, H) * 0.38;
+
+  // CSS variable colours resolved at runtime
+  const cs = getComputedStyle(document.documentElement);
+  const colAccent  = cs.getPropertyValue('--accent').trim()  || '#00ff88';
+  const colGold    = cs.getPropertyValue('--gold').trim()    || '#f0c040';
+  const colBorder  = cs.getPropertyValue('--border').trim()  || '#333';
+  const colDim     = cs.getPropertyValue('--text-dim').trim()|| '#666';
+  const colHi      = cs.getPropertyValue('--text-hi').trim() || '#eee';
+
+  function angle(i) {
+    return (Math.PI * 2 * i / N) - Math.PI / 2;
+  }
+
+  function point(i, val) {
+    const r = (val / MAX) * R;
+    return [cx + r * Math.cos(angle(i)), cy + r * Math.sin(angle(i))];
+  }
+
+  function fullPoint(i) {
+    return [cx + R * Math.cos(angle(i)), cy + R * Math.sin(angle(i))];
+  }
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw grid rings
+  const rings = [3, 6, 9, 12, 15];
+  rings.forEach(v => {
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const [x, y] = point(i, v);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = colBorder;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // Draw axis spokes
+  for (let i = 0; i < N; i++) {
+    const [x, y] = fullPoint(i);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = colBorder;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Draw filled polygon helper
+  function drawPoly(vals, color, alpha) {
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const [x, y] = point(i, vals[i]);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color.replace(')', ', ' + alpha + ')').replace('rgb(', 'rgba(').replace('#', '');
+    // Use globalAlpha instead for safety
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Draw dots helper
+  function drawDots(vals, color) {
+    for (let i = 0; i < N; i++) {
+      const [x, y] = point(i, vals[i]);
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  drawPoly(vals1, colAccent, 0.15);
+  drawPoly(vals2, colGold, 0.15);
+  drawDots(vals1, colAccent);
+  drawDots(vals2, colGold);
+
+  // Draw labels
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < N; i++) {
+    const [x, y] = point(i, MAX * 1.18);
+    ctx.fillStyle = colHi;
+    ctx.fillText(labels[i], x, y);
+    // Show value pair below/near the label
+    const [vx, vy] = point(i, MAX * 1.35);
+    ctx.font = '10px monospace';
+    ctx.fillStyle = colDim;
+    ctx.fillText(vals1[i] + ' / ' + vals2[i], vx, vy);
+    ctx.font = 'bold 13px monospace';
+  }
+})();
+</script>
+
+{% endif %}{# end if b1 and b2 #}
+
+{% endblock %}

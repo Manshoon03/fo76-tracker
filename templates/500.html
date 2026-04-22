@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en" id="htmlRoot">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FO76 Tracker — System Error</title>
+  <script>
+    (function(){
+      var t = localStorage.getItem('fo76theme') || 'green';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:40px">
+  <div>
+    <div style="font-size:72px;color:var(--red,#ef4444);text-shadow:0 0 40px rgba(239,68,68,0.4);letter-spacing:4px;line-height:1">500</div>
+    <div style="font-size:14px;color:var(--accent);letter-spacing:3px;margin:12px 0 6px">SYSTEM FAILURE</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Vault-Tec mainframe encountered an unexpected error.</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:28px">Check the console for details. Vault-Tec apologizes for any inconvenience.</div>
+    <div style="font-size:28px;margin-bottom:20px">⚠</div>
+    <a href="/" style="display:inline-block;padding:8px 20px;border:1px solid var(--accent);color:var(--accent);text-decoration:none;border-radius:3px;font-family:var(--font);font-size:13px;letter-spacing:1px">⬢ Return to Dashboard</a>
+  </div>
+</div>
+</body>
+</html>

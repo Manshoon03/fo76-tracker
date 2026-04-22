@@ -1,0 +1,528 @@
+{% extends 'base.html' %}
+{% block title %}Weapon Advisor{% endblock %}
+{% block content %}
+
+<style>
+  /* ── Layout ── */
+  .wa-wrap { max-width:960px; }
+  .wa-head  { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
+  .wa-head h1 { font-size:20px; color:var(--accent); margin:0; }
+
+  /* ── Input form ── */
+  .wa-form  { background:var(--bg-card); border:1px solid var(--border);
+              border-radius:8px; padding:20px; margin-bottom:24px; }
+  .wa-grid  { display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px; margin-bottom:14px; }
+  .wa-field label { font-size:11px; color:var(--text-dim); display:block; margin-bottom:4px; }
+  .wa-field select, .wa-field input, .wa-field textarea {
+    width:100%; background:var(--bg-main,#111); border:1px solid var(--border);
+    border-radius:4px; color:var(--text); padding:7px 10px; font-size:13px;
+    font-family:inherit;
+  }
+  .wa-field select:focus, .wa-field input:focus, .wa-field textarea:focus {
+    outline:none; border-color:var(--accent);
+  }
+  .wa-field textarea { min-height:60px; resize:vertical; }
+  .wa-actions { display:flex; gap:10px; align-items:center; }
+
+  /* ── Result sections ── */
+  .wa-result { display:none; }
+  .wa-result.visible { display:block; }
+
+  .wa-section       { margin-bottom:24px; }
+  .wa-section-title { font-size:11px; color:var(--text-dim); text-transform:uppercase;
+                      letter-spacing:.06em; margin:0 0 12px;
+                      display:flex; align-items:center; gap:8px; }
+  .wa-section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* Weapon summary card */
+  .wa-weapon-card { background:var(--bg-card); border:1px solid var(--accent);
+                    border-radius:8px; padding:16px 20px; margin-bottom:24px; }
+  .wa-weapon-name { font-size:18px; font-weight:700; color:var(--accent); margin:0 0 4px; }
+  .wa-weapon-type { font-size:11px; color:var(--text-dim); margin:0 0 10px; }
+  .wa-weapon-stats { display:flex; gap:16px; font-size:12px; color:var(--text-muted);
+                     margin-bottom:10px; flex-wrap:wrap; }
+  .wa-weapon-stat span { color:var(--text); font-weight:600; }
+  .wa-weapon-summary { font-size:13px; line-height:1.7; color:var(--text-muted);
+                       border-top:1px solid var(--border); padding-top:10px; margin-top:2px; }
+
+  /* Mod recommendation cards */
+  .wa-mod-grid  { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+                  gap:12px; }
+  .wa-mod-card  { background:var(--bg-card); border:1px solid var(--border);
+                  border-radius:8px; overflow:hidden; }
+  .wa-mod-head  { padding:10px 14px; background:var(--bg-main,#111);
+                  border-bottom:1px solid var(--border);
+                  display:flex; justify-content:space-between; align-items:center; }
+  .wa-mod-slot  { font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+                  color:var(--text-dim); }
+  .wa-mod-body  { padding:12px 14px; }
+  .wa-mod-rec   { display:flex; align-items:flex-start; gap:8px; margin-bottom:8px; }
+  .wa-mod-check { color:#50c050; font-size:16px; flex-shrink:0; line-height:1.2; }
+  .wa-mod-name  { font-size:14px; font-weight:700; color:var(--text); line-height:1.2; }
+  .wa-mod-badge { font-size:9px; background:var(--accent); color:#000;
+                  border-radius:3px; padding:1px 5px; margin-left:6px;
+                  vertical-align:middle; font-weight:700; }
+  .wa-mod-reason{ font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom:8px; }
+  .wa-mod-alts  { font-size:11px; color:var(--text-dim); border-top:1px solid var(--border);
+                  padding-top:8px; margin-top:4px; }
+  .wa-mod-alts .alt-item  { margin-bottom:4px; }
+  .wa-mod-alts .alt-name  { color:var(--text-muted); font-weight:600; }
+  .wa-mod-alts .avoid     { color:#e04040; }
+  .wa-mod-chosen { font-size:10px; background:var(--accent)22; border:1px solid var(--accent)44;
+                   border-radius:3px; padding:2px 6px; color:var(--accent); }
+
+  /* Legendary setup */
+  .wa-legend-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .wa-star-card   { background:var(--bg-card); border:1px solid var(--border);
+                    border-radius:8px; padding:14px 16px; }
+  .wa-star-label  { font-size:10px; color:#e0c040; text-transform:uppercase;
+                    letter-spacing:.05em; margin-bottom:6px; }
+  .wa-star-name   { font-size:15px; font-weight:700; color:var(--text); margin-bottom:4px; }
+  .wa-star-reason { font-size:12px; color:var(--text-muted); line-height:1.6; }
+  .wa-star-alt    { font-size:11px; color:var(--text-dim); margin-top:6px;
+                    padding-top:6px; border-top:1px solid var(--border); }
+
+  /* Hidden gems */
+  .wa-gems { display:flex; flex-direction:column; gap:10px; }
+  .wa-gem  { background:var(--bg-card); border:1px solid var(--border);
+             border-left:3px solid var(--accent); border-radius:6px;
+             padding:12px 16px; font-size:13px; color:var(--text-muted);
+             line-height:1.7; }
+  .wa-gem::before { content:'💡 '; }
+
+  /* SPECIAL bars */
+  .wa-special   { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+  .wa-sp        { flex:1; min-width:60px; text-align:center;
+                  background:var(--bg-card); border:1px solid var(--border);
+                  border-radius:6px; padding:8px 4px; }
+  .wa-sp-lbl    { font-size:10px; font-weight:700; letter-spacing:.04em; }
+  .wa-sp-val    { font-size:24px; font-weight:700; line-height:1.1; }
+  .wa-sp-bar    { height:4px; border-radius:2px; margin:4px auto 0; max-width:80%; }
+  .sp-s .wa-sp-lbl,.sp-s .wa-sp-val{color:#e05050} .sp-s .wa-sp-bar{background:#e05050}
+  .sp-p .wa-sp-lbl,.sp-p .wa-sp-val{color:#e08040} .sp-p .wa-sp-bar{background:#e08040}
+  .sp-e .wa-sp-lbl,.sp-e .wa-sp-val{color:#50c050} .sp-e .wa-sp-bar{background:#50c050}
+  .sp-c .wa-sp-lbl,.sp-c .wa-sp-val{color:#e0c040} .sp-c .wa-sp-bar{background:#e0c040}
+  .sp-i .wa-sp-lbl,.sp-i .wa-sp-val{color:#4090e0} .sp-i .wa-sp-bar{background:#4090e0}
+  .sp-a .wa-sp-lbl,.sp-a .wa-sp-val{color:#40c0c0} .sp-a .wa-sp-bar{background:#40c0c0}
+  .sp-l .wa-sp-lbl,.sp-l .wa-sp-val{color:#c040e0} .sp-l .wa-sp-bar{background:#c040e0}
+
+  /* Perk cards */
+  .wa-perk-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
+                  gap:10px; margin-bottom:20px; }
+  .wa-perk      { background:var(--bg-card); border:1px solid var(--border);
+                  border-radius:6px; padding:10px 8px; text-align:center; }
+  .wa-perk img  { width:90px; height:90px; object-fit:contain; image-rendering:pixelated; }
+  .wa-perk-fb   { width:90px; height:90px; background:var(--bg-main,#111);
+                  border:1px solid var(--border); border-radius:4px;
+                  display:flex; align-items:center; justify-content:center;
+                  font-size:24px; margin:0 auto; }
+  .wa-perk-name { font-size:11px; font-weight:600; color:var(--text); margin-top:6px;
+                  line-height:1.3; }
+  .wa-perk-sp   { font-size:10px; color:var(--text-dim); }
+  .wa-perk-reason{ font-size:10px; color:var(--text-dim); margin-top:3px; line-height:1.4;
+                   display:none; }
+  .wa-perk:hover .wa-perk-reason { display:block; }
+
+  /* Mutations list */
+  .wa-mutations { display:flex; flex-wrap:wrap; gap:8px; }
+  .wa-mut-tag   { background:var(--bg-card); border:1px solid #40c0c044;
+                  color:#40c0c0; border-radius:20px; padding:4px 12px; font-size:12px; }
+
+  /* Playstyle notes */
+  .wa-notes { background:var(--bg-card); border:1px solid var(--border);
+              border-radius:8px; padding:16px 20px; font-size:13px;
+              color:var(--text-muted); line-height:1.8; white-space:pre-wrap; }
+
+  /* Save bar */
+  .wa-save-bar  { background:var(--bg-card); border:1px solid var(--accent)44;
+                  border-radius:8px; padding:14px 20px; display:flex;
+                  align-items:center; gap:12px; margin-bottom:24px; flex-wrap:wrap; }
+  .wa-save-bar input { flex:1; min-width:200px; }
+  .wa-save-msg  { font-size:12px; }
+
+  /* Loading overlay */
+  .wa-loading   { display:none; align-items:center; justify-content:center;
+                  gap:12px; padding:40px; color:var(--text-dim); font-size:14px; }
+  .wa-loading.show { display:flex; }
+  .wa-spinner   { width:24px; height:24px; border:2px solid var(--border);
+                  border-top-color:var(--accent); border-radius:50%;
+                  animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* No weapons state */
+  .wa-empty { text-align:center; padding:60px 20px; color:var(--text-dim); }
+
+  @media(max-width:640px){
+    .wa-grid        { grid-template-columns:1fr; }
+    .wa-legend-grid { grid-template-columns:1fr; }
+    .wa-mod-grid    { grid-template-columns:1fr; }
+    .wa-special     { flex-wrap:wrap; }
+    .wa-sp          { flex:0 0 calc(25% - 6px); }
+  }
+</style>
+
+<div class="wa-wrap">
+  <div class="wa-head">
+    <h1>🔫 WEAPON ADVISOR</h1>
+    <span style="font-size:12px;color:var(--text-dim)">AI-powered mod & build optimization</span>
+  </div>
+
+  {% if not grouped %}
+  <div class="wa-empty">
+    <div style="font-size:32px;margin-bottom:12px">⚙</div>
+    <div style="font-size:15px;margin-bottom:8px">Weapon database is empty</div>
+    <div style="font-size:12px">Run <code>python scrape_weapons.py</code> to pull weapon data from the wiki.</div>
+  </div>
+  {% else %}
+
+  <!-- ── Input form ── -->
+  <div class="wa-form">
+    <div class="wa-grid">
+      <div class="wa-field">
+        <label>Weapon</label>
+        <select id="weaponSelect">
+          <option value="">— Select a weapon —</option>
+          {% for wtype, weapons in grouped.items() %}
+          <optgroup label="{{ wtype }}">
+            {% for w in weapons %}
+            <option value="{{ w.id }}"
+                    data-name="{{ w.name }}"
+                    data-type="{{ w.weapon_type }}"
+                    data-dmg="{{ w.damage }}"
+                    data-fr="{{ w.fire_rate }}"
+                    data-range="{{ w.range }}"
+                    data-ammo="{{ w.ammo_type }}">
+              {{ w.name }}
+            </option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="wa-field">
+        <label>Race</label>
+        <select id="raceSelect">
+          <option>Human</option>
+          <option>Ghoul</option>
+        </select>
+      </div>
+      <div class="wa-field">
+        <label>Health Style</label>
+        <select id="healthSelect">
+          <option>Full Health</option>
+          <option>Bloodied</option>
+          <option>Tanky (PA)</option>
+        </select>
+      </div>
+    </div>
+    <div class="wa-field" style="margin-bottom:14px">
+      <label>Goals / Notes (optional)</label>
+      <textarea id="goalsInput" placeholder="e.g. Max DPS, solo play, budget legendary, team support..."></textarea>
+    </div>
+    <div class="wa-actions">
+      <button class="btn btn-primary" id="analyzeBtn" onclick="runAnalysis()">🔍 Analyze Build</button>
+      <span id="analyzeStatus" style="font-size:12px;color:var(--text-dim)"></span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="wa-loading" id="waLoading">
+    <div class="wa-spinner"></div>
+    <span>Analyzing with Claude AI — checking mods, legendary options, meta context...</span>
+  </div>
+
+  <!-- ── Results ── -->
+  <div class="wa-result" id="waResult">
+
+    <!-- Weapon summary card -->
+    <div class="wa-weapon-card" id="wWeaponCard">
+      <div class="wa-weapon-name" id="wName"></div>
+      <div class="wa-weapon-type" id="wType"></div>
+      <div class="wa-weapon-stats" id="wStats"></div>
+      <div class="wa-weapon-summary" id="wSummary"></div>
+    </div>
+
+    <!-- Save bar -->
+    <div class="wa-save-bar">
+      <span style="font-size:12px;color:var(--text-dim);flex-shrink:0">Save as build:</span>
+      <input type="text" id="buildNameInput" class="wa-field" placeholder="Build name..." style="flex:1;min-width:200px;background:var(--bg-main,#111);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:6px 10px;font-size:13px;font-family:inherit">
+      <button class="btn btn-secondary" onclick="saveBuild()">💾 Save to Builds</button>
+      <span class="wa-save-msg" id="saveMsg"></span>
+    </div>
+
+    <!-- Mod recommendations -->
+    <div class="wa-section">
+      <div class="wa-section-title">Mod Recommendations</div>
+      <div class="wa-mod-grid" id="wMods"></div>
+    </div>
+
+    <!-- Legendary setup -->
+    <div class="wa-section">
+      <div class="wa-section-title">Legendary Setup</div>
+      <div class="wa-legend-grid" id="wLegend"></div>
+    </div>
+
+    <!-- Hidden gems -->
+    <div class="wa-section">
+      <div class="wa-section-title">Hidden Gems & Meta Notes</div>
+      <div class="wa-gems" id="wGems"></div>
+    </div>
+
+    <!-- SPECIAL -->
+    <div class="wa-section">
+      <div class="wa-section-title">SPECIAL Allocation</div>
+      <div class="wa-special" id="wSpecial"></div>
+    </div>
+
+    <!-- Perk cards -->
+    <div class="wa-section">
+      <div class="wa-section-title">Perk Cards</div>
+      <div class="wa-perk-grid" id="wPerks"></div>
+    </div>
+
+    <!-- Mutations -->
+    <div class="wa-section">
+      <div class="wa-section-title">Mutations</div>
+      <div class="wa-mutations" id="wMutations"></div>
+    </div>
+
+    <!-- Playstyle notes -->
+    <div class="wa-section">
+      <div class="wa-section-title">Playstyle Notes</div>
+      <div class="wa-notes" id="wNotes"></div>
+    </div>
+
+  </div><!-- /wa-result -->
+  {% endif %}
+</div>
+
+<script>
+const SP_KEYS  = ['s','p','e','c','i','a','l'];
+const SP_NAMES = ['STR','PER','END','CHA','INT','AGI','LCK'];
+const SP_CLS   = ['sp-s','sp-p','sp-e','sp-c','sp-i','sp-a','sp-l'];
+
+let manifest = {};
+let currentResult = null;
+let selectedMods  = {};  // slot → chosen mod name
+
+// Load perk image manifest
+fetch('/static/img/perks/manifest.json')
+  .then(r => r.json())
+  .then(d => { manifest = d; })
+  .catch(() => {});
+
+function normalize(s) {
+  return (s || '').toLowerCase()
+    .replace(/\bperk\b/g,'').replace(/_/g,' ')
+    .replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+}
+function findImg(name) {
+  const n = normalize(name);
+  for (const [k,v] of Object.entries(manifest)) {
+    if (normalize(k) === n) return v;
+  }
+  for (const [k,v] of Object.entries(manifest)) {
+    const nk = normalize(k);
+    if (nk.includes(n) || n.includes(nk)) return v;
+  }
+  return null;
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function runAnalysis() {
+  const sel = document.getElementById('weaponSelect');
+  const wid = sel.value;
+  if (!wid) {
+    document.getElementById('analyzeStatus').textContent = 'Please select a weapon.';
+    return;
+  }
+
+  document.getElementById('analyzeStatus').textContent = '';
+  document.getElementById('waLoading').classList.add('show');
+  document.getElementById('waResult').classList.remove('visible');
+  document.getElementById('analyzeBtn').disabled = true;
+  selectedMods = {};
+
+  const opt    = sel.options[sel.selectedIndex];
+  const wName  = opt.dataset.name;
+  const wType  = opt.dataset.type;
+  const wDmg   = opt.dataset.dmg;
+  const wFr    = opt.dataset.fr;
+  const wRange = opt.dataset.range;
+  const wAmmo  = opt.dataset.ammo;
+
+  try {
+    const resp = await fetch('/weapon-advisor/analyze', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        weapon_id: parseInt(wid),
+        race:   document.getElementById('raceSelect').value,
+        health: document.getElementById('healthSelect').value,
+        goals:  document.getElementById('goalsInput').value,
+      })
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || 'Analysis failed');
+
+    currentResult = data.result;
+    renderResult(data.result, {name: wName, type: wType, dmg: wDmg, fr: wFr, range: wRange, ammo: wAmmo});
+  } catch(e) {
+    document.getElementById('analyzeStatus').textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('waLoading').classList.remove('show');
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
+
+function renderResult(r, wInfo) {
+  // Weapon header
+  document.getElementById('wName').textContent = r.weapon_name || wInfo.name;
+  document.getElementById('wType').textContent = (r.weapon_type || wInfo.type) + ' Weapon';
+  document.getElementById('wStats').innerHTML =
+    `<div>DMG <span>${wInfo.dmg || '?'}</span></div>` +
+    `<div>FIRE RATE <span>${wInfo.fr || '?'}</span></div>` +
+    `<div>RANGE <span>${wInfo.range || '?'}</span></div>` +
+    (wInfo.ammo ? `<div>AMMO <span>${wInfo.ammo}</span></div>` : '');
+  document.getElementById('wSummary').textContent = r.weapon_summary || '';
+  document.getElementById('buildNameInput').value = (r.weapon_name || wInfo.name) + ' Build';
+
+  // Mod recommendations
+  const modsEl = document.getElementById('wMods');
+  if (r.mod_recommendations && r.mod_recommendations.length) {
+    modsEl.innerHTML = r.mod_recommendations.map(m => {
+      selectedMods[m.slot] = m.recommended;  // default to recommended
+
+      const alts = (m.alternatives || []).map(a =>
+        `<div class="alt-item"><span class="alt-name">${esc(a.mod)}</span> — ${esc(a.when)}</div>`
+      ).join('');
+      const avoids = (m.avoid || []).map(a =>
+        `<div class="alt-item avoid">✗ ${esc(a.mod)} — ${esc(a.why)}</div>`
+      ).join('');
+
+      return `<div class="wa-mod-card">
+        <div class="wa-mod-head">
+          <span class="wa-mod-slot">${esc(m.slot)}</span>
+          <span class="wa-mod-chosen" id="chosen-${esc(m.slot)}">✓ ${esc(m.recommended)}</span>
+        </div>
+        <div class="wa-mod-body">
+          <div class="wa-mod-rec">
+            <span class="wa-mod-check">✓</span>
+            <div>
+              <span class="wa-mod-name">${esc(m.recommended)}</span>
+              <span class="wa-mod-badge">BEST</span>
+            </div>
+          </div>
+          <div class="wa-mod-reason">${esc(m.reason)}</div>
+          ${alts || avoids ? `<div class="wa-mod-alts">${alts}${avoids}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } else {
+    modsEl.innerHTML = '<div style="font-size:13px;color:var(--text-dim)">No mod data scraped for this weapon — legendary and build recommendations still apply.</div>';
+  }
+
+  // Legendary
+  const leg = r.legendary_setup || {};
+  document.getElementById('wLegend').innerHTML = [
+    {label:'⭐⭐⭐ Star 1', name:leg.star1, reason:leg.star1_reason, alt:leg.star1_alt},
+    {label:'⭐⭐ Star 2',   name:leg.star2, reason:leg.star2_reason},
+    {label:'⭐ Star 3',     name:leg.star3, reason:leg.star3_reason},
+  ].map(s => `<div class="wa-star-card">
+    <div class="wa-star-label">${esc(s.label)}</div>
+    <div class="wa-star-name">${esc(s.name||'—')}</div>
+    <div class="wa-star-reason">${esc(s.reason||'')}</div>
+    ${s.alt ? `<div class="wa-star-alt">Alt: ${esc(s.alt)}</div>` : ''}
+  </div>`).join('');
+
+  // Hidden gems
+  const gems = r.hidden_gems || [];
+  document.getElementById('wGems').innerHTML = gems.length
+    ? gems.map(g => `<div class="wa-gem">${esc(g)}</div>`).join('')
+    : '<div style="font-size:12px;color:var(--text-dim)">No hidden gems noted.</div>';
+
+  // SPECIAL
+  const sp = r.special || {};
+  document.getElementById('wSpecial').innerHTML = SP_KEYS.map((k,i) => {
+    const v = sp[k] || 1;
+    return `<div class="wa-sp ${SP_CLS[i]}">
+      <div class="wa-sp-lbl">${SP_NAMES[i]}</div>
+      <div class="wa-sp-val">${v}</div>
+      <div class="wa-sp-bar" style="width:${Math.round((v/15)*100)}%"></div>
+    </div>`;
+  }).join('');
+
+  // Perk cards
+  const perks = r.perk_cards || [];
+  document.getElementById('wPerks').innerHTML = perks.map(p => {
+    const img = findImg(p.name);
+    const spIdx = SP_KEYS.indexOf((p.special||'S').toLowerCase());
+    const spColor = ['#e05050','#e08040','#50c050','#e0c040','#4090e0','#40c0c0','#c040e0'][spIdx] || 'var(--accent)';
+    return `<div class="wa-perk">
+      ${img
+        ? `<img src="${img}" alt="${esc(p.name)}" title="${esc(p.name)}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        : ''
+      }
+      <div class="wa-perk-fb" style="${img ? 'display:none' : ''}">🃏</div>
+      <div class="wa-perk-name">${esc(p.name)}</div>
+      <div class="wa-perk-sp" style="color:${spColor}">${(p.special||'?').toUpperCase()} · Rank ${p.rank||1}</div>
+      <div class="wa-perk-reason">${esc(p.reason||'')}</div>
+    </div>`;
+  }).join('');
+
+  // Mutations
+  const muts = r.mutations || [];
+  document.getElementById('wMutations').innerHTML = muts.length
+    ? muts.map(m => `<span class="wa-mut-tag">🧬 ${esc(m)}</span>`).join('')
+    : '<span style="font-size:12px;color:var(--text-dim)">No mutations specified.</span>';
+
+  // Notes
+  document.getElementById('wNotes').textContent = r.playstyle_notes || '';
+
+  document.getElementById('waResult').classList.add('visible');
+  document.getElementById('waResult').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function saveBuild() {
+  if (!currentResult) return;
+  const name = document.getElementById('buildNameInput').value.trim()
+             || currentResult.weapon_name + ' Build';
+  const msgEl = document.getElementById('saveMsg');
+  msgEl.style.color = 'var(--text-dim)';
+  msgEl.textContent = 'Saving...';
+
+  try {
+    const resp = await fetch('/weapon-advisor/save-build', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        build_name:     name,
+        weapon_name:    currentResult.weapon_name,
+        weapon_summary: currentResult.weapon_summary,
+        special:        currentResult.special,
+        perk_cards:     currentResult.perk_cards,
+        mutations:      currentResult.mutations,
+        mods_chosen:    selectedMods,
+        legendary_setup: currentResult.legendary_setup,
+        playstyle_notes: currentResult.playstyle_notes,
+      })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      msgEl.style.color = '#50c050';
+      msgEl.innerHTML = '✓ Saved! <a href="/builds" style="color:var(--accent)">View builds →</a>';
+    } else {
+      throw new Error(data.error);
+    }
+  } catch(e) {
+    msgEl.style.color = '#e04040';
+    msgEl.textContent = 'Error: ' + e.message;
+  }
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% block title %}Legendary Runs{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>⚔ LEGENDARY RUNS</h1>
+  <span class="count-badge">{{ bosses|length }} bosses</span>
+</div>
+
+<!-- ── Boss Cards Grid ──────────────────────────────────────────────────── -->
+{% if bosses %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:20px">
+  {% for entry in bosses %}
+  {% set row = entry.row %}
+  {% set days = entry.days_since %}
+
+  {# urgency color for border and days indicator #}
+  {% if days is none %}
+    {% set urgency_color = 'var(--red)' %}
+    {% set urgency_label = 'NEVER RUN' %}
+  {% elif days < 3 %}
+    {% set urgency_color = 'var(--accent)' %}
+    {% set urgency_label = days ~ 'd ago' %}
+  {% elif days <= 7 %}
+    {% set urgency_color = 'var(--gold)' %}
+    {% set urgency_label = days ~ 'd ago' %}
+  {% else %}
+    {% set urgency_color = 'var(--red)' %}
+    {% set urgency_label = days ~ 'd ago' %}
+  {% endif %}
+
+  <div class="boss-card" id="boss-{{ row['id'] }}" style="background:var(--bg-card);border:1px solid {{ urgency_color }};border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:10px;box-shadow:0 0 10px {{ urgency_color }}22">
+
+    <!-- Boss name + run count -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div class="accent" style="font-size:20px;font-weight:bold;letter-spacing:1px;text-shadow:0 0 10px var(--accent)44;line-height:1.2;word-break:break-word">
+        {{ row['boss_name'] }}
+      </div>
+      <span class="badge" style="border-color:var(--gold);color:var(--gold);white-space:nowrap;flex-shrink:0;font-size:12px;padding:3px 10px">
+        ⚔ {{ row['run_count'] or 0 }}
+      </span>
+    </div>
+
+    <!-- Last run + urgency -->
+    <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+      <span class="dim">Last run:</span>
+      {% if row['last_run'] %}
+        <span class="hi">{{ row['last_run'] }}</span>
+      {% else %}
+        <span style="color:var(--red)">Never</span>
+      {% endif %}
+      <span style="margin-left:auto;font-weight:bold;color:{{ urgency_color }};font-size:11px;letter-spacing:0.5px">
+        {{ urgency_label }}
+      </span>
+    </div>
+
+    <!-- Urgency bar -->
+    <div style="height:3px;border-radius:2px;background:var(--border)">
+      <div style="height:100%;border-radius:2px;background:{{ urgency_color }};width:{% if days is none %}100{% elif days == 0 %}5{% elif days < 3 %}30{% elif days <= 7 %}65{% else %}100{% endif %}%"></div>
+    </div>
+
+    <!-- Notes -->
+    {% if row['notes'] %}
+    <div class="dim" style="font-size:11px;border-left:2px solid var(--border);padding-left:8px;line-height:1.5">
+      {{ row['notes'] }}
+    </div>
+    {% endif %}
+
+    <!-- Log Run toggle button -->
+    <button class="btn btn-primary" style="width:100%;justify-content:center"
+            onclick="toggleLogForm('logform-{{ row['id'] }}')">
+      ⚔ Log Run
+    </button>
+
+    <!-- Log Run inline form (hidden by default) -->
+    <div id="logform-{{ row['id'] }}" style="display:none">
+      <form method="POST" action="/legend-runs/log" style="display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--bg-panel);border:1px solid var(--border);border-radius:4px">
+        <input type="hidden" name="boss_id" value="{{ row['id'] }}">
+        <div class="form-group">
+          <label>Run Date</label>
+          <input type="date" name="run_date" value="{{ today }}" required>
+        </div>
+        <div class="form-group">
+          <label>Notes (optional)</label>
+          <input type="text" name="notes" placeholder="e.g. got a quad, server lagged...">
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">✓ Confirm Log</button>
+          <button type="button" class="btn btn-secondary" onclick="toggleLogForm('logform-{{ row['id'] }}')">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Reset + Delete row -->
+    <div style="display:flex;gap:6px">
+      <form method="POST" action="/legend-runs/{{ row['id'] }}/reset" class="inline-form" style="flex:1">
+        <button class="btn btn-secondary" style="width:100%;justify-content:center;font-size:11px"
+                onclick="return confirm('Reset run count for {{ row['boss_name'] }}?')">
+          ↺ Reset
+        </button>
+      </form>
+      <form method="POST" action="/legend-runs/{{ row['id'] }}/delete" class="inline-form">
+        <button class="btn-sm btn-delete" style="height:100%;padding:4px 10px"
+                onclick="return confirmDelete()">🗑</button>
+      </form>
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="no-data" style="margin-bottom:20px">
+  No bosses tracked yet. Add one below to start logging legendary runs.
+</div>
+{% endif %}
+
+<!-- ── Add Custom Boss Panel ────────────────────────────────────────────── -->
+<section class="add-panel" id="addBossPanel">
+  <div class="panel-toggle" onclick="togglePanel('addBossPanel')">
+    <span>+ Add Custom Boss</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/legend-runs/add">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Boss Name *</label>
+          <input type="text" name="boss_name" required placeholder="e.g. Earle Williams, Wendigo Colossus, XL 44...">
+        </div>
+        <div class="form-group span2">
+          <label>Notes (optional)</label>
+          <input type="text" name="notes" placeholder="e.g. Daily event boss, server event only...">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">+ Add Boss</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<script>
+function toggleLogForm(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+
+{% endblock %}

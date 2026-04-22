@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% block title %}Mods{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🔩 MODS</h1>
+  <span class="count-badge">{{ items|length }} mods</span>
+  {% set sell_count = items|selectattr('status','equalto','Sell')|list|length %}
+  {% if sell_count > 0 %}<span class="badge badge-sell">{{ sell_count }} to sell</span>{% endif %}
+</div>
+
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Mod{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/mods/{{ edit_item['id'] }}/update{% else %}/mods/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Mod Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Mod Type</label>
+          <select name="mod_type">
+            {% for t in ['Normal','Legendary 1-Star','Legendary 2-Star','Legendary 3-Star'] %}
+            <option value="{{ t }}" {{ 'selected' if edit_item and edit_item['mod_type']==t else '' }}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Applies To</label>
+          <select name="applies_to">
+            {% for t in ['','Weapon','Armor','Power Armor','Underarmor','Backpack'] %}
+            <option value="{{ t }}" {{ 'selected' if edit_item and edit_item['applies_to']==t else '' }}>{{ t or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Effect</label>
+          <input type="text" name="effect" value="{{ edit_item['effect'] if edit_item else '' }}" placeholder="What does this mod do?">
+        </div>
+        <div class="form-group">
+          <label>Qty Owned</label>
+          <input type="number" name="qty" min="0" value="{{ edit_item['qty'] if edit_item else 1 }}">
+        </div>
+        <div class="form-group">
+          <label>Value Each (caps)</label>
+          <input type="number" name="value_each" min="0" value="{{ edit_item['value_each'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            {% for s in ['Keep','Sell','Trade'] %}
+            <option value="{{ s }}" {{ 'selected' if edit_item and edit_item['status']==s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Mod{% endif %}</button>
+        {% if edit_item %}<a href="/mods" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="table-controls">
+  <input type="text" placeholder="Filter mods..." oninput="filterTable(this.value,'modTable')">
+</div>
+
+<form method="POST" action="/mods/bulk" id="bulkForm">
+</form>
+<div class="bulk-bar" id="bulkBar" style="display:none">
+  <span class="dim" id="bulkCount">0 selected</span>
+  <select id="bulkAction">
+    <option value="">— Action —</option>
+    <option>Keep</option><option>Sell</option><option>Scrap</option><option>Stash</option>
+    <option value="delete">🗑 Delete selected</option>
+  </select>
+  <button class="btn btn-secondary" type="button" onclick="confirmBulk()">Apply</button>
+  <button class="btn btn-secondary" type="button" onclick="clearBulk()">Clear</button>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="modTable">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+        <th>Mod Name</th><th>Type</th><th>Applies To</th><th>Effect</th>
+        <th>Qty</th><th>Val Each</th><th>Total Val</th><th>Status</th><th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="s-{{ item['status']|lower }}">
+        <td><input type="checkbox" class="row-cb" data-id="{{ item['id'] }}" onchange="updateBulkBar()"></td>
+        <td class="hi">{{ item['name'] }}</td>
+        <td>
+          {% if item['mod_type'] and item['mod_type'] != 'Normal' %}
+            {% set stars = item['mod_type'].split('-')[0].split(' ')[-1] %}
+            <span class="badge" style="border-color:var(--gold);color:var(--gold)">★{{ stars }}</span>
+          {% else %}
+            <span class="dim">Normal</span>
+          {% endif %}
+        </td>
+        <td class="dim">{{ item['applies_to'] }}</td>
+        <td style="max-width:200px;white-space:normal">{{ item['effect'] }}</td>
+        <td>{{ item['qty'] }}</td>
+        <td>{{ "{:,}".format(item['value_each']) }}</td>
+        <td class="gold">{{ "{:,}".format(item['qty'] * item['value_each']) }}</td>
+        <td><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
+        <td class="dim">{{ item['notes'] }}</td>
+        <td class="actions">
+          <a href="/mods?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/mods/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" class="no-data">No mods yet. Add one above!</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

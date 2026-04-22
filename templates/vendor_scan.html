@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+{% block title %}Vendor Scan{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📷 VENDOR SCAN</h1>
+</div>
+
+<p class="dim" style="font-size:12px;margin-bottom:16px">
+  Upload vendor shop screenshots. AI reads each image and extracts items into a CSV
+  ready to bulk-import into Price Research.
+</p>
+
+<!-- API Key setup -->
+{% if not api_key_set %}
+<div class="notice-card level-warning" style="margin-bottom:16px">
+  <div class="notice-card-title">API Key Required</div>
+  <div class="notice-card-body" style="margin-bottom:10px">
+    This feature uses the Anthropic API to read images. You need a free API key from
+    <strong>console.anthropic.com</strong> — paste it below. It is stored locally and never shared.
+  </div>
+  <form method="POST" action="/vendor-scan/set-key" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="password" name="api_key" placeholder="sk-ant-..." style="flex:1;min-width:260px">
+    <button class="btn btn-primary" type="submit">Save Key</button>
+  </form>
+</div>
+{% else %}
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+  <span class="accent" style="font-size:12px">✓ API key configured</span>
+  <form method="POST" action="/vendor-scan/set-key" style="display:inline">
+    <input type="hidden" name="api_key" value="">
+    <button class="btn-sm btn-secondary" type="submit">Clear key</button>
+  </form>
+</div>
+{% endif %}
+
+<!-- Upload form -->
+<section class="add-panel {% if not results %}open{% endif %}" id="uploadPanel">
+  <div class="panel-toggle" onclick="togglePanel('uploadPanel')">
+    <span>📁 Upload Screenshots</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/vendor-scan/process" enctype="multipart/form-data" id="scanForm">
+      <div style="padding:14px">
+        <p class="dim" style="font-size:11px;margin-bottom:10px">
+          Accepts PNG, JPG, WEBP. Select as many at once as you like — each image is processed individually.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input type="file" name="images" accept=".png,.jpg,.jpeg,.webp" multiple required
+                 style="flex:1;min-width:220px" onchange="updateFileCount(this)">
+          <span id="fileCount" class="dim" style="font-size:11px"></span>
+          <button class="btn btn-primary" type="submit" id="scanBtn" {% if not api_key_set %}disabled{% endif %}>
+            ▶ Scan Images
+          </button>
+        </div>
+        <div id="scanProgress" style="display:none;margin-top:10px;font-size:12px;color:var(--accent)">
+          ⏳ Processing... this may take a minute for large batches.
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Results -->
+{% if wishlist_hits is defined and wishlist_hits %}
+<div class="notice-card level-warning" style="margin-bottom:16px">
+  <div class="notice-card-title" style="color:var(--gold)">⭐ WISHLIST MATCHES — {{ wishlist_hits|length }} found</div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+    {% for hit in wishlist_hits %}
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:160px">
+        <span class="hi">{{ hit.scan_item.item_name }}</span>
+        <span class="dim" style="font-size:11px;margin-left:8px">from {{ hit.scan_item.source }}</span>
+      </div>
+      <div>
+        <span class="gold">{{ "{:,}".format(hit.scan_item.price_seen) }} caps</span>
+        {% if hit.wish_item.max_price %}
+          {% if hit.under_budget %}
+          <span class="accent" style="font-size:11px;margin-left:6px">✓ under budget ({{ "{:,}".format(hit.wish_item.max_price) }})</span>
+          {% else %}
+          <span style="color:var(--red);font-size:11px;margin-left:6px">✗ over budget ({{ "{:,}".format(hit.wish_item.max_price) }})</span>
+          {% endif %}
+        {% endif %}
+      </div>
+      <span class="badge" style="border-color:var(--purple);color:var(--purple);font-size:10px">{{ hit.wish_item.priority }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if results is defined %}
+<div class="section-title" style="margin-bottom:10px">
+  RESULTS — {{ results|length }} items extracted
+  {% if errors %}<span style="color:var(--amber);margin-left:10px">{{ errors|length }} image(s) had errors</span>{% endif %}
+</div>
+
+{% if errors %}
+<div style="margin-bottom:12px">
+  {% for e in errors %}
+  <div style="font-size:11px;color:var(--amber);margin-bottom:4px">⚠ {{ e }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if results %}
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+  <a href="/vendor-scan/download/{{ filename }}" class="btn btn-primary" download>
+    ⬇ Download {{ filename }}
+  </a>
+  <span class="dim" style="font-size:11px">
+    Saved to: vendor_scans/{{ filename }} — import via Price Research → Bulk Import CSV
+  </span>
+</div>
+
+<div class="table-wrap table-scrollable">
+  <table class="data-table">
+    <thead>
+      <tr><th>Item</th><th>Cat</th><th>Price</th><th>Source / Vendor</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td class="hi">{{ r.item_name }}</td>
+        <td class="dim" style="font-size:11px">{{ r.category }}</td>
+        <td class="gold">{{ "{:,}".format(r.price_seen) }}</td>
+        <td class="dim">{{ r.source }}</td>
+        <td class="dim">{{ r.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+function updateFileCount(input) {
+  const n = input.files.length;
+  document.getElementById('fileCount').textContent = n ? n + ' file' + (n>1?'s':'') + ' selected' : '';
+}
+document.getElementById('scanForm').addEventListener('submit', function() {
+  document.getElementById('scanProgress').style.display = 'block';
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('scanBtn').textContent = '⏳ Scanning...';
+});
+</script>
+
+{% endblock %}

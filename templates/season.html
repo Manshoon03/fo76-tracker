@@ -1,0 +1,294 @@
+{% extends 'base.html' %}
+{% block title %}Season Tracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🏆 SEASON TRACKER</h1>
+</div>
+
+<div class="two-col" style="gap:24px;align-items:start">
+
+  <!-- Input form -->
+  <div>
+    <div class="section-title" style="margin-bottom:6px">SEASON DATA</div>
+    <div class="dim" style="font-size:11px;margin-bottom:10px;line-height:1.6">
+      📍 <strong>How to find your rank &amp; score:</strong> In-game → Main Menu → Seasons tab.
+      Your current rank and score progress bar are shown there. The score required per rank
+      is <em>not</em> uniform — check the scoreboard for exact thresholds at your target rank.
+    </div>
+    <form method="POST" action="/season">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr">
+        <div class="form-group span2">
+          <label>Season Name</label>
+          <input type="text" name="season_name" value="{{ data['season_name'] }}" placeholder="e.g. Season 18: Gleaming Depths">
+        </div>
+        <div class="form-group">
+          <label>Season End Date</label>
+          <input type="date" name="season_end" value="{{ data['season_end'] }}">
+        </div>
+        <div class="form-group">
+          <label>Stash Cap (lbs)</label>
+          <input type="number" name="stash_cap" value="{{ data['stash_cap'] or 1200 }}" placeholder="1200 standard / 1800 1st">
+        </div>
+
+        <div class="form-group">
+          <label>Current Rank</label>
+          <input type="number" name="current_rank" min="1" value="{{ data['current_rank'] }}">
+        </div>
+        <div class="form-group">
+          <label>Current Score</label>
+          <input type="number" name="current_score" min="0" value="{{ data['current_score'] }}">
+        </div>
+        <div class="form-group">
+          <label>Target Rank</label>
+          <input type="number" name="target_rank" min="1" value="{{ data['target_rank'] }}">
+        </div>
+        <div class="form-group">
+          <label>Score Needed for Target Rank <span class="dim" style="font-size:10px">(from in-game scoreboard)</span></label>
+          <input type="number" name="target_score" min="0" value="{{ data['target_score'] }}">
+        </div>
+
+        <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+          <div class="dim" style="font-size:11px;margin-bottom:8px">
+            ⚠ Score per daily/weekly varies by challenge set — use your personal average.
+            Repeatable challenges (↺ in the Challenges tab) give <strong>150 score each</strong> per completion.
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Est. Score per Daily <span class="dim" style="font-size:10px">(avg)</span>
+            {% if ch.daily_total %}
+            <span class="dim" style="font-size:10px"> — tracker: {{ ch.daily_total }} from {{ ch.daily_count }} challenges
+              <a href="#" onclick="document.querySelector('[name=score_per_daily]').value={{ ch.daily_total }};return false;" style="color:var(--accent)">← use</a>
+            </span>
+            {% endif %}
+          </label>
+          <input type="number" name="score_per_daily" min="0" value="{{ data['score_per_daily'] or 2000 }}" placeholder="~2000">
+        </div>
+        <div class="form-group">
+          <label>Est. Score per Weekly <span class="dim" style="font-size:10px">(avg)</span>
+            {% if ch.weekly_total %}
+            <span class="dim" style="font-size:10px"> — tracker: {{ ch.weekly_total }} from {{ ch.weekly_count }} challenges
+              <a href="#" onclick="document.querySelector('[name=score_per_weekly]').value={{ ch.weekly_total }};return false;" style="color:var(--accent)">← use</a>
+            </span>
+            {% endif %}
+          </label>
+          <input type="number" name="score_per_weekly" min="0" value="{{ data['score_per_weekly'] or 6000 }}" placeholder="~6000">
+        </div>
+        <div class="form-group">
+          <label>Repeatable Completions/Day <span class="dim" style="font-size:10px">(× 150 score)</span></label>
+          <input type="number" name="repeatable_per_day" min="0" value="{{ data['repeatable_per_day'] or 0 }}" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Bonus Score Already Earned <span class="dim" style="font-size:10px">(events / double score)</span></label>
+          <input type="number" name="bonus_score" min="0" value="{{ data['bonus_score'] or 0 }}" placeholder="0">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Stats panel -->
+  <div>
+    <div class="section-title" style="margin-bottom:10px">PROGRESS</div>
+
+    {% if data['season_name'] %}
+    <div style="font-size:14px;color:var(--gold);margin-bottom:12px">{{ data['season_name'] }}</div>
+    {% endif %}
+
+    {% if calc %}
+    <!-- Score progress bar -->
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px">
+        <span>Rank <span class="accent" style="font-size:16px">{{ data['current_rank'] or '—' }}</span>
+              → <span class="gold">{{ data['target_rank'] or '—' }}</span></span>
+        <span class="dim">{{ calc.get('pct', 0) }}%</span>
+      </div>
+      <div class="progress-bar-wrap" style="height:10px;margin-bottom:8px">
+        <div class="progress-bar" style="width:{{ calc.get('pct', 0) }}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim)">
+        <span>{{ (data['current_score'] or 0)|int }} score</span>
+        <span>{{ data['target_score'] or '?' }} needed</span>
+      </div>
+    </div>
+
+    <!-- Gap breakdown -->
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:12px;font-size:12px;line-height:2">
+      <div style="display:flex;justify-content:space-between">
+        <span class="dim">Raw score gap</span>
+        <span>{{ calc.get('raw_gap', '—') }}</span>
+      </div>
+      {% if calc.get('bonus') %}
+      <div style="display:flex;justify-content:space-between">
+        <span class="dim">− Bonus already earned</span>
+        <span class="accent">− {{ calc['bonus'] }}</span>
+      </div>
+      {% endif %}
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:4px;font-weight:bold">
+        <span>Effective gap to close</span>
+        <span class="gold">{{ calc.get('gap', '—') }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px">
+        <span class="dim">Effective score/day</span>
+        <span>{{ calc.get('eff_daily', '—') }}
+          {% if data['repeatable_per_day']|int > 0 %}
+          <span class="dim" style="font-size:10px">({{ data['score_per_daily'] or 0 }} daily + {{ data['repeatable_per_day']|int * 150 }} repeatable)</span>
+          {% endif %}
+        </span>
+      </div>
+    </div>
+
+    <!-- Key stats -->
+    <div class="stat-grid" style="grid-template-columns:1fr 1fr">
+      <div class="stat-card">
+        <span class="stat-num">{{ calc.get('days_left', '—') }}</span>
+        <span class="stat-label">Days Left</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num">{{ calc.get('dailies_needed', '?') }}</span>
+        <span class="stat-label">Daily Sets Needed</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num">{{ calc.get('weeklies_needed', '?') }}</span>
+        <span class="stat-label">Weeklies Needed</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num">{{ calc.get('eff_daily', '—') }}</span>
+        <span class="stat-label">Score/Day (est.)</span>
+      </div>
+    </div>
+
+    {% if calc.get('weeks_left') is not none and calc.get('weeklies_needed') != '?' %}
+    <div style="margin-top:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:12px;font-size:12px">
+      {% set wl = calc.get('weeks_left', 0) %}
+      {% set wn = calc.get('weeklies_needed', 0) %}
+      {% if wn <= wl %}
+      <span class="accent">✓ On track</span> — {{ wl - wn }} week buffer remaining.
+      {% else %}
+      <span style="color:var(--red)">⚠ Behind pace</span> — need {{ wn }} weeklies but only {{ wl }} weeks left.
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="no-data">Fill in your season data to see projections.</div>
+    {% endif %}
+
+    <!-- Challenge tracker summary -->
+    {% if ch.daily_count or ch.weekly_count or ch.repeatable_earned %}
+    <div style="margin-top:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:12px">
+      <div style="font-size:11px;color:var(--accent);margin-bottom:8px;letter-spacing:.05em">FROM YOUR CHALLENGE TRACKER</div>
+      <div style="font-size:12px;line-height:2">
+        {% if ch.daily_count %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="dim">Daily set value ({{ ch.daily_count }} challenges)</span>
+          <span class="gold">{{ ch.daily_total }}</span>
+        </div>
+        {% endif %}
+        {% if ch.weekly_count %}
+        <div style="display:flex;justify-content:space-between">
+          <span class="dim">Weekly set value ({{ ch.weekly_count }} challenges)</span>
+          <span class="gold">{{ ch.weekly_total }}</span>
+        </div>
+        {% endif %}
+        {% if ch.repeatable_earned %}
+        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:4px;margin-top:4px">
+          <span class="dim">Repeatable score earned (all-time)</span>
+          <span class="accent">{{ ch.repeatable_earned }}</span>
+        </div>
+        {% endif %}
+      </div>
+      <div class="dim" style="font-size:10px;margin-top:8px">
+        Add score rewards to your challenges to keep these figures accurate.
+        Use "← use" links above to sync estimates to your tracker values.
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="dim" style="font-size:10px;margin-top:12px;line-height:1.7">
+      Estimates assume consistent daily/weekly completion. Actual score varies per challenge set.<br>
+      Update <em>Bonus Score</em> after any double score event to keep projections accurate.<br>
+      Stash cap: 1,200 lbs standard · 1,800 lbs Fallout 1st
+    </div>
+  </div>
+
+</div>
+
+<!-- Score per day log -->
+<div style="margin-top:28px">
+  <div class="section-title" style="margin-bottom:12px">📅 DAILY SCORE LOG</div>
+  <div class="two-col" style="gap:24px;align-items:start">
+    <div>
+      <form method="POST" action="/season/log">
+        <div class="form-grid" style="grid-template-columns:1fr 1fr">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" name="log_date">
+          </div>
+          <div class="form-group">
+            <label>Score Earned</label>
+            <input type="number" name="score_earned" min="0" placeholder="0">
+          </div>
+          <div class="form-group span2">
+            <label>Notes</label>
+            <input type="text" name="notes" placeholder="e.g. All dailies + 3 repeatables">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Log Score</button>
+        </div>
+      </form>
+    </div>
+    <div>
+      {% if score_log %}
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:14px;font-size:12px;line-height:2">
+        <div style="display:flex;justify-content:space-between">
+          <span class="dim">Days logged</span>
+          <span>{{ score_log|length }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span class="dim">Actual avg score/day</span>
+          <span class="gold">{{ calc.get('actual_avg', 0) }}</span>
+        </div>
+        {% if calc.get('eff_daily') and calc.get('actual_avg') %}
+        {% set diff = calc.get('actual_avg', 0) - calc.get('eff_daily', 0) %}
+        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:4px;margin-top:4px">
+          <span class="dim">vs projected ({{ calc.get('eff_daily',0) }})</span>
+          <span style="color:{{ 'var(--accent)' if diff >= 0 else 'var(--red)' }}">{{ ('+' if diff >= 0 else '') }}{{ diff }}</span>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="no-data">Log some days to see your actual average.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if score_log %}
+  <div class="table-wrap" style="margin-top:14px">
+    <table class="data-table">
+      <thead>
+        <tr><th>Date</th><th>Score Earned</th><th>Notes</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for entry in score_log %}
+        <tr>
+          <td class="dim">{{ entry['log_date'] }}</td>
+          <td class="gold">{{ "{:,}".format(entry['score_earned']) }}</td>
+          <td class="dim">{{ entry['notes'] }}</td>
+          <td class="actions">
+            <form method="POST" action="/season/log/{{ entry['id'] }}/delete" class="inline-form">
+              <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

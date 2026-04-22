@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}404 — Not Found{% endblock %}
+{% block content %}
+
+<div style="min-height:60vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:40px">
+  <div>
+    <div style="font-size:72px;color:var(--gold);text-shadow:0 0 40px rgba(240,180,41,0.4);letter-spacing:4px;line-height:1">404</div>
+    <div style="font-size:14px;color:var(--accent);letter-spacing:3px;margin:12px 0 6px">LOCATION NOT FOUND</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:28px">That page doesn't exist in the vault directory.</div>
+    <div style="font-size:28px;margin-bottom:20px">☢</div>
+    <a href="/" class="btn btn-primary" style="letter-spacing:1px">⬢ Return to Dashboard</a>
+  </div>
+</div>
+
+{% endblock %}

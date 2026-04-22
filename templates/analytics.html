@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+{% block title %}Analytics{% endblock %}
+{% block content %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+<!-- Page header -->
+<div class="page-header">
+  <h1>📊 ANALYTICS</h1>
+</div>
+
+<!-- Loading indicator -->
+<div id="loadingMsg" class="dim" style="text-align:center;padding:40px">Loading chart data...</div>
+
+<!-- Last updated note -->
+<div id="lastUpdated" style="display:none;text-align:right;font-size:11px;color:var(--text-dim);margin-bottom:16px"></div>
+
+<!-- ── 1. Caps Over Time ──────────────────────────────────────────────── -->
+<div id="section-caps" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('caps-body')">
+    CAPS OVER TIME
+  </div>
+  <div id="caps-body" style="margin-bottom:32px">
+    <div style="height:280px;max-height:300px;margin-bottom:32px">
+      <canvas id="capsChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── 2 & 3. Play Time + Weapons (two-col) ──────────────────────────── -->
+<div id="section-mid" style="display:none">
+  <div class="two-col" style="margin-bottom:0">
+
+    <div>
+      <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('playtime-body')">
+        PLAY TIME PER WEEK
+      </div>
+      <div id="playtime-body">
+        <div style="height:280px;max-height:300px;margin-bottom:32px">
+          <canvas id="playtimeChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('weapons-body')">
+        WEAPONS FOUND PER WEEK
+      </div>
+      <div id="weapons-body">
+        <div style="height:280px;max-height:300px;margin-bottom:32px">
+          <canvas id="weaponsChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── 4. Prices Logged Per Week ─────────────────────────────────────── -->
+<div id="section-prices" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('prices-body')">
+    PRICES LOGGED PER WEEK
+  </div>
+  <div id="prices-body">
+    <div style="height:280px;max-height:300px;margin-bottom:32px">
+      <canvas id="pricesChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── 5. Top Vendor Items by Value ──────────────────────────────────── -->
+<div id="section-vendor" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('vendor-body')">
+    TOP VENDOR ITEMS BY VALUE
+  </div>
+  <div id="vendor-body">
+    <div style="height:280px;max-height:300px;margin-bottom:32px">
+      <canvas id="vendorChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Color helpers ────────────────────────────────────────────────────────
+const style  = getComputedStyle(document.documentElement);
+const accent = style.getPropertyValue('--accent').trim() || '#00ff41';
+const gold   = style.getPropertyValue('--gold').trim()   || '#ffc107';
+const teal   = '#00bcd4';
+
+Chart.defaults.color       = '#666';
+Chart.defaults.borderColor = '#222';
+
+// ── Section collapse toggle ──────────────────────────────────────────────
+function toggleSection(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// ── Chart factory ────────────────────────────────────────────────────────
+function makeChart(id, type, labels, values, label, color) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+
+  if (!labels || labels.length === 0) {
+    ctx.parentElement.innerHTML = '<div class="no-data" style="padding:20px;text-align:center">No data yet.</div>';
+    return;
+  }
+
+  new Chart(ctx, {
+    type: type,
+    data: {
+      labels: labels,
+      datasets: [{
+        label: label,
+        data: values,
+        backgroundColor: color + '88',
+        borderColor: color,
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: (id === 'vendorChart') ? 'y' : 'x',
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#888', maxRotation: 45 },
+          grid:  { color: '#1a1a1a' }
+        },
+        y: {
+          ticks: {
+            color: '#888',
+            callback: v => (typeof v === 'number' && v > 999) ? v.toLocaleString() : v
+          },
+          grid: { color: '#1a1a1a' }
+        }
+      }
+    }
+  });
+}
+
+// ── Data load ────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+  fetch('/analytics/data')
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      // Hide loading, reveal sections
+      document.getElementById('loadingMsg').style.display = 'none';
+
+      const sections = ['section-caps', 'section-mid', 'section-prices', 'section-vendor'];
+      sections.forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = '';
+      });
+
+      // Render charts
+      makeChart('capsChart',     'line', data.caps.labels,     data.caps.values,     'Caps',                accent);
+      makeChart('playtimeChart', 'bar',  data.playtime.labels, data.playtime.values, 'Hours',               accent);
+      makeChart('weaponsChart',  'bar',  data.weapons.labels,  data.weapons.values,  'Weapons Found',       gold);
+      makeChart('pricesChart',   'bar',  data.prices.labels,   data.prices.values,   'Prices Logged',       teal);
+      makeChart('vendorChart',   'bar',  data.vendor.labels,   data.vendor.values,   'Total Value (caps)',  accent);
+
+      // Last updated stamp
+      const lu = document.getElementById('lastUpdated');
+      lu.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+      lu.style.display = '';
+    })
+    .catch(function (err) {
+      const msg = document.getElementById('loadingMsg');
+      msg.textContent = 'Failed to load chart data. (' + err.message + ')';
+      msg.style.color = 'var(--danger, #ff4444)';
+    });
+});
+</script>
+
+{% endblock %}

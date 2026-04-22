@@ -1,0 +1,279 @@
+{% extends 'base.html' %}
+{% block title %}Weapons{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>⚔ WEAPONS</h1>
+  <span class="count-badge">{{ items|length }} weapons</span>
+</div>
+
+<!-- ── Screenshot Scanner ──────────────────────────────────────────────── -->
+<section class="add-panel {% if scan_active %}open{% endif %}" id="scanPanel">
+  <div class="panel-toggle" onclick="togglePanel('scanPanel')">
+    <span>📷 Scan Weapon Screenshot</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <p class="dim" style="font-size:11px;margin-bottom:10px">
+      Upload a weapon card screenshot — Claude will extract the details and pre-fill the add form.
+      Requires your Anthropic API key set in <a href="/vendor-scan" class="accent">Vendor Scan settings</a>.
+    </p>
+    <form method="POST" action="/weapons/scan" enctype="multipart/form-data"
+          style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="file" name="scan_image" accept=".png,.jpg,.jpeg,.webp" required style="flex:1;min-width:200px">
+      <button class="btn btn-primary" type="submit">📷 Scan</button>
+    </form>
+  </div>
+</section>
+
+<!-- ── Add / Edit ──────────────────────────────────────────────────────── -->
+<section class="add-panel {% if edit_item or scan_active %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% elif scan_active %}📷 Scanned Weapon — Review & Add{% else %}+ Add Weapon{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/weapons/{{ edit_item['id'] }}/update{% else %}/weapons/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Weapon Name *</label>
+          <input type="text" name="name" required
+                 value="{{ edit_item['name'] if edit_item else scan.scan_name }}">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select name="wtype">
+            {% for t in ['','Rifle','Pistol','Shotgun','SMG','Heavy','Melee 1H','Melee 2H','Bow','Crossbow','Thrown','Flamer'] %}
+            <option value="{{ t }}"
+              {{ 'selected' if (edit_item and edit_item['wtype']==t) or (not edit_item and scan.scan_wtype==t and t) else '' }}>{{ t or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Damage Type</label>
+          <select name="damage_type">
+            {% for t in ['Ballistic','Energy','Explosive','Melee','Radiation','Fire','Poison'] %}
+            <option value="{{ t }}" {{ 'selected' if edit_item and edit_item['damage_type']==t else '' }}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>★ 1st Star (Prefix)</label>
+          <input type="text" name="star1" list="wStar1List"
+                 value="{{ edit_item['star1'] if edit_item else scan.scan_star1 }}"
+                 placeholder="e.g. Bloodied, Anti-Armor" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★ 2nd Star</label>
+          <input type="text" name="star2" list="wStar2List"
+                 value="{{ edit_item['star2'] if edit_item else scan.scan_star2 }}"
+                 placeholder="e.g. Explosive, Rapid" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★★ 3rd Star</label>
+          <input type="text" name="star3" list="wStar3List"
+                 value="{{ edit_item['star3'] if edit_item else scan.scan_star3 }}"
+                 placeholder="e.g. Lightweight, Swift" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★★★ 4th Star</label>
+          <input type="text" name="star4" list="wStar4List"
+                 value="{{ edit_item['star4'] if edit_item else scan.scan_star4 }}"
+                 placeholder="e.g. Bully's, Viper's" autocomplete="off">
+        </div>
+
+        <datalist id="wStar1List">{% for x in ref.WEAPON_STAR1 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="wStar2List">{% for x in ref.WEAPON_STAR2 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="wStar3List">{% for x in ref.WEAPON_STAR3 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="wStar4List">{% for x in ref.WEAPON_STAR4 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <div class="form-group span2">
+          <label>Mods Applied</label>
+          <input type="text" name="mods" value="{{ edit_item['mods'] if edit_item else '' }}" placeholder="e.g. Aligned Long Barrel, Reflex Sight">
+        </div>
+        <div class="form-group">
+          <label>Condition %</label>
+          <input type="number" name="condition_pct" min="0" max="100"
+                 value="{{ edit_item['condition_pct'] if edit_item else (scan.scan_cond or 100) }}">
+        </div>
+        <div class="form-group">
+          <label>Weight</label>
+          <input type="number" name="weight" step="0.1" min="0" value="{{ edit_item['weight'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Value (caps)</label>
+          <input type="number" name="value" min="0" value="{{ edit_item['value'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            {% for s in ['Keep','Sell','Scrap','Trade','Stash'] %}
+            <option value="{{ s }}" {{ 'selected' if edit_item and edit_item['status']==s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Weapon{% endif %}</button>
+        {% if edit_item %}<a href="/weapons" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="table-controls">
+  <input type="text" placeholder="Filter weapons..." oninput="filterTable(this.value,'weaponTable')">
+  <div class="filter-links">
+    <a href="/weapons" class="filter-link {{ 'active' if not status_filter }}">All</a>
+    {% for s in ['Keep','Sell','Scrap','Trade','Stash'] %}
+    <a href="/weapons?status={{ s }}" class="filter-link {{ 'active' if status_filter==s }}">{{ s }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<form method="POST" action="/weapons/bulk" id="bulkForm">
+</form>
+<div class="bulk-bar" id="bulkBar" style="display:none">
+  <span class="dim" id="bulkCount">0 selected</span>
+  <select id="bulkAction">
+    <option value="">— Action —</option>
+    <option>Keep</option><option>Sell</option><option>Scrap</option><option>Stash</option>
+    <option value="delete">🗑 Delete selected</option>
+  </select>
+  <button class="btn btn-secondary" type="button" onclick="confirmBulk()">Apply</button>
+  <button class="btn btn-secondary" type="button" onclick="clearBulk()">Clear</button>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="weaponTable">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+        <th>Name</th><th>Type</th><th>Stars (1/2/3/4)</th>
+        <th>Notation</th><th>Mods</th><th>Cond%</th><th>Val</th><th>Status</th><th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="s-{{ item['status']|lower }}">
+        <td><input type="checkbox" class="row-cb" data-id="{{ item['id'] }}" onchange="updateBulkBar()"></td>
+        <td class="hi">
+          {{ item['name'] }}
+          {% if item['name'] in dupes %}
+          <span class="badge" style="background:var(--red);color:#fff;font-size:9px;margin-left:4px;padding:1px 4px">DUP</span>
+          {% endif %}
+        </td>
+        <td class="dim">{{ item['wtype'] }}</td>
+        <td>
+          {% if item['star1'] %}<span class="gold">★</span> {{ item['star1'] }}{% endif %}
+          {% if item['star2'] %} / {{ item['star2'] }}{% endif %}
+          {% if item['star3'] %} / {{ item['star3'] }}{% endif %}
+          {% if item['star4'] %} / {{ item['star4'] }}{% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          <span class="notation-cell" id="nc-{{ item['id'] }}"
+                data-name="{{ item['name'] }}"
+                data-s1="{{ item['star1'] }}" data-s2="{{ item['star2'] }}"
+                data-s3="{{ item['star3'] }}" data-s4="{{ item['star4'] }}"
+                style="font-family:monospace;font-size:11px;color:var(--accent);letter-spacing:0.5px"></span>
+          <button class="btn-sm btn-secondary" style="font-size:10px;padding:1px 5px;margin-left:4px"
+                  onclick="copyNotationRow('nc-{{ item['id'] }}')" title="Copy notation">📋</button>
+        </td>
+        <td class="dim" style="max-width:140px;white-space:normal">{{ item['mods'] }}</td>
+        <td class="{{ 'gold' if item['condition_pct'] < 50 else '' }}">{{ item['condition_pct'] }}%</td>
+        <td>{{ "{:,}".format(item['value']) }}</td>
+        <td><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
+        <td class="dim">{{ item['notes'] }}</td>
+        <td class="actions">
+          <div class="status-btns">
+            <form method="POST" action="/weapons/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Keep">
+              <button class="btn-sm btn-keep" title="Keep">K</button>
+            </form>
+            <form method="POST" action="/weapons/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Sell">
+              <button class="btn-sm btn-sell" title="Sell">$</button>
+            </form>
+            <form method="POST" action="/weapons/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Scrap">
+              <button class="btn-sm btn-scrap" title="Scrap">✗</button>
+            </form>
+          </div>
+          <a href="/weapons?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/weapons/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" class="no-data">No weapons yet. Add one above!</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+// ── OUR_CODE maps (same as decode.html) ──────────────────────────────────────
+const WPN_CODE = {
+  'Bloodied':'BLD','Anti-Armor':'AAR','Quad':'QD','Two Shot':'TS',
+  "Vampire's":'VMP',"Junkie's":'JNK','Furious':'FUR',
+  "Executioner's":'EXE',"Aristocrat's":'ARS','Instigating':'INS',
+  "Berserker's":'BER',"Assassin's":'ASN',"Suppressor's":'SUP',
+  "Exterminator's":'EXT',"Mutant Slayer's":'MTS',"Mutant's":'MUT',
+  'Nocturnal':'NOC',"Hunter's":'HNT',"Medic's":'MED',
+  "Juggernaut's":'JUG',"Troubleshooter's":'TRB',"Stalker's":'STK',
+  "Sniper's":'SNP','Adrenal':'ADR',"Gourmand's":'GOR',
+  "Feral's":'FRL',"Zealot's":'ZLT',"Ghoul Slayer's":'GHS',
+  'Rapid':'FFR','Vital':'CRT','Explosive':'EXP','Last Shot':'LST',
+  'V.A.T.S. Enhanced':'VEH',"Basher's":'BSH','Crippling':'CRP',
+  "Heavy Hitter's":'HHT',"Hitman's":'HTM','Inertial':'IRT','Steady':'STD',
+  'V.A.T.S. Optimized':'VAP','Lightweight':'LWT','Swift':'RLD',
+  'Durability':'DUR','Lucky':'LCK','Nimble':'NMB',
+  'Barbarian':'BRB','Belted':'BLT',"Arms Keeper's":'ARK',
+  "Battle-Loader's":'BTL',"Bruiser's":'BRS',"Bully's":'BLY',
+  'Charged':'CHG',"Choo-Choo's":'CCH',"Combo-Breaker's":'CMB',
+  "Conductor's":'CND',"Electrician's":'ELC',"Encircler's":'ENC',
+  "Fencer's":'FNC',"Fracturer's":'FRC',"Icemen's":'ICE',
+  "Pin-Pointer's":'PIN','Polished':'POL',"Pounder's":'PND',
+  "Pyromaniac's":'PYR',"Ranger's":'RNG',"Stabilizer's":'STB',
+  "Thrill-Seeker's":'THL',"Viper's":'VPR',
+};
+
+function codeFor(star) {
+  if (!star) return null;
+  return WPN_CODE[star] || star.slice(0,3).toUpperCase();
+}
+
+function buildNotation(s1, s2, s3, s4, name) {
+  const parts = [];
+  if (s1) parts.push(codeFor(s1));
+  if (s2) parts.push(codeFor(s2));
+  if (s3) parts.push(codeFor(s3));
+  if (s4) parts.push(codeFor(s4));
+  const stars = parts.join(' | ');
+  if (!stars) return '';
+  return name ? `${stars} | ${name}` : stars;
+}
+
+function populateNotations() {
+  document.querySelectorAll('.notation-cell').forEach(el => {
+    const notation = buildNotation(
+      el.dataset.s1, el.dataset.s2, el.dataset.s3, el.dataset.s4, el.dataset.name
+    );
+    el.textContent = notation;
+  });
+}
+
+function copyNotationRow(cellId) {
+  const el = document.getElementById(cellId);
+  if (!el || !el.textContent) return;
+  navigator.clipboard.writeText(el.textContent).then(() => showToast('Copied!', 'success'));
+}
+
+document.addEventListener('DOMContentLoaded', populateNotations);
+</script>
+
+{% endblock %}

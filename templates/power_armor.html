@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% block title %}Power Armor{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>⚙ POWER ARMOR</h1>
+  <span class="count-badge">{{ items|length }}</span>
+</div>
+
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Power Armor{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/power-armor/{{ edit_item['id'] }}/update{% else %}/power-armor/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Set</label>
+          <select name="pa_set">
+            {% for s in ['','X-01','T-60','Excavator','Ultracite','Hellcat','Strangler Heart','Thorn','Chinese Stealth','Enclave','Raider','T-45','T-51','T-65','Vault-Tec'] %}
+            <option value="{{ s }}" {{ 'selected' if edit_item and edit_item['pa_set']==s else '' }}>{{ s or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Slot</label>
+          <select name="slot">
+            {% for s in ['','Head','Torso','Left Arm','Right Arm','Left Leg','Right Leg','Full Set'] %}
+            <option value="{{ s }}" {{ 'selected' if edit_item and edit_item['slot']==s else '' }}>{{ s or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>★ 1st Star</label>
+          <input type="text" name="star1" list="paStar1List" value="{{ edit_item['star1'] if edit_item else '' }}" placeholder="e.g. Unyielding" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★ 2nd Star</label>
+          <input type="text" name="star2" list="paStar2List" value="{{ edit_item['star2'] if edit_item else '' }}" placeholder="e.g. Powered, Agility" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★★ 3rd Star</label>
+          <input type="text" name="star3" list="paStar3List" value="{{ edit_item['star3'] if edit_item else '' }}" placeholder="e.g. Cavalier's" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★★★ 4th Star</label>
+          <input type="text" name="star4" list="paStar4List" value="{{ edit_item['star4'] if edit_item else '' }}" placeholder="e.g. Aegis, Tanky's" autocomplete="off">
+        </div>
+
+        <datalist id="paStar1List">{% for x in ref.ARMOR_STAR1 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="paStar2List">{% for x in ref.ARMOR_STAR2 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="paStar3List">{% for x in ref.ARMOR_STAR3 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="paStar4List">{% for x in ref.ARMOR_STAR4 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <div class="form-group span2">
+          <label>Mods</label>
+          <input type="text" name="mods" value="{{ edit_item['mods'] if edit_item else '' }}" placeholder="e.g. Jetpack, Emergency Protocols">
+        </div>
+        <div class="form-group">
+          <label>Condition %</label>
+          <input type="number" name="condition_pct" min="0" max="100" value="{{ edit_item['condition_pct'] if edit_item else 100 }}">
+        </div>
+        <div class="form-group">
+          <label>Weight</label>
+          <input type="number" name="weight" step="0.1" min="0" value="{{ edit_item['weight'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Value (caps)</label>
+          <input type="number" name="value" min="0" value="{{ edit_item['value'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            {% for s in ['Keep','Sell','Scrap','Stash'] %}
+            <option value="{{ s }}" {{ 'selected' if edit_item and edit_item['status']==s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Power Armor{% endif %}</button>
+        {% if edit_item %}<a href="/power-armor" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="table-controls">
+  <input type="text" placeholder="Filter power armor..." oninput="filterTable(this.value,'paTable')">
+  <div class="filter-links">
+    <a href="/power-armor" class="filter-link {{ 'active' if not status_filter }}">All</a>
+    {% for s in ['Keep','Sell','Scrap','Stash'] %}
+    <a href="/power-armor?status={{ s }}" class="filter-link {{ 'active' if status_filter==s }}">{{ s }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<form method="POST" action="/power-armor/bulk" id="bulkForm">
+</form>
+<div class="bulk-bar" id="bulkBar" style="display:none">
+  <span class="dim" id="bulkCount">0 selected</span>
+  <select id="bulkAction">
+    <option value="">— Action —</option>
+    <option>Keep</option><option>Sell</option><option>Scrap</option><option>Stash</option>
+    <option value="delete">🗑 Delete selected</option>
+  </select>
+  <button class="btn btn-secondary" type="button" onclick="confirmBulk()">Apply</button>
+  <button class="btn btn-secondary" type="button" onclick="clearBulk()">Clear</button>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="paTable">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+        <th>Name</th><th>Set</th><th>Slot</th><th>Stars</th><th>Mods</th>
+        <th>Cond%</th><th>Weight</th><th>Value</th><th>Status</th><th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="s-{{ item['status']|lower }}">
+        <td><input type="checkbox" class="row-cb" data-id="{{ item['id'] }}" onchange="updateBulkBar()"></td>
+        <td class="hi">{{ item['name'] }}</td>
+        <td class="dim">{{ item['pa_set'] }}</td>
+        <td class="dim">{{ item['slot'] }}</td>
+        <td class="dim" style="font-size:11px">
+          {% if item['star1'] %}<span class="gold">★</span>{{ item['star1'] }}{% endif %}
+          {% if item['star2'] %} <span class="gold">★</span>{{ item['star2'] }}{% endif %}
+          {% if item['star3'] %} <span class="gold">★</span>{{ item['star3'] }}{% endif %}
+          {% if item['star4'] %} <span class="gold">★</span>{{ item['star4'] }}{% endif %}
+        </td>
+        <td class="dim" style="max-width:140px;white-space:normal">{{ item['mods'] }}</td>
+        <td class="dim">
+          {% set cond = item['condition_pct'] %}
+          <span style="color:{{ 'var(--red)' if cond < 50 else ('var(--gold)' if cond < 80 else 'var(--accent)') }}">{{ cond }}%</span>
+        </td>
+        <td class="dim">{{ item['weight'] }}</td>
+        <td class="dim">{{ "{:,}".format(item['value']) if item['value'] else '—' }}</td>
+        <td>
+          <div style="display:flex;gap:4px">
+            <form method="POST" action="/power-armor/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Keep">
+              <button class="btn-sm {{ 'btn-keep' if item['status']=='Keep' else 'btn-secondary' }}" title="Keep">K</button>
+            </form>
+            <form method="POST" action="/power-armor/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Sell">
+              <button class="btn-sm {{ 'btn-sell' if item['status']=='Sell' else 'btn-secondary' }}" title="Sell">$</button>
+            </form>
+            <form method="POST" action="/power-armor/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Scrap">
+              <button class="btn-sm {{ 'btn-delete' if item['status']=='Scrap' else 'btn-secondary' }}" title="Scrap">✗</button>
+            </form>
+          </div>
+        </td>
+        <td class="dim">{{ item['notes'] }}</td>
+        <td class="actions" style="white-space:nowrap">
+          <a href="/power-armor?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/power-armor/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="12" class="no-data">No power armor yet. Add one above!</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

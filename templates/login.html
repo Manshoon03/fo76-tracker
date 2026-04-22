@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en" id="htmlRoot">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FO76 Tracker — Login</title>
+  <script>
+    (function(){
+      var t = localStorage.getItem('fo76theme') || 'green';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .login-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-hi);
+      border-radius: 6px;
+      padding: 32px 28px;
+      width: 100%;
+      max-width: 340px;
+      box-shadow: 0 0 40px rgba(34,197,94,0.08);
+    }
+    .login-logo {
+      text-align: center;
+      font-size: 28px;
+      color: var(--gold);
+      text-shadow: 0 0 16px rgba(240,180,41,0.4);
+      letter-spacing: 2px;
+      margin-bottom: 6px;
+    }
+    .login-sub {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+      margin-bottom: 28px;
+    }
+    .login-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+    .login-field label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+    .login-field input { width: 100%; }
+    .login-btn {
+      width: 100%;
+      padding: 8px;
+      margin-top: 8px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--font);
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: 3px;
+      letter-spacing: 1px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .login-btn:hover { background: var(--accent); color: #000; }
+  </style>
+</head>
+<body>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="flash-container">
+    {% for cat, msg in messages %}
+    <div class="flash flash-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}
+
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">☢ FO76</div>
+    <div class="login-sub">VAULT-TEC TRACKER — ACCESS REQUIRED</div>
+
+    <form method="POST" action="/login{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}">
+      <div class="login-field">
+        <label>Username</label>
+        <input type="text" name="username" autofocus autocomplete="username">
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" name="password" autocomplete="current-password">
+      </div>
+      <button class="login-btn" type="submit">⬢ ENTER VAULT</button>
+    </form>
+
+    {% if quote %}
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);text-align:center">
+      <div style="font-size:11px;color:var(--text-hi);line-height:1.6;font-style:italic">
+        "{{ quote.quote }}"
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:6px;letter-spacing:0.5px">
+        — {{ quote.speaker }}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+setTimeout(() => {
+  document.querySelectorAll('.flash').forEach(el => { el.style.opacity = '0'; });
+}, 4000);
+</script>
+</body>
+</html>

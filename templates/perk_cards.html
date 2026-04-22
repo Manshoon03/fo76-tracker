@@ -1,0 +1,331 @@
+{% extends 'base.html' %}
+{% block title %}Perk Cards{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🃏 PERK CARDS</h1>
+  <span class="count-badge">{{ items|length }} cards</span>
+  {% set scrappable = items|selectattr('can_scrap','equalto','Yes')|list|length %}
+  {% if scrappable > 0 %}
+  <span class="badge badge-scrap">{{ scrappable }} scrappable</span>
+  {% endif %}
+</div>
+
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Perk Card{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/perk-cards/{{ edit_item['id'] }}/update{% else %}/perk-cards/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Card Name *</label>
+          <input type="text" id="pcName" name="name" required list="perkNameList"
+                 value="{{ edit_item['name'] if edit_item else '' }}"
+                 autocomplete="off" oninput="perkAutoFill(this.value)">
+          <datalist id="perkNameList">
+            {% for sp, perks in wiki_perks_by_special.items() %}{% for p in perks %}<option value="{{ p.name }}">{% endfor %}{% endfor %}
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>SPECIAL</label>
+          <select id="pcSpecial" name="special">
+            {% for sp in ['S','P','E','C','I','A','L'] %}
+            <option value="{{ sp }}" {{ 'selected' if edit_item and edit_item['special']==sp else '' }}>{{ sp }} — {{ {'S':'Strength','P':'Perception','E':'Endurance','C':'Charisma','I':'Intelligence','A':'Agility','L':'Luck'}[sp] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Current Rank</label>
+          <select id="pcCurRank" name="current_rank">
+            {% for r in [1,2,3] %}
+            <option value="{{ r }}" {{ 'selected' if edit_item and edit_item['current_rank']==r else '' }}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Max Rank</label>
+          <select id="pcMaxRank" name="max_rank">
+            {% for r in [1,2,3,4,5] %}
+            <option value="{{ r }}" {{ 'selected' if edit_item and edit_item['max_rank']==r else '' }}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Copies Owned</label>
+          <input type="number" name="copies_owned" min="1" value="{{ edit_item['copies_owned'] if edit_item else 1 }}">
+        </div>
+        <div class="form-group">
+          <label>Can Scrap Extra?</label>
+          <select name="can_scrap">
+            {% for v in ['No','Yes','Check'] %}
+            <option value="{{ v }}" {{ 'selected' if edit_item and edit_item['can_scrap']==v else '' }}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Effect Summary</label>
+          <input type="text" id="pcEffect" name="effect" value="{{ edit_item['effect'] if edit_item else '' }}">
+        </div>
+        <div class="form-group span2">
+          <label>Used In Builds (comma separated)</label>
+          <input type="text" name="used_in" value="{{ edit_item['used_in'] if edit_item else '' }}" placeholder="e.g. Melee Build, Solo Build">
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Card{% endif %}</button>
+        {% if edit_item %}<a href="/perk-cards" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="table-controls">
+  <input type="text" placeholder="Filter cards..." oninput="filterTable(this.value,'cardTable')">
+  <div class="filter-links">
+    <a href="/perk-cards" class="filter-link {% if not request.args.get('filter') %}active{% endif %}">All</a>
+    <a href="/perk-cards?filter=scrap" class="filter-link">Scrappable</a>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="cardTable">
+    <thead>
+      <tr>
+        <th>Name</th><th>SPECIAL</th><th>Rank</th><th>Copies</th>
+        <th>Effect</th><th>Used In</th><th>Scrap?</th><th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set filter = request.args.get('filter','') %}
+      {% for item in items %}
+      {% if not filter or (filter=='scrap' and item['can_scrap']=='Yes') %}
+      <tr class="s-{{ item['can_scrap']|lower }}">
+        <td class="hi">{{ item['name'] }}</td>
+        <td><span class="special-{{ item['special'] }}">{{ item['special'] }}</span></td>
+        <td>{{ item['current_rank'] }}/{{ item['max_rank'] }}</td>
+        <td>{{ item['copies_owned'] }}</td>
+        <td class="dim">{{ item['effect'] }}</td>
+        <td>{{ item['used_in'] }}</td>
+        <td><span class="badge badge-{{ item['can_scrap']|lower }}">{{ item['can_scrap'] }}</span></td>
+        <td class="dim">{{ item['notes'] }}</td>
+        <td class="actions">
+          <a href="/perk-cards?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/perk-cards/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+      {% else %}
+      <tr><td colspan="9" class="no-data">No perk cards yet. Add one above!</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Wiki Perk Browser
+════════════════════════════════════════════════════════════ -->
+<section class="add-panel" id="wikiPerkPanel" style="margin-top:1.5rem">
+  <div class="panel-toggle" onclick="togglePanel('wikiPerkPanel')">
+    <span>📖 Wiki Perk Browser
+      ({% set total = namespace(n=0) %}{% for sp, ps in wiki_perks_by_special.items() %}{% set total.n = total.n + ps|length %}{% endfor %}{{ total.n }} perks)
+    </span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+
+    <!-- SPECIAL tab bar -->
+    <div class="pb-tabs" id="pbTabs">
+      {% set sp_labels = {'S':'STR','P':'PER','E':'END','C':'CHA','I':'INT','A':'AGI','L':'LCK','Legendary':'LEG'} %}
+      {% for sp in ['S','P','E','C','I','A','L','Legendary'] %}
+      {% if sp in wiki_perks_by_special %}
+      <button class="pb-tab {% if loop.first %}active{% endif %}"
+              onclick="showPerkTab('{{ sp }}')" id="pbtab-{{ sp }}">
+        {{ sp_labels.get(sp, sp) }}
+        <span class="pb-tab-count">{{ wiki_perks_by_special[sp]|length }}</span>
+      </button>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <input type="text" id="pbSearch" placeholder="Search perks..."
+           oninput="filterPerkBrowser(this.value)"
+           style="width:100%;padding:.45rem .7rem;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--fg);margin:.75rem 0">
+
+    <!-- One grid per SPECIAL tab -->
+    {% for sp in ['S','P','E','C','I','A','L','Legendary'] %}
+    {% if sp in wiki_perks_by_special %}
+    <div class="pb-grid" id="pbgrid-{{ sp }}" style="{{ 'display:grid' if loop.first else 'display:none' }}">
+      {% for p in wiki_perks_by_special[sp] %}
+      <div class="pb-card" data-name="{{ p.name|lower }}" data-sp="{{ sp }}">
+        <div class="pb-card-head">
+          <span class="pb-name">{{ p.name }}</span>
+          <span class="pb-badge pb-badge-{{ sp }}">{{ sp }}</span>
+          <span class="pb-maxrank">Max {{ p.max_rank }}</span>
+        </div>
+        {% if p.ranks %}
+        <div class="pb-ranks">
+          {% for rk in p.ranks %}
+          <div class="pb-rank-row">
+            <span class="pb-rank-num">{{ rk.rank }}</span>
+            <span class="pb-rank-eff">{{ rk.effect }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% elif p.description %}
+        <div class="pb-desc">{{ p.description[:200] }}</div>
+        {% endif %}
+        <button class="btn-sm btn-add-wiki" style="margin-top:.4rem"
+                onclick="fillPerk('{{ p.name|e }}','{{ sp if sp != 'Legendary' else 'S' }}',{{ p.max_rank }},'{{ (p.ranks[0].effect if p.ranks else p.description)|e }}')">
+          + Add to My Cards
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+
+  </div>
+</section>
+
+<style>
+/* ── Perk Browser ─────────────────────────────────────── */
+.pb-tabs {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-bottom: .25rem;
+}
+.pb-tab {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  padding: .3rem .75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: .8rem;
+  font-weight: 700;
+  transition: all .15s;
+}
+.pb-tab.active { background: var(--accent); color: #000; border-color: var(--accent); }
+.pb-tab-count {
+  background: rgba(0,0,0,.25);
+  border-radius: 3px;
+  padding: 0 .3rem;
+  font-size: .7rem;
+  margin-left: .3rem;
+}
+.pb-grid {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: .65rem;
+}
+.pb-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .65rem .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+.pb-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-bottom: .2rem;
+}
+.pb-name     { font-weight: 700; font-size: .9rem; color: var(--accent2); flex: 1; }
+.pb-badge    { font-size: .68rem; font-weight: 800; padding: .1rem .35rem; border-radius: 3px; background: var(--surface3); }
+.pb-badge-Legendary { background: #7c4dff22; color: #b39ddb; border: 1px solid #7c4dff44; }
+.pb-maxrank  { font-size: .7rem; color: var(--fg-dim); }
+.pb-ranks    { display: flex; flex-direction: column; gap: .15rem; }
+.pb-rank-row { display: flex; gap: .4rem; font-size: .78rem; }
+.pb-rank-num {
+  color: var(--accent);
+  font-weight: 700;
+  min-width: 1rem;
+  text-align: right;
+}
+.pb-rank-eff { color: var(--fg); line-height: 1.4; }
+.pb-desc     { font-size: .78rem; color: var(--fg-dim); line-height: 1.4; }
+</style>
+
+<script>
+/* ── Wiki perk data ─────────────────────────────────── */
+const WIKI_PERKS = {};
+{% for sp, perks in wiki_perks_by_special.items() %}
+{% for p in perks %}
+WIKI_PERKS[{{ p.name | tojson }}] = {
+  special: {{ (sp if sp != 'Legendary' else 'S') | tojson }},
+  max_rank: {{ p.max_rank }},
+  effect: {{ (p.ranks[0].effect if p.ranks else p.description) | tojson }}
+};
+{% endfor %}
+{% endfor %}
+
+function perkAutoFill(val) {
+  const data = WIKI_PERKS[val];
+  if (!data) return;
+  const sp   = document.getElementById('pcSpecial');
+  const mr   = document.getElementById('pcMaxRank');
+  const eff  = document.getElementById('pcEffect');
+  if (sp)  sp.value  = data.special;
+  if (mr)  { mr.value = data.max_rank; if (!mr.querySelector(`option[value="${data.max_rank}"]`)) { const o = document.createElement('option'); o.value = data.max_rank; o.textContent = data.max_rank; mr.appendChild(o); } mr.value = data.max_rank; }
+  if (eff && !eff.value) eff.value = data.effect || '';
+}
+
+function fillPerk(name, sp, maxRank, effect) {
+  document.getElementById('pcName').value   = name;
+  document.getElementById('pcSpecial').value = sp;
+  document.getElementById('pcMaxRank').value = maxRank;
+  const eff = document.getElementById('pcEffect');
+  if (eff) eff.value = effect;
+  const panel = document.getElementById('addPanel');
+  if (!panel.classList.contains('open')) togglePanel('addPanel');
+  panel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* ── Tab switching ──────────────────────────────────── */
+let activePbTab = document.querySelector('.pb-tab.active')?.id?.replace('pbtab-','') || 'S';
+
+function showPerkTab(sp) {
+  document.querySelectorAll('.pb-grid').forEach(g => g.style.display = 'none');
+  document.querySelectorAll('.pb-tab').forEach(t => t.classList.remove('active'));
+  const grid = document.getElementById('pbgrid-' + sp);
+  if (grid) grid.style.display = 'grid';
+  const tab  = document.getElementById('pbtab-' + sp);
+  if (tab) tab.classList.add('active');
+  activePbTab = sp;
+  document.getElementById('pbSearch').value = '';
+  filterPerkBrowser('');
+}
+
+function filterPerkBrowser(q) {
+  q = q.toLowerCase().trim();
+  // When searching, show all grids and filter cards
+  if (q) {
+    document.querySelectorAll('.pb-grid').forEach(g => g.style.display = 'grid');
+    document.querySelectorAll('.pb-tab').forEach(t => t.classList.remove('active'));
+  } else {
+    // Restore active tab
+    document.querySelectorAll('.pb-grid').forEach(g => g.style.display = 'none');
+    const active = document.getElementById('pbgrid-' + activePbTab);
+    if (active) active.style.display = 'grid';
+    const tab = document.getElementById('pbtab-' + activePbTab);
+    if (tab) tab.classList.add('active');
+  }
+  document.querySelectorAll('.pb-card').forEach(c => {
+    c.style.display = (c.dataset.name.includes(q)) ? '' : 'none';
+  });
+}
+</script>
+
+{% endblock %}

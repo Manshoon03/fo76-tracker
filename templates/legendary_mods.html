@@ -1,0 +1,280 @@
+{% extends 'base.html' %}
+{% block title %}Legendary Mods{% endblock %}
+{% block content %}
+
+<style>
+  .lm-head   { display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+  .lm-head h1{ font-size:20px; color:var(--accent); margin:0; }
+  .lm-meta   { font-size:11px; color:var(--text-dim); margin-left:auto; }
+
+  /* Import bar */
+  .lm-import { background:var(--bg-card); border:1px solid var(--border);
+               border-radius:8px; padding:14px 18px; margin-bottom:22px;
+               display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .lm-import label { font-size:12px; color:var(--text-dim); flex-shrink:0; }
+  .lm-import input[type=file] { font-size:12px; color:var(--text); flex:1; min-width:200px; }
+
+  /* Tabs */
+  .lm-tabs  { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:20px; }
+  .lm-tab   { padding:8px 18px; font-size:13px; color:var(--text-dim); cursor:pointer;
+              border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .lm-tab:hover { color:var(--text); }
+  .lm-tab.active{ color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  .lm-panel { display:none; }
+  .lm-panel.active { display:block; }
+
+  /* Filter */
+  .lm-filter { margin-bottom:14px; }
+  .lm-filter input { width:100%; max-width:340px; }
+
+  /* Star group header */
+  .lm-star-group { margin-bottom:24px; }
+  .lm-star-head  { font-size:13px; font-weight:700; color:var(--accent);
+                   margin:0 0 10px; display:flex; align-items:center; gap:8px; }
+  .lm-star-head .star-badge { background:var(--accent)22; border:1px solid var(--accent)44;
+                               border-radius:4px; padding:2px 8px; font-size:11px; }
+
+  /* Craftable grid */
+  .lm-craft-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+                   gap:10px; }
+  .lm-craft-card { background:var(--bg-card); border:1px solid var(--border);
+                   border-radius:6px; padding:12px 14px;
+                   display:flex; flex-direction:column; gap:6px; }
+  .lm-craft-name { font-size:13px; font-weight:600; color:var(--text); }
+  .lm-craft-req  { font-size:11px; color:var(--text-dim); line-height:1.5; }
+  .lm-craft-flags{ display:flex; gap:6px; margin-top:2px; }
+  .flag-have  { font-size:10px; background:#50c05022; border:1px solid #50c05044;
+                color:#50c050; border-radius:3px; padding:1px 7px; }
+  .flag-need  { font-size:10px; background:#e0c04022; border:1px solid #e0c04044;
+                color:#e0c040; border-radius:3px; padding:1px 7px; }
+
+  /* Inventory table */
+  .lm-inv-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .lm-inv-table th { text-align:left; font-size:10px; text-transform:uppercase;
+                     letter-spacing:.05em; color:var(--text-dim);
+                     border-bottom:1px solid var(--border); padding:6px 10px; }
+  .lm-inv-table td { padding:7px 10px; border-bottom:1px solid var(--border)55; }
+  .lm-inv-table tr:hover td { background:var(--bg-card); }
+  .qty-cell   { display:flex; align-items:center; gap:8px; }
+  .qty-input  { width:56px; background:var(--bg-main,#111); border:1px solid var(--border);
+                border-radius:3px; color:var(--text); padding:3px 6px; font-size:13px;
+                text-align:center; font-family:inherit; }
+  .qty-high   { color:#50c050; font-weight:700; }
+  .qty-zero   { color:var(--text-dim); }
+  .notes-cell { font-size:11px; color:#e0c040; }
+
+  /* Bobblehead grid */
+  .lm-bob-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+                 gap:10px; }
+  .lm-bob-card { background:var(--bg-card); border:1px solid var(--border);
+                 border-radius:6px; padding:12px 14px;
+                 display:flex; justify-content:space-between; align-items:center; }
+  .lm-bob-name { font-size:13px; color:var(--text); }
+  .lm-bob-qty  { display:flex; align-items:center; gap:6px; }
+  .lm-bob-num  { font-size:18px; font-weight:700; min-width:28px; text-align:right; }
+
+  /* Empty state */
+  .lm-empty { text-align:center; padding:50px 20px; color:var(--text-dim); font-size:13px; }
+
+  @media(max-width:640px){
+    .lm-craft-grid { grid-template-columns:1fr; }
+    .lm-bob-grid   { grid-template-columns:1fr 1fr; }
+  }
+</style>
+
+<div class="lm-head">
+  <h1>⭐ LEGENDARY MODS</h1>
+  {% if craftable %}
+    <span class="count-badge">{{ craftable|length }} craftable</span>
+    <span class="count-badge">{{ inventory|length }} in inventory</span>
+    <span class="count-badge">{{ bobbles|length }} bobblehead types</span>
+  {% endif %}
+  {% if last_import %}
+    <span class="lm-meta">Last import: {{ last_import }}</span>
+  {% endif %}
+</div>
+
+<!-- Import bar -->
+<div class="lm-import">
+  <label>Import from .xlsx:</label>
+  <form method="POST" action="/legendary-mods/import" enctype="multipart/form-data"
+        style="display:flex;align-items:center;gap:10px;flex:1;flex-wrap:wrap">
+    <input type="file" name="file" accept=".xlsx,.xls" required>
+    <button class="btn btn-primary" type="submit" style="font-size:12px;padding:5px 14px">
+      📥 Import
+    </button>
+  </form>
+  <span style="font-size:11px;color:var(--text-dim)">
+    Export each tab from Google Sheets → File → Download → .xlsx
+  </span>
+</div>
+
+{% if not craftable and not inventory and not bobbles %}
+<div class="lm-empty">
+  No data yet. Upload your Fallout 76 Manny's spreadsheet (.xlsx) above.
+</div>
+{% else %}
+
+<!-- Tab bar -->
+<div class="lm-tabs">
+  <div class="lm-tab active" onclick="showTab('craftable',this)">
+    🔨 Craftable <span style="font-size:11px;color:var(--text-dim)">({{ craftable|length }})</span>
+  </div>
+  <div class="lm-tab" onclick="showTab('inventory',this)">
+    📦 Inventory <span style="font-size:11px;color:var(--text-dim)">({{ inventory|length }})</span>
+  </div>
+  <div class="lm-tab" onclick="showTab('bobbles',this)">
+    🎯 Bobbleheads <span style="font-size:11px;color:var(--text-dim)">({{ bobbles|length }})</span>
+  </div>
+</div>
+
+<!-- ── CRAFTABLE ── -->
+<div class="lm-panel active" id="panel-craftable">
+  <div class="lm-filter">
+    <input type="text" placeholder="Filter by name or material..."
+           oninput="filterCards('craftable',this.value)">
+  </div>
+  <div id="craftable-content">
+    {% set star_groups = {} %}
+    {% for item in craftable %}
+      {% set _ = star_groups.update({item.star_level: true}) %}
+    {% endfor %}
+    {% for stars in [1,2,3,4] %}
+      {% set group = craftable | selectattr('star_level','eq',stars) | list %}
+      {% if group %}
+      <div class="lm-star-group">
+        <div class="lm-star-head">
+          {{ '★' * stars }}
+          <span class="star-badge">{{ stars }}-Star — {{ group|length }} mods</span>
+          <span style="font-size:11px;color:var(--text-dim)">
+            {{ group | selectattr('have_materials','eq',1) | list | length }} have materials ·
+            {{ group | selectattr('need_materials','eq',1) | list | length }} need materials
+          </span>
+        </div>
+        <div class="lm-craft-grid">
+          {% for item in group %}
+          <div class="lm-craft-card"
+               data-name="{{ item.name | lower }}"
+               data-req="{{ item.requires_to_craft | lower }}">
+            <div class="lm-craft-name">{{ item.name }}</div>
+            <div class="lm-craft-req">{{ item.requires_to_craft or '—' }}</div>
+            <div class="lm-craft-flags">
+              {% if item.have_materials %}
+                <span class="flag-have">✓ Have Materials</span>
+              {% endif %}
+              {% if item.need_materials %}
+                <span class="flag-need">⚠ Need Materials</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ── INVENTORY ── -->
+<div class="lm-panel" id="panel-inventory">
+  <div class="lm-filter">
+    <input type="text" placeholder="Filter by mod name..."
+           oninput="filterRows('inv-table',this.value)">
+  </div>
+  {% for stars in [1,2,3,4] %}
+    {% set group = inventory | selectattr('star_level','eq',stars) | list %}
+    {% if group %}
+    <div class="lm-star-group">
+      <div class="lm-star-head">
+        {{ '★' * stars }}
+        <span class="star-badge">{{ stars }}-Star — {{ group|length }} types</span>
+        <span style="font-size:11px;color:var(--text-dim)">
+          {{ group | sum(attribute='qty') }} total
+        </span>
+      </div>
+      <table class="lm-inv-table" id="inv-table-{{ stars }}">
+        <thead>
+          <tr><th>Mod</th><th>QTY</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {% for item in group %}
+          <tr data-name="{{ item.name | lower }}">
+            <td>{{ item.name }}</td>
+            <td>
+              <div class="qty-cell">
+                <input type="number" class="qty-input
+                  {% if item.qty == 0 %}qty-zero{% elif item.qty >= 5 %}qty-high{% endif %}"
+                  value="{{ item.qty }}" min="0"
+                  onchange="updateQty('inventory',{{ item.id }},this.value,this)">
+              </div>
+            </td>
+            <td class="notes-cell">{{ item.notes or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<!-- ── BOBBLEHEADS ── -->
+<div class="lm-panel" id="panel-bobbles">
+  <div style="margin-bottom:14px;font-size:12px;color:var(--text-dim)">
+    Total bobbleheads: <strong style="color:var(--text)">{{ bobbles | sum(attribute='qty') }}</strong>
+  </div>
+  <div class="lm-bob-grid">
+    {% for b in bobbles %}
+    <div class="lm-bob-card">
+      <span class="lm-bob-name">{{ b.name }}</span>
+      <div class="lm-bob-qty">
+        <input type="number" class="qty-input
+          {% if b.qty == 0 %}qty-zero{% elif b.qty >= 10 %}qty-high{% endif %}"
+          value="{{ b.qty }}" min="0"
+          onchange="updateQty('bobble',{{ b.id }},this.value,this)">
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endif %}
+
+<script>
+function showTab(name, el) {
+  document.querySelectorAll('.lm-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.lm-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+function filterCards(panel, q) {
+  q = q.toLowerCase().trim();
+  document.querySelectorAll('#panel-' + panel + ' .lm-craft-card').forEach(card => {
+    const match = !q
+      || card.dataset.name.includes(q)
+      || card.dataset.req.includes(q);
+    card.style.display = match ? '' : 'none';
+  });
+}
+
+function filterRows(tablePrefix, q) {
+  q = q.toLowerCase().trim();
+  document.querySelectorAll('[id^="inv-table-"] tbody tr').forEach(row => {
+    const match = !q || row.dataset.name.includes(q);
+    row.style.display = match ? '' : 'none';
+  });
+}
+
+function updateQty(table, id, val, input) {
+  const qty = parseInt(val) || 0;
+  input.className = 'qty-input ' + (qty === 0 ? 'qty-zero' : qty >= 5 ? 'qty-high' : '');
+  fetch('/legendary-mods/qty', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `table=${table}&id=${id}&qty=${qty}`
+  });
+}
+</script>
+
+{% endblock %}

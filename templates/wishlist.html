@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% block title %}Wishlist{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>⭐ WISHLIST</h1>
+  <span class="count-badge">{{ items|length }} {{ 'found' if show=='found' else 'hunting' }}</span>
+</div>
+
+<p class="dim" style="font-size:12px;margin-bottom:14px">
+  Items you're hunting for. When you run a Vendor Scan, the app flags any matches automatically.
+</p>
+
+<!-- Add / Edit panel -->
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['item_name'] }}{% else %}+ Add to Wishlist{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/wishlist/{{ edit_item['id'] }}/update{% else %}/wishlist/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Item Name *</label>
+          <input type="text" name="item_name" required
+                 value="{{ edit_item['item_name'] if edit_item else '' }}"
+                 placeholder="e.g. Fixer Bloodied/FFR/25">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category">
+            {% for c in ['','Weapon','Armor','Power Armor','Plan','Mod','Aid','Ammo','Apparel','Misc'] %}
+            <option value="{{ c }}" {{ 'selected' if edit_item and edit_item['category']==c }}>{{ c or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Max Price (caps, 0 = any)</label>
+          <input type="number" name="max_price" min="0" max="40000"
+                 value="{{ edit_item['max_price'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Priority</label>
+          <select name="priority">
+            {% for p in ['High','Normal','Low'] %}
+            <option value="{{ p }}" {{ 'selected' if edit_item and edit_item['priority']==p else ('selected' if not edit_item and p=='Normal' else '') }}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Description / Roll Details</label>
+          <input type="text" name="description"
+                 value="{{ edit_item['description'] if edit_item else '' }}"
+                 placeholder="e.g. needs to be 3-star, any secondary">
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes"
+                 value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add to Wishlist{% endif %}</button>
+        {% if edit_item %}<a href="/wishlist" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- View toggle -->
+<div class="table-controls" style="margin-bottom:10px">
+  <input type="text" placeholder="Filter..." oninput="filterTable(this.value,'wishTable')">
+  <div class="filter-links">
+    <a href="/wishlist"          class="filter-link {{ 'active' if show=='active' }}">Hunting</a>
+    <a href="/wishlist?show=found" class="filter-link {{ 'active' if show=='found' }}">Found</a>
+  </div>
+</div>
+
+<div class="table-wrap table-scrollable">
+  <table class="data-table" id="wishTable">
+    <thead>
+      <tr><th>Item</th><th>Cat</th><th>Priority</th><th>Max Price</th><th>Description</th><th>Notes</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="{{ 'completed-row' if item['found'] }}">
+        <td class="hi">{{ item['item_name'] }}</td>
+        <td class="dim" style="font-size:11px">{{ item['category'] }}</td>
+        <td>
+          {% if item['priority'] == 'High' %}
+          <span class="badge" style="border-color:var(--gold);color:var(--gold)">High</span>
+          {% elif item['priority'] == 'Low' %}
+          <span class="badge badge-no">Low</span>
+          {% else %}
+          <span class="dim" style="font-size:11px">Normal</span>
+          {% endif %}
+        </td>
+        <td class="gold">{{ "{:,}".format(item['max_price']) if item['max_price'] else '<span class="dim">any</span>'|safe }}</td>
+        <td class="dim">{{ item['description'] }}</td>
+        <td class="dim">{{ item['notes'] }}</td>
+        <td class="actions" style="white-space:nowrap">
+          {% if not item['found'] %}
+          <form method="POST" action="/wishlist/{{ item['id'] }}/found" class="inline-form">
+            <button class="btn-sm btn-keep" title="Mark as found">✓ Found</button>
+          </form>
+          {% else %}
+          <form method="POST" action="/wishlist/{{ item['id'] }}/unfound" class="inline-form">
+            <button class="btn-sm btn-secondary" title="Still hunting">↩</button>
+          </form>
+          {% endif %}
+          <a href="/wishlist?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/wishlist/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="no-data">
+        {% if show == 'found' %}Nothing found yet.{% else %}Wishlist is empty — add something you're hunting for.{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

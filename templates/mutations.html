@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block title %}Mutations{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🧬 MUTATIONS</h1>
+  <span class="count-badge">{{ items|length }}</span>
+</div>
+
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Mutation{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/mutations/{{ edit_item['id'] }}/update{% else %}/mutations/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Mutation Name *</label>
+          <input type="text" id="mutNameInput" name="name" list="mutationNameList" required
+                 value="{{ edit_item['name'] if edit_item else '' }}"
+                 placeholder="e.g. Marsupial, Speed Demon" autocomplete="off"
+                 oninput="mutAutoFill(this.value)">
+          <datalist id="mutationNameList">{% for n in mutation_names %}<option value="{{ n }}">{% endfor %}</datalist>
+        </div>
+        <div class="form-group span2">
+          <label>Positive Effects</label>
+          <input type="text" id="mutPos" name="effects_positive"
+                 value="{{ edit_item['effects_positive'] if edit_item else '' }}"
+                 placeholder="e.g. +20 carry weight, jump higher">
+        </div>
+        <div class="form-group span2">
+          <label>Negative Effects</label>
+          <input type="text" id="mutNeg" name="effects_negative"
+                 value="{{ edit_item['effects_negative'] if edit_item else '' }}"
+                 placeholder="e.g. -4 Intelligence">
+        </div>
+        <div class="form-group">
+          <label>Linked Build</label>
+          <select name="build_id">
+            <option value="0">— None —</option>
+            {% for b in builds %}
+            <option value="{{ b['id'] }}" {{ 'selected' if edit_item and edit_item['build_id']==b['id'] else '' }}>{{ b['name'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="justify-content:flex-end">
+          <label class="toggle-label">
+            <input type="checkbox" name="active" value="1" {{ 'checked' if not edit_item or edit_item['active'] else '' }}>
+            Currently Active
+          </label>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Mutation{% endif %}</button>
+        {% if edit_item %}<a href="/mutations" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="table-controls">
+  <input type="text" placeholder="Filter mutations..." oninput="filterTable(this.value,'mutTable')">
+  <div class="filter-links">
+    <a href="/mutations" class="filter-link {{ 'active' if not filter_active }}">All</a>
+    <a href="/mutations?active=1" class="filter-link {{ 'active' if filter_active=='1' }}">Active</a>
+    <a href="/mutations?active=0" class="filter-link {{ 'active' if filter_active=='0' }}">Inactive</a>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="mutTable">
+    <thead>
+      <tr>
+        <th>Mutation</th><th>Positive Effects</th><th>Negative Effects</th>
+        <th>Build</th><th>Active</th><th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="{{ '' if item['active'] else 'dim' }}" style="{{ '' if item['active'] else 'opacity:0.6' }}">
+        <td class="hi">{{ item['name'] }}</td>
+        <td style="color:var(--accent);max-width:180px;white-space:normal">{{ item['effects_positive'] }}</td>
+        <td style="color:var(--red);max-width:180px;white-space:normal">{{ item['effects_negative'] }}</td>
+        <td class="dim">
+          {% if item['build_id'] %}
+            {% for b in builds %}{% if b['id'] == item['build_id'] %}{{ b['name'] }}{% endif %}{% endfor %}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          <form method="POST" action="/mutations/{{ item['id'] }}/toggle" class="inline-form">
+            <button class="btn-sm {{ 'btn-keep' if item['active'] else 'btn-secondary' }}" title="{{ 'Active — click to deactivate' if item['active'] else 'Inactive — click to activate' }}">
+              {{ '✓ Active' if item['active'] else '— Off' }}
+            </button>
+          </form>
+        </td>
+        <td class="dim">{{ item['notes'] }}</td>
+        <td class="actions">
+          <a href="/mutations?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/mutations/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="no-data">No mutations logged. Add one above!</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Wiki Mutation Reference
+════════════════════════════════════════════════════════════ -->
+<section class="add-panel" id="wikiMutPanel" style="margin-top:1.5rem">
+  <div class="panel-toggle" onclick="togglePanel('wikiMutPanel')">
+    <span>📖 Wiki Mutation Reference ({{ wiki_mutations|length }} mutations)</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <input type="text" placeholder="Search mutations..." oninput="filterMutRef(this.value)"
+           style="width:100%;padding:.45rem .7rem;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--fg);margin-bottom:1rem">
+    <div class="mut-ref-grid" id="mutRefGrid">
+      {% for name, m in wiki_mutations.items()|sort %}
+      <div class="mut-ref-card" data-name="{{ name|lower }}">
+        <div class="mut-ref-name">
+          {{ name }}
+          {% if m.wiki_url %}<a href="{{ m.wiki_url }}" target="_blank" style="font-size:.7rem;margin-left:.4rem;opacity:.5">↗</a>{% endif %}
+        </div>
+        <div class="mut-ref-pos">+ {{ m.positive_effects or '—' }}</div>
+        <div class="mut-ref-neg">- {{ m.negative_effects or '—' }}</div>
+        {% if m.serum_name %}<div class="mut-ref-serum">💉 {{ m.serum_name }}</div>{% endif %}
+        <button class="btn-sm btn-add-wiki" onclick="fillMutation('{{ name|e }}','{{ m.positive_effects|e }}','{{ m.negative_effects|e }}')">+ Add to My Mutations</button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<style>
+.mut-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: .75rem;
+}
+.mut-ref-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.mut-ref-name { font-weight: 700; color: var(--accent2); font-size: .95rem; }
+.mut-ref-pos  { color: var(--accent); font-size: .82rem; }
+.mut-ref-neg  { color: var(--red); font-size: .82rem; }
+.mut-ref-serum{ color: var(--fg-dim); font-size: .75rem; }
+.btn-add-wiki {
+  margin-top: .35rem;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  cursor: pointer;
+  padding: .25rem .5rem;
+  border-radius: 3px;
+  font-size: .75rem;
+  align-self: flex-start;
+  transition: background .15s;
+}
+.btn-add-wiki:hover { background: var(--accent); color: #000; }
+</style>
+
+<script>
+const WIKI_MUTS = {{ wiki_mutations | tojson }};
+
+function mutAutoFill(val) {
+  const data = WIKI_MUTS[val];
+  if (!data) return;
+  const pos = document.getElementById('mutPos');
+  const neg = document.getElementById('mutNeg');
+  if (pos && !pos.value) pos.value = data.positive_effects || '';
+  if (neg && !neg.value) neg.value = data.negative_effects || '';
+}
+
+function fillMutation(name, pos, neg) {
+  document.getElementById('mutNameInput').value = name;
+  document.getElementById('mutPos').value = pos;
+  document.getElementById('mutNeg').value = neg;
+  const panel = document.getElementById('addPanel');
+  if (!panel.classList.contains('open')) togglePanel('addPanel');
+  panel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function filterMutRef(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#mutRefGrid .mut-ref-card').forEach(c => {
+    c.style.display = c.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+</script>
+
+{% endblock %}

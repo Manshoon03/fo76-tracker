@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Search{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>⌕ SEARCH RESULTS</h1>
+  {% if q %}<span class="count-badge">{{ results|length }} results for "{{ q }}"</span>{% endif %}
+</div>
+
+{% if q and results %}
+  {% set grouped = {} %}
+  {% for r in results %}
+    {% if r.type not in grouped %}{% set _ = grouped.update({r.type: []}) %}{% endif %}
+    {% set _ = grouped[r.type].append(r) %}
+  {% endfor %}
+
+  <div class="search-results">
+    {% for type, items in grouped.items() %}
+    <div class="result-group">
+      <h3>{{ type }} ({{ items|length }})</h3>
+      {% for item in items %}
+      <a href="{{ item.url }}?edit_id={{ item.id }}" class="result-item">
+        <span class="type-tag">{{ type }}</span>
+        {{ item.name }}
+      </a>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+{% elif q %}
+  <div class="no-data">No results found for "{{ q }}".</div>
+{% else %}
+  <div class="no-data">Enter a search term above to search across all sections.</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,350 @@
+{% extends 'base.html' %}
+{% block title %}Craft Calc{% endblock %}
+
+{% block content %}
+<style>
+  .cc-wrap        { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
+  .cc-header      { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  .cc-header h1   { font-size: 20px; color: var(--accent); margin: 0; }
+  .cc-header span { font-size: 12px; color: var(--text-dim); }
+
+  .cc-card        { background: var(--bg-card); border: 1px solid var(--border);
+                    border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  .cc-card h2     { font-size: 13px; color: var(--text-dim); text-transform: uppercase;
+                    letter-spacing: .06em; margin: 0 0 14px; display:flex; align-items:center; gap:10px; }
+
+  .cc-target-row  { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .cc-target-row label { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+
+  /* ── Shared table styles ── */
+  .cc-table       { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .cc-table th    { text-align: left; font-size: 11px; color: var(--text-dim);
+                    text-transform: uppercase; letter-spacing: .05em;
+                    border-bottom: 1px solid var(--border); padding: 4px 8px 6px; }
+  .cc-table td    { padding: 8px 8px; border-bottom: 1px solid var(--border-faint, var(--border)); vertical-align: middle; }
+  .cc-table tr:last-child td { border-bottom: none; }
+  .cc-table input[type=number] { width: 72px; text-align: center; }
+
+  .ing-name   { font-weight: 600; color: var(--text); white-space: nowrap; }
+  .col-center { text-align: center; }
+  .need-zero  { color: #4caf50; font-weight: 700; text-align: center; }
+  .need-some  { color: var(--text); font-weight: 600; text-align: center; }
+  .cycles-ok  { color: #4caf50; font-weight: 700; text-align: center; font-size: 16px; }
+  .cycles-num { text-align: center; font-weight: 600; }
+  .cycles-bottleneck { color: var(--accent); }
+
+  .prog-wrap  { min-width: 110px; }
+  .prog-bar   { background: var(--bg-main, #111); border-radius: 4px; height: 10px;
+                overflow: hidden; display: flex; }
+  .prog-have  { height: 100%; background: #4caf5088; transition: width .3s; flex-shrink: 0; }
+  .prog-earn  { height: 100%; background: var(--accent); opacity: .85; transition: width .3s; flex-shrink: 0; }
+  .prog-lbl   { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+
+  .cc-bottleneck   { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+  .cc-bottleneck b { color: var(--accent); }
+
+  /* ── Crafting order table ── */
+  .step-num   { font-size: 15px; font-weight: 700; color: var(--accent);
+                text-align: center; width: 32px; }
+  .step-done  { color: #4caf50 !important; }
+
+  .craft-prog-bar  { background: var(--bg-main, #111); border-radius: 4px; height: 10px; overflow: hidden; }
+  .craft-prog-fill { height: 100%; border-radius: 4px; background: var(--accent);
+                     transition: width .3s; }
+  .craft-prog-fill.done { background: #4caf50; }
+
+  /* ── Summary ── */
+  .cc-result      { background: var(--bg-card); border: 1px solid var(--accent);
+                    border-radius: 8px; padding: 18px 20px; }
+  .cc-result h2   { font-size: 13px; color: var(--text-dim); text-transform: uppercase;
+                    letter-spacing: .06em; margin: 0 0 12px; }
+  .cc-result-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .cc-stat        { text-align: center; }
+  .cc-stat-val    { font-size: 26px; font-weight: 700; color: var(--accent); line-height: 1.1; }
+  .cc-stat-val.ready { color: #4caf50; font-size: 20px; }
+  .cc-stat-lbl    { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .cc-note        { font-size: 11px; color: var(--text-dim); margin-top: 10px; margin-bottom: 0; }
+
+  .clear-btn { font-size: 11px; color: var(--text-dim); background: none; border: none;
+               cursor: pointer; padding: 0; text-decoration: underline; margin-left: auto; }
+  .clear-btn:hover { color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .cc-result-grid { grid-template-columns: 1fr 1fr; }
+    .cc-table input[type=number] { width: 56px; }
+    .prog-wrap { min-width: 80px; }
+  }
+</style>
+
+<div class="cc-wrap">
+  <div class="cc-header">
+    <h1>🌿 Craft Calculator</h1>
+    <span>Black-Eyed Susan's Soothin'</span>
+  </div>
+
+  <!-- Target -->
+  <div class="cc-card">
+    <h2>Settings
+      <button class="clear-btn" onclick="clearAll()">clear saved values</button>
+    </h2>
+    <div class="cc-target-row">
+      <label>Target:</label>
+      <input type="number" id="target" value="25" min="1" max="9999"
+             oninput="save('target',this.value);calc()" style="width:72px">
+      <span style="font-size:12px;color:var(--text-dim)">units of Soothin'</span>
+    </div>
+  </div>
+
+  <!-- Raw Resources -->
+  <div class="cc-card">
+    <h2>⛏ Raw Resources <span style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0">(harvest from the world)</span></h2>
+    <table class="cc-table">
+      <thead>
+        <tr>
+          <th>Ingredient</th>
+          <th style="text-align:center">Per unit</th>
+          <th style="text-align:center">Total needed</th>
+          <th style="text-align:center" title="What you already have">On hand</th>
+          <th style="text-align:center">Still need</th>
+          <th style="text-align:center" title="How many you pick per run">Per cycle</th>
+          <th style="text-align:center">Cycles</th>
+          <th>Coverage</th>
+        </tr>
+      </thead>
+      <tbody id="ing-tbody"></tbody>
+    </table>
+    <div class="cc-bottleneck" id="bottleneck-line"></div>
+  </div>
+
+  <!-- Crafting Order -->
+  <div class="cc-card">
+    <h2>🔧 Crafting Order <span style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0">(tinker's bench — craft in this order)</span></h2>
+    <table class="cc-table">
+      <thead>
+        <tr>
+          <th style="width:36px">Step</th>
+          <th>Flower</th>
+          <th style="text-align:center">Total needed</th>
+          <th style="text-align:center" title="How many you've already crafted">Crafted</th>
+          <th style="text-align:center">Still need</th>
+          <th style="min-width:140px">Progress</th>
+        </tr>
+      </thead>
+      <tbody id="craft-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Summary -->
+  <div class="cc-result">
+    <h2>Summary</h2>
+    <div class="cc-result-grid">
+      <div class="cc-stat">
+        <div class="cc-stat-val" id="res-target">25</div>
+        <div class="cc-stat-lbl">Target</div>
+      </div>
+      <div class="cc-stat">
+        <div class="cc-stat-val" id="res-cycles">—</div>
+        <div class="cc-stat-lbl">Harvest cycles</div>
+      </div>
+      <div class="cc-stat">
+        <div class="cc-stat-val" id="res-bottleneck" style="font-size:14px;padding-top:6px">—</div>
+        <div class="cc-stat-lbl">Bottleneck</div>
+      </div>
+      <div class="cc-stat">
+        <div class="cc-stat-val" id="res-steps">—</div>
+        <div class="cc-stat-lbl">Craft steps done</div>
+      </div>
+    </div>
+    <p class="cc-note" id="res-note"></p>
+  </div>
+</div>
+
+<script>
+// ── Raw recipe (per 1 unit of Soothin') ─────────────────────────────────────
+const RECIPE = [
+  { id: 'carnal_weeper',    name: 'Carnal Weeper',    perUnit: 30 },
+  { id: 'crystalcup',       name: 'Crystalcup',       perUnit: 24 },
+  { id: 'radlily',          name: 'Radlily',           perUnit: 34 },
+  { id: 'nuclear_material', name: 'Nuclear Material', perUnit: 35 },
+  { id: 'dirty_water',      name: 'Dirty Water',      perUnit: 2  },
+];
+
+const HARVEST_DEFAULTS = {
+  carnal_weeper: 15, crystalcup: 20, radlily: 15, nuclear_material: 10, dirty_water: 5,
+};
+
+// ── Crafting order (quantities are per 25 units → divide for per-unit) ───────
+// Per-unit = quantity / 25
+const CRAFT_ORDER = [
+  { id: 'embergold',    name: 'Embergold',     perUnit: 300/25 },  // 12
+  { id: 'green_invader',name: 'Green Invader', perUnit: 250/25 },  // 10
+  { id: 'starlace',     name: 'Starlace',       perUnit: 50/25  },  //  2
+  { id: 'glorybell',    name: 'Glorybell',      perUnit: 150/25 },  //  6
+  { id: 'seesprout',    name: 'Seesprout',      perUnit: 50/25  },  //  2
+  { id: 'candykill',    name: 'Candykill',      perUnit: 50/25  },  //  2
+  { id: 'gigablossom',  name: 'Gigablossom',    perUnit: 25/25  },  //  1
+];
+
+// ── localStorage ─────────────────────────────────────────────────────────────
+const LS_KEY = 'fo76_craft_calc';
+function loadAll() { try { return JSON.parse(localStorage.getItem(LS_KEY)||'{}'); } catch { return {}; } }
+function save(k,v) { const d=loadAll(); d[k]=v; localStorage.setItem(LS_KEY,JSON.stringify(d)); }
+function clearAll() { localStorage.removeItem(LS_KEY); location.reload(); }
+
+// ── Build raw resource table ─────────────────────────────────────────────────
+function buildResourceTable() {
+  const saved = loadAll();
+  document.getElementById('ing-tbody').innerHTML = RECIPE.map(ing => {
+    const harvest = saved['h_'+ing.id] ?? HARVEST_DEFAULTS[ing.id];
+    const onhand  = saved['o_'+ing.id] ?? 0;
+    return `
+    <tr id="row-${ing.id}">
+      <td class="ing-name">${ing.name}</td>
+      <td class="col-center">×${ing.perUnit}</td>
+      <td class="col-center" id="total-${ing.id}">—</td>
+      <td style="text-align:center">
+        <input type="number" id="onhand-${ing.id}" value="${onhand}" min="0" max="99999"
+               oninput="save('o_${ing.id}',this.value);calc()">
+      </td>
+      <td id="still-${ing.id}">—</td>
+      <td style="text-align:center">
+        <input type="number" id="harvest-${ing.id}" value="${harvest}" min="1" max="9999"
+               oninput="save('h_${ing.id}',this.value);calc()">
+      </td>
+      <td id="cycles-${ing.id}" class="cycles-num">—</td>
+      <td class="prog-wrap">
+        <div class="prog-bar">
+          <div class="prog-have" id="bar-have-${ing.id}" style="width:0%"></div>
+          <div class="prog-earn" id="bar-earn-${ing.id}" style="width:0%"></div>
+        </div>
+        <div class="prog-lbl" id="pct-${ing.id}"></div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Build crafting order table ───────────────────────────────────────────────
+function buildCraftTable() {
+  const saved = loadAll();
+  document.getElementById('craft-tbody').innerHTML = CRAFT_ORDER.map((f, i) => {
+    const crafted = saved['c_'+f.id] ?? 0;
+    return `
+    <tr id="crow-${f.id}">
+      <td class="step-num" id="stepnum-${f.id}">${i+1}</td>
+      <td class="ing-name">${f.name}</td>
+      <td class="col-center" id="ctotal-${f.id}">—</td>
+      <td style="text-align:center">
+        <input type="number" id="crafted-${f.id}" value="${crafted}" min="0" max="99999"
+               oninput="save('c_${f.id}',this.value);calcCraft()">
+      </td>
+      <td id="cstill-${f.id}" class="need-some">—</td>
+      <td class="prog-wrap" style="min-width:140px">
+        <div class="craft-prog-bar">
+          <div class="craft-prog-fill" id="cbar-${f.id}" style="width:0%"></div>
+        </div>
+        <div class="prog-lbl" id="cpct-${f.id}"></div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Calc: raw resources ──────────────────────────────────────────────────────
+function calc() {
+  const target = Math.max(1, parseInt(document.getElementById('target').value)||1);
+  document.getElementById('res-target').textContent = target;
+
+  const data = RECIPE.map(ing => {
+    const total   = ing.perUnit * target;
+    const onhand  = Math.max(0, parseInt(document.getElementById('onhand-'+ing.id).value)||0);
+    const harvest = Math.max(1, parseInt(document.getElementById('harvest-'+ing.id).value)||1);
+    const still   = Math.max(0, total - onhand);
+    const cycles  = still === 0 ? 0 : Math.ceil(still / harvest);
+    return { ing, total, onhand, harvest, still, cycles };
+  });
+
+  let maxCycles = 0, bottleneck = null;
+  data.forEach(d => { if (d.cycles > maxCycles) { maxCycles = d.cycles; bottleneck = d.ing; } });
+
+  data.forEach(({ ing, total, onhand, harvest, still, cycles }) => {
+    document.getElementById('total-'+ing.id).textContent = total.toLocaleString();
+
+    const stillEl = document.getElementById('still-'+ing.id);
+    stillEl.className = still === 0 ? 'need-zero' : 'need-some';
+    stillEl.textContent = still === 0 ? '✓' : still.toLocaleString();
+
+    const cycEl = document.getElementById('cycles-'+ing.id);
+    if (cycles === 0) { cycEl.className='cycles-ok'; cycEl.textContent='✓'; }
+    else { cycEl.className='cycles-num'+(bottleneck&&ing.id===bottleneck.id?' cycles-bottleneck':''); cycEl.textContent=cycles; }
+
+    const havePct = Math.min(100, Math.round((onhand/total)*100));
+    const earned  = harvest * maxCycles;
+    const earnPct = Math.min(100-havePct, Math.round((earned/total)*100));
+    document.getElementById('bar-have-'+ing.id).style.width = havePct+'%';
+    document.getElementById('bar-earn-'+ing.id).style.width = earnPct+'%';
+    document.getElementById('pct-'+ing.id).textContent =
+      Math.min(total, onhand+earned).toLocaleString()+' / '+total.toLocaleString();
+  });
+
+  document.getElementById('bottleneck-line').innerHTML = maxCycles === 0
+    ? '<b style="color:#4caf50">✓ All raw resources covered!</b>'
+    : bottleneck
+      ? `Bottleneck: <b>${bottleneck.name}</b> — <b>${maxCycles}</b> harvest cycle${maxCycles!==1?'s':''} needed`
+      : '';
+
+  document.getElementById('res-cycles').textContent = maxCycles===0 ? '0 ✓' : maxCycles;
+  document.getElementById('res-cycles').className   = maxCycles===0 ? 'cc-stat-val ready' : 'cc-stat-val';
+  document.getElementById('res-bottleneck').textContent = bottleneck ? bottleneck.name : '✓ All set';
+
+  const surplusNotes = data.filter(d=>d.cycles<maxCycles&&d.still>0).map(d=>{
+    const s = (d.harvest*maxCycles)-d.still;
+    return s>0 ? `${d.ing.name} +${s.toLocaleString()} surplus` : null;
+  }).filter(Boolean);
+  document.getElementById('res-note').textContent = surplusNotes.length
+    ? 'Surplus after '+maxCycles+' cycles: '+surplusNotes.join(' · ') : '';
+
+  calcCraft(); // keep craft table in sync with target
+}
+
+// ── Calc: crafting order ─────────────────────────────────────────────────────
+function calcCraft() {
+  const target  = Math.max(1, parseInt(document.getElementById('target').value)||1);
+  let stepsDone = 0;
+
+  CRAFT_ORDER.forEach((f, i) => {
+    const total   = Math.ceil(f.perUnit * target);
+    const crafted = Math.max(0, parseInt(document.getElementById('crafted-'+f.id).value)||0);
+    const still   = Math.max(0, total - crafted);
+    const pct     = Math.min(100, Math.round((crafted/total)*100));
+    const done    = still === 0;
+    if (done) stepsDone++;
+
+    document.getElementById('ctotal-'+f.id).textContent = total.toLocaleString();
+
+    const stillEl = document.getElementById('cstill-'+f.id);
+    stillEl.className = done ? 'need-zero' : 'need-some';
+    stillEl.textContent = done ? '✓' : still.toLocaleString();
+
+    const stepEl = document.getElementById('stepnum-'+f.id);
+    stepEl.className = done ? 'step-num step-done' : 'step-num';
+    stepEl.textContent = done ? '✓' : (i+1);
+
+    const bar = document.getElementById('cbar-'+f.id);
+    bar.style.width = pct+'%';
+    bar.className   = 'craft-prog-fill'+(done?' done':'');
+    document.getElementById('cpct-'+f.id).textContent = crafted.toLocaleString()+' / '+total.toLocaleString();
+  });
+
+  document.getElementById('res-steps').textContent = stepsDone+' / '+CRAFT_ORDER.length;
+  document.getElementById('res-steps').className   = stepsDone===CRAFT_ORDER.length ? 'cc-stat-val ready' : 'cc-stat-val';
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+(function init() {
+  const saved = loadAll();
+  if (saved['target']) document.getElementById('target').value = saved['target'];
+  buildResourceTable();
+  buildCraftTable();
+  calc();
+})();
+</script>
+{% endblock %}

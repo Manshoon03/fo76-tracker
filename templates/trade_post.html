@@ -1,0 +1,690 @@
+{% extends 'base.html' %}
+{% block title %}Trade Post Generator{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📢 TRADE POST GENERATOR</h1>
+  <span class="count-badge">Discord-ready</span>
+</div>
+
+<p class="dim" style="font-size:12px;margin-bottom:16px">
+  Select items to include, set your prices, click Generate. The post will appear below — copy and paste straight into Discord.
+</p>
+
+<!-- ── Header / Footer Customizer ────────────────────────────────────── -->
+<section class="add-panel" id="customPanel">
+  <div class="panel-toggle" onclick="togglePanel('customPanel')">
+    <span>⚙ Post Header &amp; Footer Options</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Custom Header Text <span class="dim">(optional)</span></label>
+        <input type="text" id="customHeader" placeholder="e.g. ⚡ Weekend Sale! All items must go!" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Your IGN / Gamertag</label>
+        <input type="text" id="customIGN" placeholder="e.g. VaultDweller76" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Payment Preference</label>
+        <select id="customPayment">
+          <option value="caps">Caps only</option>
+          <option value="trade">Will trade</option>
+          <option value="either">Caps or trade</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Server</label>
+        <input type="text" id="customServer" placeholder="e.g. PC, Xbox, PS" value="PC" autocomplete="off">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Weapons ────────────────────────────────────────────────────────── -->
+{% if weapons %}
+<section class="add-panel open" id="weaponsPanel" style="margin-top:12px">
+  <div class="panel-toggle" onclick="togglePanel('weaponsPanel')">
+    <span>⚔ WEAPONS <span class="dim" style="font-size:11px">({{ weapons|length }} available)</span></span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body" style="padding-top:8px">
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="selAllWeapons" onchange="toggleSection('weapons', this.checked)">
+      Select All Weapons
+    </label>
+    <div class="table-wrap">
+      <table class="data-table" id="weaponsCheckTable">
+        <thead>
+          <tr>
+            <th style="width:32px">☐</th>
+            <th>Name</th>
+            <th>Notation</th>
+            <th>Status</th>
+            <th style="width:130px">Asking Price (caps)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for w in weapons %}
+          <tr>
+            <td>
+              <input type="checkbox" class="item-cb weapons-cb"
+                     data-section="weapons"
+                     data-id="{{ w.id }}"
+                     data-name="{{ w.name | e }}"
+                     data-s1="{{ w.star1 | e }}"
+                     data-s2="{{ w.star2 | e }}"
+                     data-s3="{{ w.star3 | e }}"
+                     data-s4="{{ w.star4 | e }}"
+                     data-status="{{ w.status | e }}"
+                     onchange="syncSelectAll('weapons')">
+            </td>
+            <td class="hi">
+              {{ w.name }}
+              {% if w.star1 %}<br><span class="dim" style="font-size:10px">
+                <span class="gold">★</span> {{ w.star1 }}
+                {% if w.star2 %} / {{ w.star2 }}{% endif %}
+                {% if w.star3 %} / {{ w.star3 }}{% endif %}
+                {% if w.star4 %} / {{ w.star4 }}{% endif %}
+              </span>{% endif %}
+            </td>
+            <td>
+              <span class="notation-display"
+                    id="wn-{{ w.id }}"
+                    data-s1="{{ w.star1 | e }}"
+                    data-s2="{{ w.star2 | e }}"
+                    data-s3="{{ w.star3 | e }}"
+                    data-s4="{{ w.star4 | e }}"
+                    data-name="{{ w.name | e }}"
+                    style="font-family:monospace;font-size:11px;color:var(--accent);letter-spacing:0.5px"></span>
+            </td>
+            <td>
+              <span class="badge badge-{{ w.status | lower }}">{{ w.status }}</span>
+            </td>
+            <td>
+              <input type="number" class="price-input"
+                     id="wp-{{ w.id }}"
+                     min="0" step="100"
+                     value="{{ w.value if w.value and w.value > 0 else 0 }}"
+                     style="width:110px;padding:3px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px;text-align:right"
+                     placeholder="0">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Armor ──────────────────────────────────────────────────────────── -->
+{% if armor %}
+<section class="add-panel open" id="armorPanel" style="margin-top:12px">
+  <div class="panel-toggle" onclick="togglePanel('armorPanel')">
+    <span>🛡 ARMOR <span class="dim" style="font-size:11px">({{ armor|length }} available)</span></span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body" style="padding-top:8px">
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="selAllArmor" onchange="toggleSection('armor', this.checked)">
+      Select All Armor
+    </label>
+    <div class="table-wrap">
+      <table class="data-table" id="armorCheckTable">
+        <thead>
+          <tr>
+            <th style="width:32px">☐</th>
+            <th>Name</th>
+            <th>Notation</th>
+            <th>Status</th>
+            <th style="width:130px">Asking Price (caps)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in armor %}
+          <tr>
+            <td>
+              <input type="checkbox" class="item-cb armor-cb"
+                     data-section="armor"
+                     data-id="{{ a.id }}"
+                     data-name="{{ a.name | e }}"
+                     data-slot="{{ a.slot | e }}"
+                     data-material="{{ a.material | e }}"
+                     data-s1="{{ a.star1 | e }}"
+                     data-s2="{{ a.star2 | e }}"
+                     data-s3="{{ a.star3 | e }}"
+                     data-s4="{{ a.star4 | e }}"
+                     data-status="{{ a.status | e }}"
+                     onchange="syncSelectAll('armor')">
+            </td>
+            <td class="hi">
+              {{ a.name }}
+              {% if a.slot %}<span class="dim" style="font-size:10px"> · {{ a.slot }}</span>{% endif %}
+              {% if a.material %}<span class="dim" style="font-size:10px"> · {{ a.material }}</span>{% endif %}
+              {% if a.star1 %}<br><span class="dim" style="font-size:10px">
+                <span class="gold">★</span> {{ a.star1 }}
+                {% if a.star2 %} / {{ a.star2 }}{% endif %}
+                {% if a.star3 %} / {{ a.star3 }}{% endif %}
+                {% if a.star4 %} / {{ a.star4 }}{% endif %}
+              </span>{% endif %}
+            </td>
+            <td>
+              <span style="font-family:monospace;font-size:11px;color:var(--accent);letter-spacing:0.5px">
+                {{ a.slot if a.slot else '?' }}{% if a.star1 %} | {{ a.star1[:3].upper() }}{% endif %}{% if a.star2 %} | {{ a.star2[:3].upper() }}{% endif %}{% if a.star3 %} | {{ a.star3[:3].upper() }}{% endif %}{% if a.star4 %} | {{ a.star4[:3].upper() }}{% endif %}
+              </span>
+            </td>
+            <td>
+              <span class="badge badge-{{ a.status | lower }}">{{ a.status }}</span>
+            </td>
+            <td>
+              <input type="number" class="price-input"
+                     id="ap-{{ a.id }}"
+                     min="0" step="100"
+                     value="{{ a.value if a.value and a.value > 0 else 0 }}"
+                     style="width:110px;padding:3px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px;text-align:right"
+                     placeholder="0">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Plans ──────────────────────────────────────────────────────────── -->
+{% if plans %}
+<section class="add-panel open" id="plansPanel" style="margin-top:12px">
+  <div class="panel-toggle" onclick="togglePanel('plansPanel')">
+    <span>📜 PLANS <span class="dim" style="font-size:11px">({{ plans|length }} with dupes)</span></span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body" style="padding-top:8px">
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="selAllPlans" onchange="toggleSection('plans', this.checked)">
+      Select All Plans
+    </label>
+    <div class="table-wrap">
+      <table class="data-table" id="plansCheckTable">
+        <thead>
+          <tr>
+            <th style="width:32px">☐</th>
+            <th>Plan Name</th>
+            <th>Category</th>
+            <th>Qty</th>
+            <th style="width:130px">Asking Price (caps)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in plans %}
+          <tr>
+            <td>
+              <input type="checkbox" class="item-cb plans-cb"
+                     data-section="plans"
+                     data-id="{{ p.id }}"
+                     data-name="{{ p.name | e }}"
+                     data-category="{{ p.category | e }}"
+                     data-qty="{{ p.qty_unlearned }}"
+                     onchange="syncSelectAll('plans')">
+            </td>
+            <td class="hi">{{ p.name }}</td>
+            <td class="dim">{{ p.category }}</td>
+            <td class="gold">{{ p.qty_unlearned }}</td>
+            <td>
+              <input type="number" class="price-input"
+                     id="pp-{{ p.id }}"
+                     min="0" step="100"
+                     value="{{ p.sell_price if p.sell_price and p.sell_price > 0 else 0 }}"
+                     style="width:110px;padding:3px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px;text-align:right"
+                     placeholder="0">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Mods ───────────────────────────────────────────────────────────── -->
+{% if mods %}
+<section class="add-panel open" id="modsPanel" style="margin-top:12px">
+  <div class="panel-toggle" onclick="togglePanel('modsPanel')">
+    <span>🔩 MODS <span class="dim" style="font-size:11px">({{ mods|length }} available)</span></span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body" style="padding-top:8px">
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="selAllMods" onchange="toggleSection('mods', this.checked)">
+      Select All Mods
+    </label>
+    <div class="table-wrap">
+      <table class="data-table" id="modsCheckTable">
+        <thead>
+          <tr>
+            <th style="width:32px">☐</th>
+            <th>Mod Name</th>
+            <th>Applies To</th>
+            <th>Qty</th>
+            <th style="width:130px">Price Each (caps)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in mods %}
+          <tr>
+            <td>
+              <input type="checkbox" class="item-cb mods-cb"
+                     data-section="mods"
+                     data-id="{{ m.id }}"
+                     data-name="{{ m.name | e }}"
+                     data-applies="{{ m.applies_to | e }}"
+                     data-qty="{{ m.qty }}"
+                     data-status="{{ m.status | e }}"
+                     onchange="syncSelectAll('mods')">
+            </td>
+            <td class="hi">{{ m.name }}</td>
+            <td class="dim">{{ m.applies_to }}</td>
+            <td>{{ m.qty }}</td>
+            <td>
+              <input type="number" class="price-input"
+                     id="mp-{{ m.id }}"
+                     min="0" step="100"
+                     value="{{ m.value_each if m.value_each and m.value_each > 0 else 0 }}"
+                     style="width:110px;padding:3px 6px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-hi);font-size:12px;border-radius:3px;text-align:right"
+                     placeholder="0">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if not weapons and not armor and not plans and not mods %}
+<div class="no-data" style="margin-top:24px;padding:24px;text-align:center">
+  No items marked Sell or Trade found. Go to
+  <a href="/weapons" class="accent">Weapons</a>,
+  <a href="/armor" class="accent">Armor</a>,
+  <a href="/plans" class="accent">Plans</a>, or
+  <a href="/mods" class="accent">Mods</a>
+  and mark items as Sell or Trade.
+</div>
+{% endif %}
+
+<!-- ── Format & Generate ──────────────────────────────────────────────── -->
+<section style="margin-top:16px;padding:14px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:5px">
+  <div class="section-title" style="margin-bottom:12px">Output Format</div>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px">
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px">
+      <input type="radio" name="postFormat" value="discord" checked> Discord
+      <span class="dim" style="font-size:10px">(code blocks + emoji)</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px">
+      <input type="radio" name="postFormat" value="plain"> Plain Text
+      <span class="dim" style="font-size:10px">(clean lines)</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px">
+      <input type="radio" name="postFormat" value="reddit"> Reddit
+      <span class="dim" style="font-size:10px">(markdown)</span>
+    </label>
+  </div>
+  <button class="btn btn-primary" style="font-size:14px;padding:8px 24px" onclick="generatePost()">
+    📢 Generate Post
+  </button>
+</section>
+
+<!-- ── Output ─────────────────────────────────────────────────────────── -->
+<section style="margin-top:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <div class="section-title">Generated Post</div>
+    <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px" onclick="copyOutput()" id="copyBtn">
+      📋 Copy to Clipboard
+    </button>
+  </div>
+  <textarea id="postOutput"
+            rows="14"
+            readonly
+            placeholder="Your trade post will appear here after clicking Generate Post..."
+            style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text-hi);font-family:monospace;font-size:12px;line-height:1.6;padding:12px;border-radius:4px;resize:vertical;white-space:pre"></textarea>
+  <p class="dim" style="font-size:10px;margin-top:6px">
+    Tip: The output is read-only. Click Copy then paste directly into Discord / Reddit.
+  </p>
+</section>
+
+<script>
+// ── OUR_CODE map (full, same as decode.html) ──────────────────────────────────
+const OUR_CODE = {
+  // Star 1 — Prefixes
+  'Bloodied':'BLD','Anti-Armor':'AAR','Quad':'QD','Two Shot':'TS',
+  "Vampire's":'VMP',"Junkie's":'JNK','Furious':'FUR',
+  "Executioner's":'EXE',"Aristocrat's":'ARS','Instigating':'INS',
+  "Berserker's":'BER',"Assassin's":'ASN',"Suppressor's":'SUP',
+  "Exterminator's":'EXT',"Mutant Slayer's":'MTS',"Mutant's":'MUT',
+  'Nocturnal':'NOC',"Hunter's":'HNT',"Medic's":'MED',
+  "Juggernaut's":'JUG',"Troubleshooter's":'TRB',"Stalker's":'STK',
+  "Sniper's":'SNP','Adrenal':'ADR',"Gourmand's":'GOR',
+  "Feral's":'FRL',"Zealot's":'ZLT',"Ghoul Slayer's":'GHS',
+  // Star 2 — Effects
+  'Rapid':'FFR','Vital':'CRT','Explosive':'EXP','Last Shot':'LST',
+  'V.A.T.S. Enhanced':'VEH',"Basher's":'BSH','Crippling':'CRP',
+  "Heavy Hitter's":'HHT',"Hitman's":'HTM','Inertial':'IRT','Steady':'STD',
+  // Star 3 — Perks/Utility
+  'V.A.T.S. Optimized':'VAP','Lightweight':'LWT','Swift':'RLD',
+  'Durability':'DUR','Lucky':'LCK','Nimble':'NMB',
+  'Barbarian':'BRB','Belted':'BLT',"Arms Keeper's":'ARK',
+  // Star 4
+  "Battle-Loader's":'BTL',"Bruiser's":'BRS',"Bully's":'BLY',
+  'Charged':'CHG',"Choo-Choo's":'CCH',"Combo-Breaker's":'CMB',
+  "Conductor's":'CND',"Electrician's":'ELC',"Encircler's":'ENC',
+  "Fencer's":'FNC',"Fracturer's":'FRC',"Icemen's":'ICE',
+  "Pin-Pointer's":'PIN','Polished':'POL',"Pounder's":'PND',
+  "Pyromaniac's":'PYR',"Ranger's":'RNG',"Stabilizer's":'STB',
+  "Thrill-Seeker's":'THL',"Viper's":'VPR',
+};
+
+function codeFor(star) {
+  if (!star) return null;
+  return OUR_CODE[star] || star.slice(0, 3).toUpperCase();
+}
+
+function buildWeaponNotation(s1, s2, s3, s4, name) {
+  const parts = [];
+  if (s1) parts.push(codeFor(s1));
+  if (s2) parts.push(codeFor(s2));
+  if (s3) parts.push(codeFor(s3));
+  if (s4) parts.push(codeFor(s4));
+  if (name) parts.push(name);
+  return parts.join(' | ');
+}
+
+function buildArmorNotation(slot, s1, s2, s3, s4, name) {
+  const parts = [];
+  if (slot) parts.push(slot);
+  if (s1) parts.push(s1.slice(0, 3).toUpperCase());
+  if (s2) parts.push(s2.slice(0, 3).toUpperCase());
+  if (s3) parts.push(s3.slice(0, 3).toUpperCase());
+  if (s4) parts.push(s4.slice(0, 3).toUpperCase());
+  if (!slot && name) parts.push(name);
+  return parts.join(' | ');
+}
+
+// Populate weapon notation display cells on load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.notation-display').forEach(el => {
+    const notation = buildWeaponNotation(
+      el.dataset.s1, el.dataset.s2, el.dataset.s3, el.dataset.s4, el.dataset.name
+    );
+    el.textContent = notation;
+  });
+});
+
+// ── Select-all toggles ────────────────────────────────────────────────────────
+function toggleSection(section, checked) {
+  document.querySelectorAll('.' + section + '-cb').forEach(cb => cb.checked = checked);
+}
+
+function syncSelectAll(section) {
+  const cbs = document.querySelectorAll('.' + section + '-cb');
+  const masterEl = document.getElementById('selAll' + section.charAt(0).toUpperCase() + section.slice(1));
+  if (!masterEl) return;
+  const allChecked = Array.from(cbs).every(cb => cb.checked);
+  const anyChecked = Array.from(cbs).some(cb => cb.checked);
+  masterEl.checked = allChecked;
+  masterEl.indeterminate = !allChecked && anyChecked;
+}
+
+// ── Format a number as caps string ───────────────────────────────────────────
+function fmtCaps(n) {
+  const num = parseInt(n, 10) || 0;
+  return num.toLocaleString() + 'c';
+}
+
+// ── Main generate function ─────────────────────────────────────────────────
+function generatePost() {
+  const fmt = document.querySelector('input[name="postFormat"]:checked').value;
+  const header   = (document.getElementById('customHeader').value || '').trim();
+  const ign      = (document.getElementById('customIGN').value || '').trim();
+  const payment  = document.getElementById('customPayment').value;
+  const server   = (document.getElementById('customServer').value || 'PC').trim();
+
+  const paymentText = {
+    caps:   'Caps only',
+    trade:  'Will trade',
+    either: 'Caps or trade'
+  }[payment] || 'Caps only';
+
+  // Collect checked weapons
+  const wLines = [];
+  document.querySelectorAll('.weapons-cb:checked').forEach(cb => {
+    const price = document.getElementById('wp-' + cb.dataset.id);
+    const notation = buildWeaponNotation(
+      cb.dataset.s1, cb.dataset.s2, cb.dataset.s3, cb.dataset.s4, cb.dataset.name
+    );
+    const caps = price ? fmtCaps(price.value) : '0c';
+    wLines.push({ notation, caps, status: cb.dataset.status });
+  });
+
+  // Collect checked armor
+  const aLines = [];
+  document.querySelectorAll('.armor-cb:checked').forEach(cb => {
+    const price = document.getElementById('ap-' + cb.dataset.id);
+    const notation = buildArmorNotation(
+      cb.dataset.slot, cb.dataset.s1, cb.dataset.s2, cb.dataset.s3, cb.dataset.s4, cb.dataset.name
+    );
+    const caps = price ? fmtCaps(price.value) : '0c';
+    const label = cb.dataset.slot
+      ? cb.dataset.name + ' (' + cb.dataset.slot + ')'
+      : cb.dataset.name;
+    aLines.push({ notation, label, caps, status: cb.dataset.status });
+  });
+
+  // Collect checked plans
+  const pLines = [];
+  document.querySelectorAll('.plans-cb:checked').forEach(cb => {
+    const price = document.getElementById('pp-' + cb.dataset.id);
+    const caps = price ? fmtCaps(price.value) : '0c';
+    pLines.push({ name: cb.dataset.name, qty: cb.dataset.qty, caps });
+  });
+
+  // Collect checked mods
+  const mLines = [];
+  document.querySelectorAll('.mods-cb:checked').forEach(cb => {
+    const price = document.getElementById('mp-' + cb.dataset.id);
+    const caps = price ? fmtCaps(price.value) : '0c';
+    const applies = cb.dataset.applies ? ' [' + cb.dataset.applies + ']' : '';
+    mLines.push({ name: cb.dataset.name, applies, qty: cb.dataset.qty, caps });
+  });
+
+  if (!wLines.length && !aLines.length && !pLines.length && !mLines.length) {
+    document.getElementById('postOutput').value = '— No items selected. Check at least one item above. —';
+    return;
+  }
+
+  let out = '';
+
+  if (fmt === 'discord') {
+    out = buildDiscord(header, ign, server, paymentText, wLines, aLines, pLines, mLines);
+  } else if (fmt === 'reddit') {
+    out = buildReddit(header, ign, server, paymentText, wLines, aLines, pLines, mLines);
+  } else {
+    out = buildPlain(header, ign, server, paymentText, wLines, aLines, pLines, mLines);
+  }
+
+  document.getElementById('postOutput').value = out;
+}
+
+// ── Discord format ────────────────────────────────────────────────────────────
+function buildDiscord(header, ign, server, paymentText, wLines, aLines, pLines, mLines) {
+  const lines = [];
+
+  if (header) lines.push(header, '');
+
+  // Determine WTS / WTT label
+  const hasWTS = [...wLines, ...aLines, ...mLines].some(x => x.status === 'Sell') || pLines.length;
+  const hasWTT = [...wLines, ...aLines, ...mLines].some(x => x.status === 'Trade');
+  let tradeLabel = '';
+  if (hasWTS && hasWTT) tradeLabel = 'WTS/WTT';
+  else if (hasWTT) tradeLabel = 'WTT';
+  else tradeLabel = 'WTS';
+
+  lines.push('```');
+  lines.push('  ☢  FO76  |  ' + tradeLabel + '  |  Server: ' + server);
+  lines.push('```');
+  lines.push('');
+
+  if (wLines.length) {
+    lines.push('**⚔ WEAPONS**');
+    wLines.forEach(w => {
+      lines.push('`' + w.notation + '` — **' + w.caps + '**');
+    });
+    lines.push('');
+  }
+
+  if (aLines.length) {
+    lines.push('**🛡 ARMOR**');
+    aLines.forEach(a => {
+      lines.push('`' + a.notation + '` (' + a.label + ') — **' + a.caps + '**');
+    });
+    lines.push('');
+  }
+
+  if (pLines.length) {
+    lines.push('**📜 PLANS**');
+    pLines.forEach(p => {
+      const qty = parseInt(p.qty) > 1 ? ' (x' + p.qty + ')' : '';
+      lines.push('Plan: ' + p.name + qty + ' — **' + p.caps + '**');
+    });
+    lines.push('');
+  }
+
+  if (mLines.length) {
+    lines.push('**🔩 MODS**');
+    mLines.forEach(m => {
+      const qty = parseInt(m.qty) > 1 ? ' x' + m.qty : '';
+      lines.push(m.name + m.applies + qty + ' — **' + m.caps + '**');
+    });
+    lines.push('');
+  }
+
+  const footer = [];
+  if (ign) footer.push('IGN: ' + ign);
+  footer.push('💬 DM me | ' + paymentText);
+  lines.push(footer.join('  ·  '));
+
+  return lines.join('\n');
+}
+
+// ── Plain text format ─────────────────────────────────────────────────────────
+function buildPlain(header, ign, server, paymentText, wLines, aLines, pLines, mLines) {
+  const lines = [];
+
+  if (header) lines.push(header, '');
+  lines.push('[FO76 Trade Post — Server: ' + server + ']', '');
+
+  if (wLines.length) {
+    lines.push('=== WEAPONS ===');
+    wLines.forEach(w => lines.push(w.notation + ' — ' + w.caps));
+    lines.push('');
+  }
+
+  if (aLines.length) {
+    lines.push('=== ARMOR ===');
+    aLines.forEach(a => lines.push(a.notation + ' (' + a.label + ') — ' + a.caps));
+    lines.push('');
+  }
+
+  if (pLines.length) {
+    lines.push('=== PLANS ===');
+    pLines.forEach(p => {
+      const qty = parseInt(p.qty) > 1 ? ' (x' + p.qty + ')' : '';
+      lines.push('Plan: ' + p.name + qty + ' — ' + p.caps);
+    });
+    lines.push('');
+  }
+
+  if (mLines.length) {
+    lines.push('=== MODS ===');
+    mLines.forEach(m => {
+      const qty = parseInt(m.qty) > 1 ? ' x' + m.qty : '';
+      lines.push(m.name + m.applies + qty + ' — ' + m.caps);
+    });
+    lines.push('');
+  }
+
+  if (ign) lines.push('IGN: ' + ign);
+  lines.push('Payment: ' + paymentText + ' | DM to purchase');
+
+  return lines.join('\n');
+}
+
+// ── Reddit markdown format ────────────────────────────────────────────────────
+function buildReddit(header, ign, server, paymentText, wLines, aLines, pLines, mLines) {
+  const lines = [];
+
+  if (header) lines.push('**' + header + '**', '');
+  lines.push('**FO76 Trade Post — Server: ' + server + '**', '');
+  lines.push('---', '');
+
+  if (wLines.length) {
+    lines.push('## ⚔ Weapons', '');
+    wLines.forEach(w => lines.push('- `' + w.notation + '` — **' + w.caps + '**'));
+    lines.push('');
+  }
+
+  if (aLines.length) {
+    lines.push('## 🛡 Armor', '');
+    aLines.forEach(a => lines.push('- `' + a.notation + '` (' + a.label + ') — **' + a.caps + '**'));
+    lines.push('');
+  }
+
+  if (pLines.length) {
+    lines.push('## 📜 Plans', '');
+    pLines.forEach(p => {
+      const qty = parseInt(p.qty) > 1 ? ' *(x' + p.qty + ')*' : '';
+      lines.push('- Plan: ' + p.name + qty + ' — **' + p.caps + '**');
+    });
+    lines.push('');
+  }
+
+  if (mLines.length) {
+    lines.push('## 🔩 Mods', '');
+    mLines.forEach(m => {
+      const qty = parseInt(m.qty) > 1 ? ' *(x' + m.qty + ')*' : '';
+      lines.push('- ' + m.name + m.applies + qty + ' — **' + m.caps + '**');
+    });
+    lines.push('');
+  }
+
+  lines.push('---', '');
+  if (ign) lines.push('**IGN:** ' + ign + '  ');
+  lines.push('**Payment:** ' + paymentText + ' | DM to trade/buy');
+
+  return lines.join('\n');
+}
+
+// ── Copy output ───────────────────────────────────────────────────────────────
+function copyOutput() {
+  const ta = document.getElementById('postOutput');
+  if (!ta.value || ta.value.startsWith('—')) return;
+  navigator.clipboard.writeText(ta.value).then(() => {
+    showToast('Post copied to clipboard!', 'success');
+    const btn = document.getElementById('copyBtn');
+    const orig = btn.textContent;
+    btn.textContent = '✔ Copied!';
+    setTimeout(() => btn.textContent = orig, 2000);
+  }).catch(() => {
+    ta.select();
+    document.execCommand('copy');
+    showToast('Copied!', 'success');
+  });
+}
+</script>
+
+{% endblock %}

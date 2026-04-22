@@ -1,0 +1,230 @@
+{% extends 'base.html' %}
+{% block title %}Challenges{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🎯 CHALLENGES</h1>
+  <span class="count-badge">{{ items|length }}</span>
+</div>
+
+<!-- Countdown timers -->
+<div class="countdown-grid">
+  <div class="countdown-card">
+    <span class="countdown-time" id="dailyCountdown">—</span>
+    <span class="countdown-label">Until Daily Reset (Noon)</span>
+  </div>
+  <div class="countdown-card">
+    <span class="countdown-time" id="weeklyCountdown">—</span>
+    <span class="countdown-label">Until Weekly Reset (Tue Noon)</span>
+  </div>
+  {% for ctype, row in counts.items() %}
+  <div class="countdown-card">
+    <span class="countdown-time" style="font-size:14px">
+      <span class="challenge-type-{{ ctype|lower }}">{{ row['done'] or 0 }}/{{ row['n'] or 0 }}</span>
+    </span>
+    <span class="countdown-label">{{ ctype }} Done</span>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Reset buttons -->
+<div class="reset-buttons">
+  <form method="POST" action="/challenges/reset/daily" class="inline-form">
+    <button class="btn btn-secondary" onclick="return confirm('Reset all Daily challenges?')">↺ Reset Dailies</button>
+  </form>
+  <form method="POST" action="/challenges/reset/weekly" class="inline-form">
+    <button class="btn btn-secondary" onclick="return confirm('Reset all Weekly challenges?')">↺ Reset Weeklies</button>
+  </form>
+</div>
+
+<!-- Add / Edit panel -->
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Challenge{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/challenges/{{ edit_item['id'] }}/update{% else %}/challenges/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Challenge Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select name="ctype">
+            {% for t in ['Daily','Weekly','Season','Static'] %}
+            <option value="{{ t }}" {{ 'selected' if edit_item and edit_item['ctype']==t else '' }}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category">
+            {% for c in ['','Combat','Exploration','Social','Crafting','Survival','Collection','Event','Seasonal'] %}
+            <option value="{{ c }}" {{ 'selected' if edit_item and edit_item['category']==c else '' }}>{{ c or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Description (what to do)</label>
+          <input type="text" name="description" value="{{ edit_item['description'] if edit_item else '' }}" placeholder="e.g. Kill 10 Scorched with a rifle">
+        </div>
+        <div class="form-group">
+          <label>Current Progress</label>
+          <input type="number" name="progress" min="0" value="{{ edit_item['progress'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Target</label>
+          <input type="number" name="target" min="1" value="{{ edit_item['target'] if edit_item else 1 }}">
+        </div>
+        <div class="form-group">
+          <label>Score Reward</label>
+          <input type="number" name="score_reward" min="0" value="{{ edit_item['score_reward'] if edit_item else 0 }}" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Atoms Reward</label>
+          <input type="number" name="atoms_reward" min="0" value="{{ edit_item['atoms_reward'] if edit_item else 0 }}" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Other Reward</label>
+          <input type="text" name="reward" value="{{ edit_item['reward'] if edit_item else '' }}" placeholder="e.g. 300 XP, Scrip">
+        </div>
+        <div class="form-group" style="justify-content:flex-end">
+          <label class="toggle-label">
+            <input type="checkbox" name="completed" value="1" {{ 'checked' if edit_item and edit_item['completed'] else '' }}>
+            Completed
+          </label>
+        </div>
+        <div class="form-group" style="justify-content:flex-end">
+          <label class="toggle-label">
+            <input type="checkbox" name="repeatable" value="1" {{ 'checked' if edit_item and edit_item['repeatable'] else '' }}>
+            Repeatable
+          </label>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Challenge{% endif %}</button>
+        {% if edit_item %}<a href="/challenges" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Filter tabs -->
+<div class="table-controls">
+  <input type="text" placeholder="Filter challenges..." oninput="filterTable(this.value,'challengeTable')">
+  <div class="filter-links">
+    <a href="/challenges?type=incomplete" class="filter-link {{ 'active' if ctype_filter=='incomplete' }}">Incomplete</a>
+    <a href="/challenges?type=all"        class="filter-link {{ 'active' if ctype_filter=='all' }}">All Active</a>
+    <a href="/challenges?type=done"       class="filter-link {{ 'active' if ctype_filter=='done' }}">Done</a>
+    {% for t in ['Daily','Weekly','Season','Static'] %}
+    <a href="/challenges?type={{ t }}"    class="filter-link {{ 'active' if ctype_filter==t }}">{{ t }}</a>
+    {% endfor %}
+    <a href="/challenges?type=dormant"    class="filter-link {{ 'active' if ctype_filter=='dormant' }}" style="{{ 'color:var(--amber)' if counts.dormant and counts.dormant['n'] }}">
+      Dormant{% if counts.dormant and counts.dormant['n'] %} ({{ counts.dormant['n'] }}){% endif %}
+    </a>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="challengeTable">
+    <thead>
+      <tr>
+        <th>Name</th><th>Type</th><th>Category</th><th>Description</th>
+        <th>Progress</th><th title="Repeatable">↺</th><th>Score</th><th>Atoms</th><th>Other Reward</th><th>✓ Done</th><th>✗ Missed</th><th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr id="crow-{{ item['id'] }}" class="{{ 'completed-row' if item['completed'] and not item['repeatable'] else '' }}">
+        <td class="hi">{{ item['name'] }}</td>
+        <td><span class="badge challenge-type-{{ item['ctype']|lower }}">{{ item['ctype'] }}</span></td>
+        <td class="dim">{{ item['category'] }}</td>
+        <td class="dim" style="max-width:180px;white-space:normal">{{ item['description'] }}</td>
+        <td style="min-width:120px">
+          {% if item['target'] > 1 %}
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="progress-bar-wrap" style="flex:1">
+              <div class="progress-bar {{ 'complete' if item['completed'] else '' }}"
+                   id="pbar-{{ item['id'] }}"
+                   style="width:{{ [[(item['progress']/item['target']*100)|int, 0]|max, 100]|min }}%"></div>
+            </div>
+            <span id="ptext-{{ item['id'] }}" class="dim" style="white-space:nowrap;font-size:11px">
+              {{ item['progress'] }}/{{ item['target'] }}
+            </span>
+          </div>
+          {% else %}
+            {% if item['completed'] %}<span class="accent">✓ Done</span>{% else %}<span class="dim">—</span>{% endif %}
+          {% endif %}
+        </td>
+        <td>{% if item['repeatable'] %}<span class="dim" title="Repeatable">↺</span>{% else %}{% endif %}</td>
+        <td class="dim">{% if item['score_reward'] %}<span class="gold">{{ item['score_reward'] }}</span>{% else %}—{% endif %}</td>
+        <td class="dim">{% if item['atoms_reward'] %}<span style="color:var(--blue)">{{ item['atoms_reward'] }}</span>{% else %}—{% endif %}</td>
+        <td class="dim">{{ item['reward'] }}</td>
+        <td class="dim" title="Times completed all-time">{% if item['times_completed'] %}<span class="accent">{{ item['times_completed'] }}</span>{% else %}—{% endif %}</td>
+        <td class="dim" title="Times missed at reset">{% if item['missed_count'] %}<span style="color:var(--red)">{{ item['missed_count'] }}</span>{% else %}—{% endif %}</td>
+        <td class="dim">{{ item['notes'] }}</td>
+        <td class="actions" style="white-space:nowrap">
+          {% if item['active'] == 0 %}
+            <form method="POST" action="/challenges/{{ item['id'] }}/activate" class="inline-form">
+              <button class="btn-sm btn-keep" title="Activate for today">▶ Activate</button>
+            </form>
+          {% else %}
+            {% if not item['completed'] and item['target'] > 1 %}
+            <button class="btn-sm btn-keep" onclick="incrementChallenge({{ item['id'] }})" title="+1 Progress">+1</button>
+            {% endif %}
+            <button class="btn-sm {{ 'btn-secondary' if item['completed'] else 'btn-keep' }}"
+                    onclick="toggleChallenge({{ item['id'] }})"
+                    id="tbtn-{{ item['id'] }}"
+                    title="{{ 'Unmark' if item['completed'] else 'Mark complete' }}">
+              {{ '↩' if item['completed'] else '✓' }}
+            </button>
+          {% endif %}
+          <a href="/challenges?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/challenges/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="13" class="no-data">No challenges yet. Add one above!</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+// Live countdown timers
+function pad(n) { return String(n).padStart(2,'0'); }
+function formatMs(ms) {
+  if (ms <= 0) return '00:00:00';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+function updateCountdowns() {
+  const now = new Date();
+  // Daily: next noon (today if before noon, tomorrow if after)
+  const dailyReset = new Date(now);
+  dailyReset.setHours(12, 0, 0, 0);
+  if (now >= dailyReset) dailyReset.setDate(dailyReset.getDate() + 1);
+  document.getElementById('dailyCountdown').textContent = formatMs(dailyReset - now);
+  // Weekly: next Tuesday at noon
+  const day = now.getDay();
+  const daysUntilTue = (2 - day + 7) % 7;
+  const weeklyReset = new Date(now);
+  weeklyReset.setDate(now.getDate() + daysUntilTue);
+  weeklyReset.setHours(12, 0, 0, 0);
+  if (weeklyReset <= now) weeklyReset.setDate(weeklyReset.getDate() + 7);
+  document.getElementById('weeklyCountdown').textContent = formatMs(weeklyReset - now);
+}
+updateCountdowns();
+setInterval(updateCountdowns, 1000);
+</script>
+{% endblock %}

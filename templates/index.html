@@ -1,0 +1,338 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📋 VAULT-TEC DASHBOARD</h1>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card"><span class="stat-num">{{ stats['Perk Cards'] }}</span><span class="stat-label">Perk Cards</span></div>
+  <div class="stat-card"><span class="stat-num">{{ stats['Builds'] }}</span><span class="stat-label">Builds</span></div>
+  <div class="stat-card"><span class="stat-num">{{ stats['Weapons'] }}</span><span class="stat-label">Weapons</span></div>
+  <div class="stat-card"><span class="stat-num">{{ stats['Armor'] }}</span><span class="stat-label">Armor</span></div>
+  <div class="stat-card"><span class="stat-num">{{ stats['Mods'] }}</span><span class="stat-label">Mods</span></div>
+  <div class="stat-card"><span class="stat-num">{{ stats['Plans'] }}</span><span class="stat-label">Plans</span></div>
+  <div class="stat-card"><span class="stat-num">{{ stats['Inventory'] }}</span><span class="stat-label">Inventory</span></div>
+  <div class="stat-card"><span class="stat-num accent">{{ "{:,}".format(stats['vendor_total']) }}</span><span class="stat-label">Vendor Value (caps)</span></div>
+  <a href="/caps" class="stat-card" style="text-decoration:none">
+    <span class="stat-num accent">{{ "{:,}".format(stats['current_caps']) }}</span>
+    <span class="stat-label">💵 Current Caps</span>
+  </a>
+  <a href="/wishlist" class="stat-card" style="text-decoration:none">
+    <span class="stat-num {{ 'gold' if stats['wishlist_active'] > 0 else '' }}">{{ stats['wishlist_active'] }}</span>
+    <span class="stat-label">⭐ Wishlist Remaining</span>
+  </a>
+</div>
+
+<div class="section-title">⚠ ACTION NEEDED</div>
+<div class="alert-grid">
+  <a href="/perk-cards?filter=scrap" class="alert-card {% if stats['scrappable'] > 0 %}warn{% endif %}">
+    <span class="num {% if stats['scrappable'] > 0 %}gold{% endif %}">{{ stats['scrappable'] }}</span>
+    <span class="lbl">Perk cards to scrap</span>
+  </a>
+  <a href="/weapons?status=Sell" class="alert-card">
+    <span class="num">{{ stats['sell_weapons'] }}</span>
+    <span class="lbl">Weapons to sell</span>
+  </a>
+  <a href="/armor?status=Sell" class="alert-card">
+    <span class="num">{{ stats['sell_armor'] }}</span>
+    <span class="lbl">Armor to sell</span>
+  </a>
+  <a href="/mods?filter=sell" class="alert-card">
+    <span class="num">{{ stats['sell_mods'] }}</span>
+    <span class="lbl">Mods to sell</span>
+  </a>
+  <a href="/plans" class="alert-card {% if stats['dupe_plans'] > 0 %}warn{% endif %}">
+    <span class="num {% if stats['dupe_plans'] > 0 %}gold{% endif %}">{{ stats['dupe_plans'] }}</span>
+    <span class="lbl">Plans with dupes to sell</span>
+  </a>
+  <a href="/vendor" class="alert-card">
+    <span class="num">{{ stats['Vendor Items'] }}</span>
+    <span class="lbl">Items in vendor</span>
+  </a>
+  <a href="/weapons" class="alert-card {% if stats['dupe_weapons'] > 0 %}warn{% endif %}">
+    <span class="num {% if stats['dupe_weapons'] > 0 %}gold{% endif %}">{{ stats['dupe_weapons'] }}</span>
+    <span class="lbl">Duplicate weapons</span>
+  </a>
+</div>
+
+<div class="two-col">
+  <div>
+    <div class="section-title">💰 RECENT PRICES LOGGED</div>
+    {% if stats['recent_prices'] %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Item</th><th>Price</th><th>Source</th><th>Date</th></tr></thead>
+        <tbody>
+          {% for r in stats['recent_prices'] %}
+          <tr>
+            <td class="hi">{{ r['item_name'] }}</td>
+            <td class="gold">{{ "{:,}".format(r['price_seen']) }}</td>
+            <td class="dim">{{ r['source'] }}</td>
+            <td class="dim">{{ r['date_seen'] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="no-data">No prices logged yet. <a href="/prices" class="accent">Log some →</a></div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="section-title">📊 PRICE AVERAGES</div>
+    {% if stats['price_avgs'] %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Item</th><th>#</th><th>Min</th><th>Avg</th><th>Max</th></tr></thead>
+        <tbody>
+          {% for r in stats['price_avgs'] %}
+          <tr>
+            <td class="hi">{{ r['item_name'] }}</td>
+            <td class="dim">{{ r['cnt'] }}</td>
+            <td>{{ "{:,}".format(r['min_p']) }}</td>
+            <td class="gold">{{ "{:,}".format(r['avg_p']|int) }}</td>
+            <td>{{ "{:,}".format(r['max_p']) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="no-data">No price data yet. <a href="/prices" class="accent">Start logging →</a></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Stash Weight widget -->
+<div style="margin-top:24px">
+  <div class="section-title" style="margin-bottom:10px">
+    ⚖ STASH WEIGHT
+    <a href="/season" style="float:right;font-size:10px;color:var(--text-dim)">Set cap →</a>
+  </div>
+  {% set wt = stats['stash_weight'] %}
+  {% set cap = stats['stash_cap'] %}
+  {% set pct = [[(wt['total'] / cap * 100)|round|int, 0]|max, 100]|min %}
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:14px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px">
+      <span>
+        <span class="{{ 'gold' if pct >= 80 else 'accent' }}" style="font-size:18px">{{ wt['total'] }}</span>
+        <span class="dim"> / {{ cap }} lbs</span>
+      </span>
+      <span class="{{ 'gold' if pct >= 80 else 'dim' }}" style="font-size:12px">{{ pct }}%</span>
+    </div>
+    <div class="progress-bar-wrap" style="height:10px;margin-bottom:10px">
+      <div class="progress-bar {{ 'complete' if pct >= 90 else '' }}"
+           style="width:{{ pct }}%;background:{{ 'var(--red)' if pct >= 90 else ('var(--gold)' if pct >= 70 else 'var(--accent)') }}"></div>
+    </div>
+    <div style="display:flex;gap:16px;font-size:11px;color:var(--text-dim)">
+      <span>⚔ Weapons: {{ wt['weapons'] }}</span>
+      <span>🛡 Armor: {{ wt['armor'] }}</span>
+      <span>🎒 Other: {{ wt['other'] }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Season widget -->
+{% if season['cur_rank'] or season['tgt_rank'] %}
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:10px">
+    🏆 SEASON{% if season['name'] %} — {{ season['name'] }}{% endif %}
+    <a href="/season" style="float:right;font-size:10px;color:var(--text-dim)">Details →</a>
+  </div>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:12px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px">
+      <span>Rank <span class="accent" style="font-size:15px">{{ season['cur_rank'] or '—' }}</span>
+            → <span class="gold">{{ season['tgt_rank'] or '—' }}</span></span>
+      {% if season['days_left'] is not none %}
+      <span class="{{ 'gold' if season['days_left'] < 14 else 'dim' }}">{{ season['days_left'] }}d left</span>
+      {% endif %}
+    </div>
+    <div class="progress-bar-wrap" style="height:8px">
+      <div class="progress-bar" style="width:{{ season['pct'] }}%"></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Caps Goal widget -->
+{% if stats['caps_goal']['amount'] > 0 %}
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:10px">
+    🎯 CAPS GOAL
+    <a href="/caps" style="float:right;font-size:10px;color:var(--text-dim)">Manage →</a>
+  </div>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:12px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12px">
+      <span>
+        {% if stats['caps_goal']['name'] %}<span class="dim">{{ stats['caps_goal']['name'] }}</span> — {% endif %}
+        <span class="accent" style="font-size:15px">{{ "{:,}".format(stats['current_caps']) }}</span>
+        <span class="dim"> / {{ "{:,}".format(stats['caps_goal']['amount']) }}</span>
+      </span>
+      <span class="{{ 'gold' if stats['caps_goal']['pct'] >= 100 else 'dim' }}">{{ stats['caps_goal']['pct'] }}%</span>
+    </div>
+    <div class="progress-bar-wrap" style="height:8px">
+      <div class="progress-bar" style="width:{{ stats['caps_goal']['pct'] }}%;background:{{ 'var(--gold)' if stats['caps_goal']['pct'] >= 100 else 'var(--accent)' }}"></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Price Hits widget -->
+{% if stats['price_hits'] %}
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:10px">
+    🔔 PRICE HITS
+    <a href="/prices" style="float:right;font-size:10px;color:var(--text-dim)">View all →</a>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" style="font-size:11px">
+      <thead><tr><th>Item</th><th>Alert At</th><th>Best Seen</th></tr></thead>
+      <tbody>
+        {% for r in stats['price_hits'] %}
+        <tr style="background:rgba(255,200,0,0.07)">
+          <td class="hi">🔔 {{ r['item_name'] }}</td>
+          <td class="dim">≤ {{ "{:,}".format(r['target_price']) }}</td>
+          <td class="gold" style="font-weight:bold">{{ "{:,}".format(r['best_seen']) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Notices widget -->
+{% if active_notices %}
+<div style="margin-top:24px">
+  <div class="section-title" style="margin-bottom:10px">
+    📌 ACTIVE NOTICES
+    <a href="/notices" style="float:right;font-size:10px;color:var(--text-dim)">Manage →</a>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    {% for n in active_notices %}
+    <div class="notice-banner notice-{{ n['level'] }}" style="margin:0;border-radius:4px">
+      <strong>{% if n['level'] == 'urgent' %}⚠ {% endif %}{{ n['title'] }}</strong>
+      {% if n['body'] %} — {{ n['body'] }}{% endif %}
+      {% if n['expires_at'] %}<span class="dim" style="font-size:10px;margin-left:8px">expires {{ n['expires_at'] }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Nuke Codes widget -->
+<div style="margin-top:24px">
+  <div class="section-title" style="margin-bottom:4px">
+    ☢ NUKE CODES
+    <a href="/nuke-codes" style="float:right;font-size:10px;color:var(--text-dim)">Update →</a>
+  </div>
+  <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">
+    ⏱ resets in <span id="dashNukeTimer" class="accent">...</span>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    {% for silo_name in ['Alpha', 'Bravo', 'Charlie'] %}
+    {% set s = silos.get(silo_name, {}) %}
+    {% set stale = s and s['week_of'] and s['week_of'] < today_week %}
+    <div class="stat-card" style="flex:1;min-width:120px;text-align:center;border-color:{% if stale %}var(--warn){% else %}var(--accent){% endif %}">
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">{{ silo_name }}</div>
+      <div style="font-size:18px;letter-spacing:3px;color:{% if stale %}var(--warn){% else %}var(--accent){% endif %}">
+        {{ s['code'] if s and s['code'] else '——' }}
+      </div>
+      {% if stale %}<div style="font-size:9px;color:var(--warn)">STALE</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Daily Tasks widget -->
+{% if stats['daily_pending'] > 0 or stats['weekly_pending'] > 0 %}
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:10px">
+    ✅ TODAY'S CHECKLIST
+    <a href="/daily" style="float:right;font-size:10px;color:var(--text-dim)">Open →</a>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <a href="/daily" class="stat-card" style="flex:1;text-decoration:none;border-color:{{ 'var(--warn)' if stats['daily_pending'] > 0 else 'var(--accent)' }}">
+      <span class="stat-num {{ 'gold' if stats['daily_pending'] > 0 else 'accent' }}">{{ stats['daily_pending'] }}</span>
+      <span class="stat-label">Daily Tasks Left</span>
+    </a>
+    <a href="/daily" class="stat-card" style="flex:1;text-decoration:none;border-color:{{ 'var(--warn)' if stats['weekly_pending'] > 0 else 'var(--accent)' }}">
+      <span class="stat-num {{ 'gold' if stats['weekly_pending'] > 0 else 'accent' }}">{{ stats['weekly_pending'] }}</span>
+      <span class="stat-label">Weekly Tasks Left</span>
+    </a>
+  </div>
+</div>
+{% endif %}
+
+<!-- Low Ammo widget -->
+{% if stats['low_ammo'] %}
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:10px">
+    🔫 LOW AMMO
+    <a href="/ammo" style="float:right;font-size:10px;color:var(--text-dim)">Manage →</a>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {% for a in stats['low_ammo'] %}
+    <a href="/ammo" class="stat-card" style="flex:0 0 auto;text-decoration:none;border-color:var(--red)">
+      <span class="stat-num" style="color:var(--red)">{{ "{:,}".format(a['qty']) }}</span>
+      <span class="stat-label">{{ a['ammo_type'] }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Session Summary widget -->
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:10px">
+    📅 TODAY'S SUMMARY
+    <a href="/playtime" style="float:right;font-size:10px;color:var(--text-dim)">Playtime →</a>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <div class="stat-card" style="flex:1;min-width:90px;text-align:center">
+      <span class="stat-num {{ 'accent' if stats['today_caps_delta'] > 0 else ('gold' if stats['today_caps_delta'] < 0 else 'dim') }}">
+        {{ '+' if stats['today_caps_delta'] > 0 else '' }}{{ "{:,}".format(stats['today_caps_delta']) }}
+      </span>
+      <span class="stat-label">Caps Today</span>
+    </div>
+    <div class="stat-card" style="flex:1;min-width:90px;text-align:center">
+      <span class="stat-num {{ 'accent' if stats['today_weapons'] > 0 else 'dim' }}">{{ stats['today_weapons'] }}</span>
+      <span class="stat-label">Weapons Added</span>
+    </div>
+    <div class="stat-card" style="flex:1;min-width:90px;text-align:center">
+      <span class="stat-num {{ 'accent' if stats['today_prices'] > 0 else 'dim' }}">{{ stats['today_prices'] }}</span>
+      <span class="stat-label">Prices Logged</span>
+    </div>
+    <div class="stat-card" style="flex:1;min-width:90px;text-align:center">
+      <span class="stat-num {{ 'accent' if stats['today_challenges'] > 0 else 'dim' }}">{{ stats['today_challenges'] }}</span>
+      <span class="stat-label">Challenges Done</span>
+    </div>
+    <div class="stat-card" style="flex:1;min-width:90px;text-align:center">
+      <span class="stat-num {{ 'accent' if stats['today_play_mins'] > 0 else 'dim' }}">
+        {% if stats['today_play_mins'] >= 60 %}{{ (stats['today_play_mins'] // 60) }}h {{ stats['today_play_mins'] % 60 }}m{% else %}{{ stats['today_play_mins'] }}m{% endif %}
+      </span>
+      <span class="stat-label">Play Time</span>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() { startNukeCountdown('dashNukeTimer'); });
+</script>
+
+<!-- Quote widget -->
+{% if quote %}
+<div style="margin-top:24px">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:14px 18px;text-align:center">
+    <div style="font-size:9px;color:var(--text-dim);letter-spacing:2px;margin-bottom:10px">☢ VAULT-TEC TIP OF THE DAY</div>
+    <div style="font-size:12px;color:var(--text-hi);line-height:1.7;font-style:italic">"{{ quote.quote }}"</div>
+    <div style="font-size:10px;color:var(--text-dim);margin-top:8px;letter-spacing:0.5px">— {{ quote.speaker }}</div>
+  </div>
+</div>
+{% endif %}
+
+
+{% endblock %}

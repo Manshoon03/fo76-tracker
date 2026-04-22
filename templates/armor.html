@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+{% block title %}Armor{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🛡 ARMOR</h1>
+  <span class="count-badge">{{ items|length }} pieces</span>
+</div>
+
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Armor{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/armor/{{ edit_item['id'] }}/update{% else %}/armor/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Armor Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Slot</label>
+          <select name="slot">
+            {% for s in ['','Head','Chest','Left Arm','Right Arm','Left Leg','Right Leg','Full Set','Underarmor','Backpack'] %}
+            <option value="{{ s }}" {{ 'selected' if edit_item and edit_item['slot']==s else '' }}>{{ s or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Material / Type</label>
+          <input type="text" name="material" value="{{ edit_item['material'] if edit_item else '' }}" placeholder="e.g. Ultracite, Marine, T-60">
+        </div>
+        <div class="form-group">
+          <label>★ 1st Star</label>
+          <input type="text" name="star1" list="aStar1List" value="{{ edit_item['star1'] if edit_item else '' }}" placeholder="e.g. Unyielding" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★ 2nd Star</label>
+          <input type="text" name="star2" list="aStar2List" value="{{ edit_item['star2'] if edit_item else '' }}" placeholder="e.g. Powered, Agility" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★★ 3rd Star</label>
+          <input type="text" name="star3" list="aStar3List" value="{{ edit_item['star3'] if edit_item else '' }}" placeholder="e.g. Cavalier's, Sentinel's" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>★★★★ 4th Star</label>
+          <input type="text" name="star4" list="aStar4List" value="{{ edit_item['star4'] if edit_item else '' }}" placeholder="e.g. Sawbones's, Runner's" autocomplete="off">
+        </div>
+
+        <datalist id="aStar1List">{% for x in ref.ARMOR_STAR1 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="aStar2List">{% for x in ref.ARMOR_STAR2 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="aStar3List">{% for x in ref.ARMOR_STAR3 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <datalist id="aStar4List">{% for x in ref.ARMOR_STAR4 %}<option value="{{ x }}">{% endfor %}</datalist>
+        <div class="form-group span2">
+          <label>Mods Applied</label>
+          <input type="text" name="mods" value="{{ edit_item['mods'] if edit_item else '' }}" placeholder="e.g. Dense, Lighter Weight">
+        </div>
+        <div class="form-group">
+          <label>DR</label>
+          <input type="number" name="dr" min="0" value="{{ edit_item['dr'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>ER</label>
+          <input type="number" name="er" min="0" value="{{ edit_item['er'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>RR</label>
+          <input type="number" name="rr" min="0" value="{{ edit_item['rr'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Weight</label>
+          <input type="number" name="weight" step="0.1" min="0" value="{{ edit_item['weight'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            {% for s in ['Keep','Sell','Scrap','Trade','Stash'] %}
+            <option value="{{ s }}" {{ 'selected' if edit_item and edit_item['status']==s else '' }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Armor{% endif %}</button>
+        {% if edit_item %}<a href="/armor" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="table-controls">
+  <input type="text" placeholder="Filter armor..." oninput="filterTable(this.value,'armorTable')">
+  <div class="filter-links">
+    <a href="/armor" class="filter-link {{ 'active' if not status_filter }}">All</a>
+    {% for s in ['Keep','Sell','Scrap','Trade','Stash'] %}
+    <a href="/armor?status={{ s }}" class="filter-link {{ 'active' if status_filter==s }}">{{ s }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<form method="POST" action="/armor/bulk" id="bulkForm">
+</form>
+<div class="bulk-bar" id="bulkBar" style="display:none">
+  <span class="dim" id="bulkCount">0 selected</span>
+  <select id="bulkAction">
+    <option value="">— Action —</option>
+    <option>Keep</option><option>Sell</option><option>Scrap</option><option>Stash</option>
+    <option value="delete">🗑 Delete selected</option>
+  </select>
+  <button class="btn btn-secondary" type="button" onclick="confirmBulk()">Apply</button>
+  <button class="btn btn-secondary" type="button" onclick="clearBulk()">Clear</button>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="armorTable">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+        <th>Name</th><th>Slot</th><th>Material</th><th>Stars</th>
+        <th>Mods</th><th>DR</th><th>ER</th><th>RR</th><th>Wt</th><th>Status</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="s-{{ item['status']|lower }}">
+        <td><input type="checkbox" class="row-cb" data-id="{{ item['id'] }}" onchange="updateBulkBar()"></td>
+        <td class="hi">{{ item['name'] }}</td>
+        <td class="dim">{{ item['slot'] }}</td>
+        <td class="dim">{{ item['material'] }}</td>
+        <td>
+          {% if item['star1'] %}<span class="gold">★</span> {{ item['star1'] }}{% endif %}
+          {% if item['star2'] %} / {{ item['star2'] }}{% endif %}
+          {% if item['star3'] %} / {{ item['star3'] }}{% endif %}
+          {% if item['star4'] %} / {{ item['star4'] }}{% endif %}
+        </td>
+        <td class="dim" style="max-width:120px;white-space:normal">{{ item['mods'] }}</td>
+        <td>{{ item['dr'] }}</td>
+        <td>{{ item['er'] }}</td>
+        <td>{{ item['rr'] }}</td>
+        <td class="dim">{{ item['weight'] }}</td>
+        <td><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
+        <td class="actions">
+          <div class="status-btns">
+            <form method="POST" action="/armor/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Keep">
+              <button class="btn-sm btn-keep" title="Keep">K</button>
+            </form>
+            <form method="POST" action="/armor/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Sell">
+              <button class="btn-sm btn-sell" title="Sell">$</button>
+            </form>
+            <form method="POST" action="/armor/{{ item['id'] }}/status" class="inline-form">
+              <input type="hidden" name="status" value="Scrap">
+              <button class="btn-sm btn-scrap" title="Scrap">✗</button>
+            </form>
+          </div>
+          <a href="/armor?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/armor/{{ item['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="12" class="no-data">No armor yet. Add a piece above!</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
