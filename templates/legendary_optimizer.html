@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% block title %}Legendary Optimizer{% endblock %}
+{% block content %}
+
+<style>
+  .lo-wrap      { max-width:960px; margin:0 auto; }
+  .lo-header    { display:flex; align-items:baseline; gap:12px; margin-bottom:20px; }
+  .lo-header h1 { font-size:20px; color:var(--accent); margin:0; }
+  .lo-header span{ font-size:12px; color:var(--text-dim); }
+
+  .lo-layout    { display:grid; grid-template-columns:320px 1fr; gap:16px; align-items:start; }
+
+  /* Options panel */
+  .lo-options   { background:var(--bg-card); border:1px solid var(--border);
+                  border-radius:8px; padding:18px; }
+  .lo-options h2{ font-size:12px; color:var(--text-dim); text-transform:uppercase;
+                  letter-spacing:.06em; margin:0 0 14px; }
+  .lo-opt-group { margin-bottom:14px; }
+  .lo-opt-group label { font-size:11px; color:var(--text-dim); display:block; margin-bottom:4px;
+                        text-transform:uppercase; letter-spacing:.05em; }
+  .lo-opt-group select,
+  .lo-opt-group textarea,
+  .lo-opt-group input  { width:100%; box-sizing:border-box; }
+  .lo-opt-group textarea { height:55px; resize:vertical; }
+  .lo-sep       { font-size:11px; color:var(--text-dim); text-align:center;
+                  margin:12px 0; border-top:1px solid var(--border); padding-top:12px; }
+
+  /* Inventory summary */
+  .lo-inv       { margin-top:14px; }
+  .lo-inv h2    { font-size:12px; color:var(--text-dim); text-transform:uppercase;
+                  letter-spacing:.06em; margin:0 0 10px; }
+  .lo-star-row  { margin-bottom:8px; }
+  .lo-star-lbl  { font-size:11px; color:var(--accent); font-weight:700; margin-bottom:4px; }
+  .lo-mod-chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .lo-chip      { font-size:10px; background:var(--bg-main,#111); border:1px solid var(--border);
+                  border-radius:3px; padding:2px 6px; color:var(--text-muted); white-space:nowrap; }
+  .lo-chip.craft{ border-color:#4090e066; color:#4090e0; }
+
+  /* Results */
+  .lo-results   { background:var(--bg-card); border:1px solid var(--border);
+                  border-radius:8px; padding:18px; }
+  .lo-results h2{ font-size:12px; color:var(--text-dim); text-transform:uppercase;
+                  letter-spacing:.06em; margin:0 0 14px; }
+  .lo-empty     { color:var(--text-dim); font-size:13px; text-align:center; padding:30px 0; }
+
+  /* Recommendation cards */
+  .lo-rec-cards { display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
+  .lo-rec-card  { background:var(--bg-main,#111); border:1px solid var(--border);
+                  border-radius:6px; padding:12px 14px;
+                  display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:start; }
+  .lo-rec-star  { font-size:13px; font-weight:700; color:var(--accent);
+                  background:var(--bg-card); border:1px solid var(--border);
+                  border-radius:4px; padding:4px 8px; white-space:nowrap; align-self:start; }
+  .lo-rec-name  { font-size:14px; font-weight:700; color:#eef2ff; margin-bottom:4px; }
+  .lo-rec-why   { font-size:12px; color:var(--text-muted); line-height:1.5; }
+  .avail-stock  { font-size:10px; padding:3px 8px; border-radius:3px; white-space:nowrap;
+                  background:#16622222; color:#50c050; border:1px solid #16622244; align-self:start; }
+  .avail-craft  { font-size:10px; padding:3px 8px; border-radius:3px; white-space:nowrap;
+                  background:#1a3a6622; color:#4090e0; border:1px solid #4090e044; align-self:start; }
+  .avail-miss   { font-size:10px; padding:3px 8px; border-radius:3px; white-space:nowrap;
+                  background:#4a100022; color:#e06040; border:1px solid #e0604044; align-self:start; }
+
+  /* Assessment box */
+  .lo-assess    { background:var(--bg-main,#111); border-left:3px solid var(--accent);
+                  border-radius:0 6px 6px 0; padding:10px 14px; margin-bottom:16px;
+                  font-size:13px; color:var(--text-muted); line-height:1.6; }
+
+  /* Alternatives */
+  .lo-alt-list  { margin-bottom:16px; }
+  .lo-alt-item  { font-size:12px; color:var(--text-muted); padding:6px 0;
+                  border-bottom:1px solid var(--border); line-height:1.5; }
+  .lo-alt-item:last-child { border-bottom:none; }
+  .lo-alt-star  { color:var(--accent); font-weight:700; margin-right:6px; }
+
+  /* Priority note */
+  .lo-priority  { background:#1a380022; border:1px solid #50c05033;
+                  border-radius:6px; padding:10px 14px;
+                  font-size:12px; color:#80d080; line-height:1.6; }
+
+  .gen-btn      { margin-top:14px; display:flex; gap:10px; align-items:center; }
+  .gen-status   { font-size:12px; color:var(--text-dim); }
+
+  @media(max-width:720px) {
+    .lo-layout  { grid-template-columns:1fr; }
+    .lo-rec-card{ grid-template-columns:auto 1fr; }
+    .avail-stock,.avail-craft,.avail-miss { grid-column:1/-1; }
+  }
+</style>
+
+<div class="lo-wrap">
+  <div class="lo-header">
+    <h1>⭐ Legendary Optimizer</h1>
+    <span>AI-powered — Claude Haiku</span>
+  </div>
+
+  <div class="lo-layout">
+
+    <!-- Options -->
+    <div>
+      <div class="lo-options">
+        <h2>Build Context</h2>
+
+        <div class="lo-opt-group">
+          <label>Link to Saved Build (optional)</label>
+          <select id="lo-build">
+            <option value="">— Manual playstyle below —</option>
+            {% for b in builds %}
+            <option value="{{ b.id }}">{{ b.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="lo-sep">OR describe your playstyle</div>
+
+        <div class="lo-opt-group">
+          <label>Playstyle / Goal</label>
+          <textarea id="lo-playstyle" placeholder="e.g. Bloodied rifleman, full health PA melee, Aristocrat's pistolero..."></textarea>
+        </div>
+
+        <div class="lo-opt-group">
+          <label>Optimize For</label>
+          <select id="lo-type">
+            <option value="weapon">Weapon</option>
+            <option value="armor">Armor</option>
+          </select>
+        </div>
+
+        <div class="gen-btn">
+          <button class="btn btn-primary" id="lo-btn" onclick="analyze()">Optimize</button>
+          <span class="gen-status" id="lo-status"></span>
+        </div>
+      </div>
+
+      <!-- Inventory summary -->
+      <div class="lo-inv" style="margin-top:16px">
+        <div class="lo-options">
+          <h2>Your Mod Inventory</h2>
+          {% set ns = namespace(last_star=0) %}
+          {% set all_mods = inv | sort(attribute='star_level') %}
+          {% for star in [1,2,3,4] %}
+          {% set star_inv = inv | selectattr('star_level','eq',star) | list %}
+          {% set star_cft = craftable | selectattr('star_level','eq',star) | list %}
+          {% if star_inv or star_cft %}
+          <div class="lo-star-row">
+            <div class="lo-star-lbl">{% for i in range(star) %}★{% endfor %} Star {{ star }}</div>
+            <div class="lo-mod-chips">
+              {% for m in star_inv %}<span class="lo-chip">{{ m.name }} ×{{ m.qty }}</span>{% endfor %}
+              {% for m in star_cft %}<span class="lo-chip craft">{{ m.name }} (craft)</span>{% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          {% endfor %}
+          {% if not inv and not craftable %}
+          <div style="color:var(--text-dim);font-size:12px">No mods logged yet — go to Leg. Mods to add your inventory.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="lo-results" id="lo-results">
+      <h2>Recommendations</h2>
+      <div class="lo-empty" id="lo-empty">
+        Select a build or describe your playstyle, then hit <strong>Optimize</strong>.
+      </div>
+      <div id="lo-content" style="display:none"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const INV_DATA = {{ inv | tojson }};
+const CRAFT_DATA = {{ craftable | tojson }};
+
+function getAvailability(modName, starLevel) {
+  const nm = (modName || '').toLowerCase().trim();
+  const inInv = INV_DATA.find(r => r.name.toLowerCase().trim() === nm && r.star_level === starLevel);
+  if (inInv && inInv.qty > 0) return {type:'in_stock', qty: inInv.qty};
+  const inCraft = CRAFT_DATA.find(r => r.name.toLowerCase().trim() === nm && r.star_level === starLevel);
+  if (inCraft) return {type:'craftable', recipe: inCraft.requires_to_craft};
+  return {type:'missing'};
+}
+
+function availBadge(modName, starLevel) {
+  const a = getAvailability(modName, starLevel);
+  if (a.type === 'in_stock')  return `<span class="avail-stock">✓ In Stock ×${a.qty}</span>`;
+  if (a.type === 'craftable') return `<span class="avail-craft">🔨 Craftable</span>`;
+  return `<span class="avail-miss">✗ Need to Farm</span>`;
+}
+
+async function analyze() {
+  const btn = document.getElementById('lo-btn');
+  const st  = document.getElementById('lo-status');
+  btn.disabled = true;
+  st.textContent = 'Analyzing... (~8s)';
+
+  try {
+    const r = await fetch('/legendary-optimizer/analyze', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        build_id:  document.getElementById('lo-build').value || null,
+        playstyle: document.getElementById('lo-playstyle').value,
+        item_type: document.getElementById('lo-type').value,
+      })
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    renderResults(data.result);
+    st.textContent = 'Done!';
+    setTimeout(() => st.textContent = '', 3000);
+  } catch(e) {
+    st.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderResults(res) {
+  document.getElementById('lo-empty').style.display   = 'none';
+  document.getElementById('lo-content').style.display = 'block';
+
+  const recs = (res.recommendations || []).map(r => `
+    <div class="lo-rec-card">
+      <div class="lo-rec-star">${'★'.repeat(r.star)} Star ${r.star}</div>
+      <div>
+        <div class="lo-rec-name">${r.mod}</div>
+        <div class="lo-rec-why">${r.reason}</div>
+      </div>
+      ${availBadge(r.mod, r.star)}
+    </div>`).join('');
+
+  const alts = (res.alternatives || []).map(a =>
+    `<div class="lo-alt-item"><span class="lo-alt-star">${'★'.repeat(a.star)}</span><strong>${a.mod}</strong> — ${a.reason}</div>`
+  ).join('');
+
+  document.getElementById('lo-content').innerHTML = `
+    <div class="lo-assess">${res.assessment || ''}</div>
+
+    <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Recommended Combo</div>
+    <div class="lo-rec-cards">${recs || '<div style="color:var(--text-dim);font-size:12px">No recommendations returned.</div>'}</div>
+
+    ${alts ? `<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Alternatives</div>
+    <div class="lo-alt-list">${alts}</div>` : ''}
+
+    ${res.priority_note ? `<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Priority</div>
+    <div class="lo-priority">${res.priority_note}</div>` : ''}
+  `;
+}
+</script>
+
+{% endblock %}

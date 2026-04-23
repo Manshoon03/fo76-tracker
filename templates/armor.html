@@ -13,11 +13,26 @@
     <span class="toggle-icon">▼</span>
   </div>
   <div class="panel-body">
+    <!-- Quick Parse strip -->
+    {% if not edit_item %}
+    <div style="background:var(--bg-main,#111);border:1px dashed var(--border);border-radius:6px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;letter-spacing:.05em">⚡ QUICK PARSE — type shorthand and hit Enter or click Parse</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="ap-input"
+               placeholder='e.g. "OE/AP/Sent Marine Chest" or "U/Powered/Cavalier Ultracite RA"'
+               style="flex:1;min-width:220px;font-size:13px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();quickParseArmor()}">
+        <button type="button" class="btn btn-secondary" style="padding:5px 14px;font-size:12px" onclick="quickParseArmor()">Parse</button>
+        <span id="ap-status" style="font-size:12px;color:var(--text-dim)"></span>
+      </div>
+    </div>
+    {% endif %}
     <form method="POST" action="{% if edit_item %}/armor/{{ edit_item['id'] }}/update{% else %}/armor/add{% endif %}">
       <div class="form-grid">
         <div class="form-group span2">
           <label>Armor Name *</label>
-          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+          <input type="text" name="name" id="armorNameField" list="armorNameList" required value="{{ edit_item['name'] if edit_item else '' }}" autocomplete="off">
+          <datalist id="armorNameList">{% for n in wiki_armor_names %}<option value="{{ n }}">{% endfor %}</datalist>
         </div>
         <div class="form-group">
           <label>Slot</label>
@@ -171,5 +186,42 @@
     </tbody>
   </table>
 </div>
+
+<script>
+async function quickParseArmor() {
+  const inp = document.getElementById('ap-input');
+  const st  = document.getElementById('ap-status');
+  const raw = inp.value.trim();
+  if (!raw) return;
+  st.textContent = 'Parsing...';
+  try {
+    const r = await fetch('/armor/parse', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text: raw})
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || 'Parse failed');
+    const d = data.result;
+    const set = (name, val) => { const el = document.querySelector(`[name="${name}"]`); if (el && val) el.value = val; };
+    set('name',     d.name);
+    set('slot',     d.slot);
+    set('material', d.material);
+    set('star1',    d.star1);
+    set('star2',    d.star2);
+    set('star3',    d.star3);
+    set('star4',    d.star4);
+    set('notes',    d.notes);
+    st.textContent = '✓ Fields filled — review and save';
+    st.style.color = 'var(--accent)';
+    inp.value = '';
+    const panel = document.getElementById('addPanel');
+    if (!panel.classList.contains('open')) togglePanel('addPanel');
+  } catch(e) {
+    st.textContent = 'Error: ' + e.message;
+    st.style.color = 'var(--red, #f55)';
+  }
+}
+</script>
 
 {% endblock %}

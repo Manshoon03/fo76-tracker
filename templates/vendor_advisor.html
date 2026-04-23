@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% block title %}Vendor Advisor{% endblock %}
+{% block content %}
+
+<style>
+  .va-header     { display:flex; align-items:baseline; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+  .va-header h1  { font-size:20px; color:var(--accent); margin:0; }
+  .va-header span{ font-size:12px; color:var(--text-dim); }
+  .va-header .va-actions { margin-left:auto; display:flex; gap:10px; align-items:center; }
+
+  /* Summary bar */
+  .va-summary    { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+  .va-stat       { background:var(--bg-card); border:1px solid var(--border);
+                   border-radius:6px; padding:10px 14px; text-align:center; min-width:80px; }
+  .va-stat-val   { font-size:20px; font-weight:700; line-height:1.1; }
+  .va-stat-lbl   { font-size:10px; color:var(--text-dim); text-transform:uppercase;
+                   letter-spacing:.05em; margin-top:2px; }
+
+  /* Table */
+  .va-table-wrap { background:var(--bg-card); border:1px solid var(--border);
+                   border-radius:8px; overflow:hidden; }
+  .va-table      { width:100%; border-collapse:collapse; }
+  .va-table th   { font-size:10px; color:var(--text-dim); text-transform:uppercase;
+                   letter-spacing:.06em; padding:10px 12px; text-align:left;
+                   border-bottom:1px solid var(--border); background:var(--bg-main,#111);
+                   white-space:nowrap; }
+  .va-table td   { padding:10px 12px; border-bottom:1px solid var(--border);
+                   font-size:13px; vertical-align:middle; }
+  .va-table tr:last-child td { border-bottom:none; }
+  .va-table tr:hover td { background:var(--bg-main,#11111108); }
+
+  .va-name       { font-weight:600; color:#eef2ff; }
+  .va-cat        { font-size:11px; color:var(--text-dim); }
+  .va-price      { font-weight:700; }
+  .va-mkt        { font-size:11px; color:var(--text-dim); line-height:1.5; }
+  .va-mkt strong { color:var(--text-muted); }
+
+  /* Verdict badges */
+  .vd            { display:inline-block; font-size:11px; font-weight:700;
+                   padding:3px 8px; border-radius:3px; white-space:nowrap; }
+  .vd-fair       { background:#16622222; color:#50c050; border:1px solid #16622244; }
+  .vd-overpriced { background:#4a100022; color:#e06040; border:1px solid #e0604044; }
+  .vd-underpriced{ background:#1a3a6622; color:#4090e0; border:1px solid #4090e044; }
+  .vd-raise      { background:#3a2a0022; color:#e0c040; border:1px solid #e0c04044; }
+  .vd-no_data    { background:#1a1a1a;   color:#666;    border:1px solid #333; }
+  .vd-pending    { background:#1a1a1a;   color:#555;    border:1px solid #2a2a2a; }
+
+  .va-suggested  { font-size:12px; color:var(--accent); font-weight:700; white-space:nowrap; }
+  .va-reason     { font-size:11px; color:var(--text-dim); line-height:1.5; max-width:280px; }
+
+  /* Diff arrow */
+  .va-diff-up    { color:#50c050; font-size:11px; }
+  .va-diff-dn    { color:#e06040; font-size:11px; }
+  .va-diff-eq    { color:#888;    font-size:11px; }
+
+  /* Loading state */
+  .va-analyzing  { display:none; text-align:center; padding:30px;
+                   color:var(--text-dim); font-size:13px; }
+  .va-analyzing.show { display:block; }
+
+  .gen-status    { font-size:12px; color:var(--text-dim); }
+
+  @media(max-width:768px) {
+    .va-table th:nth-child(3),
+    .va-table td:nth-child(3) { display:none; }  /* hide market col on mobile */
+    .va-reason { max-width:160px; }
+  }
+</style>
+
+<div class="va-header">
+  <h1>🏪 Vendor Advisor</h1>
+  <span>AI-powered pricing — Claude Haiku</span>
+  <div class="va-actions">
+    <button class="btn btn-primary" id="va-btn" onclick="analyze()">Analyze My Vendor</button>
+    <span class="gen-status" id="va-status"></span>
+  </div>
+</div>
+
+{% if not stock %}
+<div style="text-align:center;padding:60px;color:var(--text-dim);font-size:13px">
+  No items in your vendor stock. <a href="/vendor" style="color:var(--accent)">Add items to your vendor</a> first.
+</div>
+{% else %}
+
+<!-- Summary bar -->
+<div class="va-summary" id="va-summary">
+  <div class="va-stat">
+    <div class="va-stat-val">{{ stock|length }}</div>
+    <div class="va-stat-lbl">Items</div>
+  </div>
+  <div class="va-stat">
+    <div class="va-stat-val">{{ stock | sum(attribute='qty') }}</div>
+    <div class="va-stat-lbl">Total Qty</div>
+  </div>
+  <div class="va-stat">
+    <div class="va-stat-val" id="va-total-value">
+      {{ "{:,}".format(stock | sum(attribute='my_price')) }}c
+    </div>
+    <div class="va-stat-lbl">Listed Value</div>
+  </div>
+  <div class="va-stat" id="va-stat-issues" style="display:none">
+    <div class="va-stat-val" id="va-issues-count" style="color:#e0c040">—</div>
+    <div class="va-stat-lbl">Need Attention</div>
+  </div>
+</div>
+
+<!-- Analyzing spinner -->
+<div class="va-analyzing" id="va-analyzing">
+  Asking Claude to analyze your vendor... (~5s)
+</div>
+
+<!-- Table -->
+<div class="va-table-wrap">
+  <table class="va-table" id="va-table">
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Your Price</th>
+        <th>Market Data</th>
+        <th>Verdict</th>
+        <th>Suggested</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody id="va-tbody">
+      {% for r in stock %}
+      <tr data-name="{{ r.name }}" data-id="{{ r.id }}">
+        <td>
+          <div class="va-name">{{ r.name }}</div>
+          <div class="va-cat">{{ r.category or '—' }} {% if r.qty > 1 %}· ×{{ r.qty }}{% endif %}</div>
+        </td>
+        <td>
+          <div class="va-price {% if not r.my_price %}" style="color:#e0c040{% endif %}">
+            {{ '{:,}'.format(r.my_price) }}c{% if not r.my_price %} ⚠{% endif %}
+          </div>
+        </td>
+        <td>
+          {% if r.times_seen %}
+          <div class="va-mkt">
+            <strong>avg {{ '{:,}'.format(r.avg_seen|int) }}c</strong><br>
+            {{ r.low_seen }}–{{ r.high_seen }}c · {{ r.times_seen }} sightings
+          </div>
+          {% else %}
+          <div class="va-mkt" style="color:#444">No data</div>
+          {% endif %}
+        </td>
+        <td class="va-verdict-cell">
+          <span class="vd vd-pending">—</span>
+        </td>
+        <td class="va-suggested-cell">—</td>
+        <td class="va-reason-cell va-reason">—</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endif %}
+
+<script>
+const STOCK_DATA = {{ stock | tojson }};
+
+const VERDICT_CONFIG = {
+  fair:       { cls:'vd-fair',       label:'✓ Fair' },
+  overpriced: { cls:'vd-overpriced', label:'↓ Overpriced' },
+  underpriced:{ cls:'vd-underpriced',label:'↑ Underpriced' },
+  raise:      { cls:'vd-raise',      label:'↑ Raise Price' },
+  no_data:    { cls:'vd-no_data',    label:'? No Data' },
+};
+
+function diffStr(current, suggested) {
+  if (!suggested || !current) return '';
+  const diff = suggested - current;
+  if (diff > 0)  return `<span class="va-diff-up"> (+${diff.toLocaleString()}c)</span>`;
+  if (diff < 0)  return `<span class="va-diff-dn"> (${diff.toLocaleString()}c)</span>`;
+  return `<span class="va-diff-eq"> (no change)</span>`;
+}
+
+async function analyze() {
+  const btn = document.getElementById('va-btn');
+  const st  = document.getElementById('va-status');
+  btn.disabled = true;
+  st.textContent = '';
+  document.getElementById('va-analyzing').classList.add('show');
+
+  try {
+    const r = await fetch('/vendor-advisor/analyze', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({})
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    renderAdvice(data.advice);
+    st.textContent = 'Done!';
+    setTimeout(() => st.textContent = '', 3000);
+  } catch(e) {
+    st.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    document.getElementById('va-analyzing').classList.remove('show');
+  }
+}
+
+function renderAdvice(advice) {
+  // Build lookup by name
+  const map = {};
+  advice.forEach(a => { map[a.name.toLowerCase().trim()] = a; });
+
+  let issues = 0;
+  const rows = document.querySelectorAll('#va-tbody tr');
+  rows.forEach(row => {
+    const name = row.dataset.name || '';
+    const a    = map[name.toLowerCase().trim()];
+    if (!a) return;
+
+    const vcfg = VERDICT_CONFIG[a.verdict] || VERDICT_CONFIG.no_data;
+    row.querySelector('.va-verdict-cell').innerHTML =
+      `<span class="vd ${vcfg.cls}">${vcfg.label}</span>`;
+
+    const currentPrice = STOCK_DATA.find(s => s.name === name)?.my_price || 0;
+    const suggested    = a.suggested_price || 0;
+
+    row.querySelector('.va-suggested-cell').innerHTML = suggested
+      ? `<span class="va-suggested">${suggested.toLocaleString()}c</span>${diffStr(currentPrice, suggested)}`
+      : '—';
+
+    row.querySelector('.va-reason-cell').textContent = a.reason || '';
+
+    if (['overpriced','underpriced','raise'].includes(a.verdict)) issues++;
+  });
+
+  // Update summary stat
+  const statEl = document.getElementById('va-stat-issues');
+  statEl.style.display = 'block';
+  document.getElementById('va-issues-count').textContent = issues;
+
+  // Sort table: issues first
+  const ORDER = {overpriced:0, underpriced:1, raise:2, fair:3, no_data:4};
+  const tbody = document.getElementById('va-tbody');
+  const allRows = [...tbody.querySelectorAll('tr')];
+  allRows.sort((a, b) => {
+    const aName = a.dataset.name?.toLowerCase().trim() || '';
+    const bName = b.dataset.name?.toLowerCase().trim() || '';
+    const aV = map[aName]?.verdict || 'no_data';
+    const bV = map[bName]?.verdict || 'no_data';
+    return (ORDER[aV] ?? 9) - (ORDER[bV] ?? 9);
+  });
+  allRows.forEach(r => tbody.appendChild(r));
+}
+</script>
+
+{% endblock %}

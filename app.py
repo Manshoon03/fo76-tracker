@@ -229,8 +229,10 @@ def perk_cards():
         del entry['rank_data']
         grp = 'Legendary' if entry['is_legendary'] else entry['special']
         wiki_perks_by_special[grp].append(entry)
+    logged_perks = {r['name'].lower() for r in db.query("SELECT name FROM perk_cards")}
     return render_template('perk_cards.html', items=items, edit_item=edit_item,
-                           wiki_perks_by_special=dict(wiki_perks_by_special))
+                           wiki_perks_by_special=dict(wiki_perks_by_special),
+                           logged_perks=logged_perks)
 
 @app.route('/perk-cards/add', methods=['POST'])
 def perk_cards_add():
@@ -266,8 +268,21 @@ def builds():
     edit_id = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM builds WHERE id=?", (edit_id,)) if edit_id else None
     wiki_perks_list = [r['name'] for r in db.query("SELECT name FROM wiki_perks ORDER BY name")]
+    # Mutations linked to builds
+    mut_rows = db.query("SELECT build_id, name, effects_positive, effects_negative FROM mutations WHERE build_id > 0")
+    mutations_by_build = {}
+    for r in mut_rows:
+        bid = r['build_id']
+        mutations_by_build.setdefault(bid, []).append({
+            'name': r['name'], 'pos': r['effects_positive'], 'neg': r['effects_negative']
+        })
+    # Weapons & armor for inventory picker and modal
+    inv_weapons = [dict(r) for r in db.query("SELECT id, name, wtype, star1, star2, star3, star4, status, build_id FROM weapons ORDER BY name")]
+    inv_armor   = [dict(r) for r in db.query("SELECT id, name, slot, material, star1, star2, star3, star4, status, build_id FROM armor ORDER BY name")]
     return render_template('builds.html', items=items, edit_item=edit_item,
-                           wiki_perks_list=wiki_perks_list)
+                           wiki_perks_list=wiki_perks_list,
+                           mutations_by_build=mutations_by_build,
+                           inv_weapons=inv_weapons, inv_armor=inv_armor)
 
 @app.route('/builds/add', methods=['POST'])
 def builds_add():
@@ -277,6 +292,8 @@ def builds_add():
         (fs('name'), fs('playstyle'), fi('s',1), fi('p',1), fi('e',1), fi('c',1),
          fi('i',1), fi('a',1), fi('l',1), fs('key_cards'), fs('notes'), pcj)
     )
+    build_id = db.query("SELECT last_insert_rowid() as id")[0]['id']
+    _assign_build_gear(build_id, request.form.getlist('weapon_ids'), request.form.getlist('armor_ids'))
     flash('Build added!', 'success')
     return redirect(url_for('builds'))
 
@@ -288,8 +305,18 @@ def builds_update(id):
         (fs('name'), fs('playstyle'), fi('s',1), fi('p',1), fi('e',1), fi('c',1),
          fi('i',1), fi('a',1), fi('l',1), fs('key_cards'), fs('notes'), pcj, id)
     )
+    _assign_build_gear(id, request.form.getlist('weapon_ids'), request.form.getlist('armor_ids'))
     flash('Build updated!', 'success')
     return redirect(url_for('builds'))
+
+def _assign_build_gear(build_id, weapon_ids, armor_ids):
+    """Clear old gear assignments for this build, then assign selected ones."""
+    db.execute("UPDATE weapons SET build_id=0 WHERE build_id=?", (build_id,))
+    db.execute("UPDATE armor   SET build_id=0 WHERE build_id=?", (build_id,))
+    for wid in weapon_ids:
+        if wid: db.execute("UPDATE weapons SET build_id=? WHERE id=?", (build_id, int(wid)))
+    for aid in armor_ids:
+        if aid: db.execute("UPDATE armor   SET build_id=? WHERE id=?", (build_id, int(aid)))
 
 @app.route('/builds/<int:id>/delete', methods=['POST'])
 def builds_delete(id):
@@ -333,10 +360,12 @@ def mutations():
     builds = db.query("SELECT id, name FROM builds ORDER BY name")
     wiki_rows = db.query("SELECT name, positive_effects, negative_effects, serum_name, wiki_url FROM wiki_mutations ORDER BY name")
     wiki_mutations = {r['name']: dict(r) for r in wiki_rows}
+    logged_names = {r['name'].lower() for r in db.query("SELECT name FROM mutations")}
     return render_template('mutations.html', items=items, edit_item=edit_item,
                            filter_active=filter_active, builds=builds,
                            mutation_names=reference.MUTATION_NAMES,
-                           wiki_mutations=wiki_mutations)
+                           wiki_mutations=wiki_mutations,
+                           logged_names=logged_names)
 
 @app.route('/mutations/add', methods=['POST'])
 def mutations_add():
@@ -454,7 +483,9 @@ def armor():
     else:
         items = db.query("SELECT * FROM armor ORDER BY slot, name")
     edit_item = db.get_one("SELECT * FROM armor WHERE id=?", (edit_id,)) if edit_id else None
-    return render_template('armor.html', items=items, edit_item=edit_item, status_filter=status_filter)
+    wiki_armor_names = [r['name'] for r in db.query("SELECT name FROM wiki_armor ORDER BY name")]
+    return render_template('armor.html', items=items, edit_item=edit_item,
+                           status_filter=status_filter, wiki_armor_names=wiki_armor_names)
 
 @app.route('/armor/add', methods=['POST'])
 def armor_add():
@@ -890,7 +921,16 @@ def plans():
     items = db.query("SELECT * FROM plans ORDER BY category, name")
     edit_id = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM plans WHERE id=?", (edit_id,)) if edit_id else None
-    return render_template('plans.html', items=items, edit_item=edit_item)
+    # Unique plan names from price research not yet in plans tracker
+    existing_plans = {r['name'].lower() for r in db.query("SELECT name FROM plans")}
+    research_plans = db.query("""
+        SELECT item_name, COUNT(*) as seen, ROUND(AVG(price_seen)) as avg_price
+        FROM price_research WHERE category='Plan'
+        GROUP BY LOWER(item_name) ORDER BY item_name
+    """)
+    importable = [dict(r) for r in research_plans
+                  if r['item_name'].lower() not in existing_plans]
+    return render_template('plans.html', items=items, edit_item=edit_item, importable=importable)
 
 @app.route('/plans/add', methods=['POST'])
 def plans_add():
@@ -1271,12 +1311,13 @@ Rules:
         response = client.messages.create(
             model='claude-haiku-4-5-20251001',
             max_tokens=2000,
-            messages=[{'role': 'user', 'content': prompt}]
+            messages=[
+                {'role': 'user',      'content': prompt},
+                {'role': 'assistant', 'content': '{'}
+            ]
         )
-        text  = response.content[0].text.strip()
-        match = re.search(r'\{[\s\S]*\}', text)
-        if match:
-            text = match.group(0)
+        text  = '{' + response.content[0].text.strip()
+        text  = re.sub(r'```[\w]*\s*$', '', text).strip()
         build = json.loads(text)
         return jsonify({'success': True, 'build': build})
     except Exception as e:
@@ -1433,12 +1474,13 @@ Rules:
         response = client.messages.create(
             model='claude-haiku-4-5-20251001',
             max_tokens=3000,
-            messages=[{'role': 'user', 'content': prompt}]
+            messages=[
+                {'role': 'user',      'content': prompt},
+                {'role': 'assistant', 'content': '{'}
+            ]
         )
-        text  = response.content[0].text.strip()
-        match = re.search(r'\{[\s\S]*\}', text)
-        if match:
-            text = match.group(0)
+        text  = '{' + response.content[0].text.strip()
+        text  = re.sub(r'```[\w]*\s*$', '', text).strip()
         result = json.loads(text)
         result['weapon_name'] = weapon['name']
         result['weapon_type'] = weapon['weapon_type']
@@ -2897,6 +2939,466 @@ def legendary_mods_qty():
     elif table == 'bobble' and rid is not None:
         db.execute("UPDATE bobbleheads SET qty=? WHERE id=?", (qty, rid))
     return ('', 204)
+
+# ── Quick-add JSON endpoints (one-click from wiki references) ──────────────────
+@app.route('/mutations/quick-add', methods=['POST'])
+def mutations_quick_add():
+    data = request.get_json()
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'No name'}), 400
+    existing = db.get_one("SELECT id, active FROM mutations WHERE LOWER(name)=LOWER(?)", (name,))
+    if existing:
+        return jsonify({'success': True, 'already_exists': True,
+                        'id': existing['id'], 'active': existing['active']})
+    db.execute(
+        "INSERT INTO mutations (name, effects_positive, effects_negative, active, build_id, notes) VALUES (?,?,?,1,0,'')",
+        (name, data.get('positive', ''), data.get('negative', ''))
+    )
+    return jsonify({'success': True, 'already_exists': False})
+
+
+@app.route('/perk-cards/quick-add', methods=['POST'])
+def perk_cards_quick_add():
+    data = request.get_json()
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'No name'}), 400
+    existing = db.get_one("SELECT id FROM perk_cards WHERE LOWER(name)=LOWER(?)", (name,))
+    if existing:
+        return jsonify({'success': True, 'already_exists': True, 'id': existing['id']})
+    db.execute(
+        "INSERT INTO perk_cards (name, special, current_rank, max_rank, copies_owned, effect, used_in, can_scrap, notes) VALUES (?,?,?,?,1,?,'','No','')",
+        (name, data.get('special', 'S'), data.get('rank', 1),
+         data.get('max_rank', 3), data.get('effect', ''))
+    )
+    return jsonify({'success': True, 'already_exists': False})
+
+
+@app.route('/plans/import-research', methods=['POST'])
+def plans_import_research():
+    data  = request.get_json()
+    plans = data.get('plans', [])
+    added = 0
+    for p in plans:
+        name = (p.get('name') or '').strip()
+        if not name:
+            continue
+        existing = db.get_one("SELECT id FROM plans WHERE LOWER(name)=LOWER(?)", (name,))
+        if existing:
+            continue
+        db.execute(
+            "INSERT INTO plans (name, category, unlocks, learned, qty_unlearned, sell_price, status, notes) VALUES (?,?,?,1,0,?,'Sell','')",
+            (name, 'Plan', '', int(p.get('avg_price') or 0))
+        )
+        added += 1
+    return jsonify({'success': True, 'added': added})
+
+
+@app.route('/armor/parse', methods=['POST'])
+def armor_parse():
+    data = request.get_json()
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'success': False, 'error': 'No text provided'}), 400
+
+    prompt = f"""You are a Fallout 76 item parser. Parse this armor description into structured fields.
+
+INPUT: "{text}"
+
+Return ONLY valid JSON:
+{{
+  "name": "Armor set name (e.g. Marine Armor, Ultracite Armor, Wood Armor)",
+  "slot": "One of: Chest, Left Arm, Right Arm, Left Leg, Right Leg, Helmet, Full Set",
+  "material": "Material/type (e.g. Marine, Ultracite, Wood, Robot, Raider, Scout)",
+  "legendary_1star": "1-star legendary effect or empty string",
+  "legendary_2star": "2-star legendary effect or empty string",
+  "legendary_3star": "3-star legendary effect or empty string",
+  "legendary_4star": "4-star effect or empty string",
+  "notes": "Any extra details"
+}}
+
+Common shorthand: OE=Overeater's, U=Unyielding, Bol=Bolstering, Cham=Chameleon, Van=Vanguard's, AP=AP Refresh, Sent=Sentinel's, Cav=Cavalier's, Pow=Powered"""
+
+    try:
+        client   = _get_anthropic()
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=400,
+            messages=[
+                {'role': 'user',      'content': prompt},
+                {'role': 'assistant', 'content': '{'}
+            ]
+        )
+        t     = '{' + response.content[0].text.strip()
+        t     = re.sub(r'```[\w]*\s*$', '', t).strip()
+        fields = json.loads(t)
+        return jsonify({'success': True, 'fields': fields})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Vendor Pricing Assistant ───────────────────────────────────────────────────
+@app.route('/vendor-advisor')
+def vendor_advisor():
+    stock = db.query("""
+        SELECT v.id, v.name, v.category, v.qty, v.my_price, v.notes,
+               COUNT(p.id)            AS times_seen,
+               ROUND(AVG(p.price_seen))  AS avg_seen,
+               MIN(p.price_seen)         AS low_seen,
+               MAX(p.price_seen)         AS high_seen
+        FROM vendor_stock v
+        LEFT JOIN price_research p
+               ON LOWER(p.item_name) LIKE '%' || LOWER(v.name) || '%'
+        GROUP BY v.id
+        ORDER BY v.category, v.name
+    """)
+    return render_template('vendor_advisor.html', stock=[dict(r) for r in stock])
+
+
+@app.route('/vendor-advisor/analyze', methods=['POST'])
+def vendor_advisor_analyze():
+    stock = db.query("""
+        SELECT v.id, v.name, v.category, v.qty, v.my_price, v.notes,
+               COUNT(p.id)               AS times_seen,
+               ROUND(AVG(p.price_seen))  AS avg_seen,
+               MIN(p.price_seen)         AS low_seen,
+               MAX(p.price_seen)         AS high_seen
+        FROM vendor_stock v
+        LEFT JOIN price_research p
+               ON LOWER(p.item_name) LIKE '%' || LOWER(v.name) || '%'
+        GROUP BY v.id
+        ORDER BY v.category, v.name
+    """)
+
+    lines = []
+    for r in stock:
+        mkt = (f"market avg {r['avg_seen']}c, low {r['low_seen']}c, high {r['high_seen']}c "
+               f"({r['times_seen']} sightings)") if r['times_seen'] else "no market data recorded"
+        price_str = f"{r['my_price']}c" if r['my_price'] else "unpriced (0c)"
+        lines.append(f"- {r['name']} ({r['category']}, qty {r['qty']}): listed at {price_str} — {mkt}")
+
+    prompt = f"""You are a Fallout 76 vendor pricing expert. Analyze this player's vendor stock against their market research data and give concrete pricing advice.
+
+VENDOR STOCK vs MARKET DATA:
+{chr(10).join(lines)}
+
+For each item return one of these verdicts:
+- "fair" — price is reasonable for the market
+- "overpriced" — significantly above market avg, likely not selling
+- "underpriced" — significantly below market avg, leaving caps on the table
+- "raise" — unpriced (0c) or very low, should be listed higher
+- "no_data" — not enough market data to judge
+
+Be direct. If market avg is much lower than their price, say overpriced. If they have 0c listed, say raise.
+Serums and mutations typically sell for 500-1500c. Plans vary wildly by rarity. Weapons depend heavily on legendary effects.
+
+Return ONLY a valid JSON array (no markdown):
+[
+  {{
+    "name": "Exact item name from the list",
+    "verdict": "fair|overpriced|underpriced|raise|no_data",
+    "suggested_price": 0,
+    "reason": "One concise sentence explaining the verdict and suggested price"
+  }}
+]
+
+Include every item from the list. suggested_price should be 0 if no_data."""
+
+    try:
+        client   = _get_anthropic()
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=2000,
+            messages=[
+                {'role': 'user',      'content': prompt},
+                {'role': 'assistant', 'content': '['}
+            ]
+        )
+        text  = '[' + response.content[0].text.strip()
+        text  = re.sub(r'```[\w]*\s*$', '', text).strip()
+        advice = json.loads(text)
+        return jsonify({'success': True, 'advice': advice})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Legendary Mod Optimizer ────────────────────────────────────────────────────
+@app.route('/legendary-optimizer')
+def legendary_optimizer():
+    builds = db.query("SELECT id, name, playstyle FROM builds ORDER BY name")
+    inv    = db.query("SELECT name, star_level, qty FROM legendary_mods_inventory WHERE qty > 0 ORDER BY star_level, name")
+    craft  = db.query("SELECT name, star_level, requires_to_craft FROM legendary_craftable WHERE have_materials=1 ORDER BY star_level, name")
+    return render_template('legendary_optimizer.html',
+                           builds=[dict(b) for b in builds],
+                           inv=[dict(r) for r in inv],
+                           craftable=[dict(r) for r in craft])
+
+@app.route('/legendary-optimizer/analyze', methods=['POST'])
+def legendary_optimizer_analyze():
+    data      = request.get_json()
+    playstyle = data.get('playstyle', '').strip()
+    item_type = data.get('item_type', 'weapon')   # 'weapon' or 'armor'
+    build_id  = data.get('build_id')
+
+    # Build context from saved build if selected
+    build_ctx = ''
+    if build_id:
+        b = db.get_one("SELECT * FROM builds WHERE id=?", (build_id,))
+        if b:
+            b = dict(b)
+            try:
+                perks = json.loads(b.get('perk_cards_json') or '[]')
+                perk_names = ', '.join(p['name'] for p in perks) if perks else b.get('key_cards','')
+            except Exception:
+                perk_names = b.get('key_cards', '')
+            build_ctx = (f"Build: {b['name']}\nPlaystyle: {b['playstyle']}\n"
+                         f"SPECIAL: S{b['s']} P{b['p']} E{b['e']} C{b['c']} I{b['i']} A{b['a']} L{b['l']}\n"
+                         f"Key Perks: {perk_names}")
+
+    # Format inventory by star level
+    inv  = db.query("SELECT name, star_level, qty FROM legendary_mods_inventory WHERE qty > 0 ORDER BY star_level, name")
+    cft  = db.query("SELECT name, star_level, requires_to_craft FROM legendary_craftable WHERE have_materials=1 ORDER BY star_level, name")
+
+    inv_by_star  = {}
+    for r in inv:
+        inv_by_star.setdefault(r['star_level'], []).append(f"{r['name']} (x{r['qty']})")
+    cft_by_star  = {}
+    for r in cft:
+        cft_by_star.setdefault(r['star_level'], []).append(f"{r['name']} (craft: {r['requires_to_craft']})")
+
+    inv_lines = []
+    for star in sorted(set(list(inv_by_star) + list(cft_by_star))):
+        have = inv_by_star.get(star, [])
+        can  = cft_by_star.get(star, [])
+        if have: inv_lines.append(f"Star {star} IN INVENTORY: {', '.join(have)}")
+        if can:  inv_lines.append(f"Star {star} CRAFTABLE NOW: {', '.join(can)}")
+
+    stars_note = "1-star, 2-star, 3-star" if item_type == 'weapon' else "1-star, 2-star, 3-star, 4-star"
+
+    prompt = f"""You are a Fallout 76 legendary mod expert.
+
+PLAYER CONTEXT:
+{build_ctx if build_ctx else f'Playstyle / goal: {playstyle}'}
+
+LEGENDARY MODS AVAILABLE (inventory + craftable):
+{chr(10).join(inv_lines) if inv_lines else 'No mods logged yet.'}
+
+TASK: Recommend the best legendary mod combination for a {item_type} for this build.
+Choose {stars_note}. ONLY recommend mods the player actually has in inventory or can craft right now.
+If they are missing a clearly better option, note it under priority_note.
+
+Return ONLY valid JSON (no markdown):
+{{
+  "assessment": "2-3 sentence summary of the recommended setup and its synergy with the build",
+  "recommendations": [
+    {{
+      "star": 1,
+      "mod": "Exact mod name",
+      "reason": "Why this is the best choice for this star slot",
+      "availability": "in_stock",
+      "qty": 0
+    }}
+  ],
+  "alternatives": [
+    {{
+      "star": 1,
+      "mod": "Alternative mod name",
+      "reason": "When this is better than the primary pick"
+    }}
+  ],
+  "priority_note": "What to farm/craft first if anything is suboptimal"
+}}
+
+availability must be one of: in_stock, craftable, missing"""
+
+    try:
+        client   = _get_anthropic()
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=1500,
+            messages=[
+                {'role': 'user',      'content': prompt},
+                {'role': 'assistant', 'content': '{'}
+            ]
+        )
+        text  = '{' + response.content[0].text.strip()
+        text  = re.sub(r'```[\w]*\s*$', '', text).strip()
+        result = json.loads(text)
+        return jsonify({'success': True, 'result': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Build Coach ─────────────────────────────────────────────────────────────────
+@app.route('/build-coach')
+def build_coach():
+    builds = db.query("SELECT id, name, playstyle, s,p,e,c,i,a,l, key_cards, notes, perk_cards_json, legendary_perks_json FROM builds ORDER BY name")
+    return render_template('build_coach.html', builds=[dict(b) for b in builds])
+
+@app.route('/build-coach/analyze', methods=['POST'])
+def build_coach_analyze():
+    data     = request.get_json()
+    build_id = data.get('build_id')
+    if not build_id:
+        return jsonify({'success': False, 'error': 'No build selected'}), 400
+
+    b = db.get_one("SELECT * FROM builds WHERE id=?", (build_id,))
+    if not b:
+        return jsonify({'success': False, 'error': 'Build not found'}), 404
+    b = dict(b)
+
+    # Parse perk cards
+    try:
+        perks = json.loads(b.get('perk_cards_json') or '[]')
+    except Exception:
+        perks = []
+    if not perks and b.get('key_cards'):
+        perks = [{'name': n.strip(), 'rank': 1, 'max_rank': 3} for n in b['key_cards'].split(',') if n.strip()]
+
+    perk_lines = '\n'.join(f"  - {p['name']} (Rank {p.get('rank',1)}/{p.get('max_rank',3)})" for p in perks) or '  None recorded'
+
+    # Parse notes sections
+    notes = b.get('notes', '') or ''
+    weapons_line = next((l.replace('Weapons:','').strip() for l in notes.splitlines() if l.startswith('Weapons:')), '')
+    armor_line   = next((l.replace('Armor:','').strip()   for l in notes.splitlines() if l.startswith('Armor:')),   '')
+    muts_line    = next((l.replace('Mutations:','').strip() for l in notes.splitlines() if l.startswith('Mutations:')), '')
+
+    # Legendary perks
+    try:
+        leg_perks = json.loads(b['legendary_perks_json'] or '[]')
+    except Exception:
+        leg_perks = []
+    leg_lines = '\n'.join(f"  - {lp['name']} (Rank {lp.get('rank',1)}/{lp.get('max_rank',6)})" for lp in leg_perks) or '  None recorded'
+
+    prompt = f"""You are a Fallout 76 build optimization expert. Analyze this build and provide specific, actionable coaching.
+
+BUILD: {b['name']}
+PLAYSTYLE: {b['playstyle'] or 'Not specified'}
+SPECIAL: S{b['s']} P{b['p']} E{b['e']} C{b['c']} I{b['i']} A{b['a']} L{b['l']} (total: {sum([b['s'],b['p'],b['e'],b['c'],b['i'],b['a'],b['l']])})
+
+PERK CARDS:
+{perk_lines}
+
+LEGENDARY PERKS:
+{leg_lines}
+
+WEAPONS: {weapons_line or 'Not specified'}
+ARMOR: {armor_line or 'Not specified'}
+MUTATIONS: {muts_line or 'Not specified'}
+
+Provide concrete coaching. Be specific but BRIEF — one sentence per reason max. Limit perk_changes to top 5 most impactful. Limit special_suggestions to stats that actually need changing. Limit mutation_suggestions to top 3.
+
+Return ONLY valid JSON (no markdown):
+{{
+  "assessment": "Honest 2-3 sentence overall evaluation — what works, what doesn't",
+  "rating": 7,
+  "special_suggestions": [
+    {{
+      "stat": "Strength",
+      "current": 6,
+      "suggested": 8,
+      "reason": "Why to change this"
+    }}
+  ],
+  "perk_changes": [
+    {{
+      "action": "add",
+      "name": "Perk Name",
+      "rank": 3,
+      "special": "S",
+      "reason": "Why to add this"
+    }},
+    {{
+      "action": "remove",
+      "name": "Perk Name",
+      "reason": "Why to drop this"
+    }},
+    {{
+      "action": "change_rank",
+      "name": "Perk Name",
+      "from_rank": 1,
+      "to_rank": 3,
+      "reason": "Why to change rank"
+    }}
+  ],
+  "mutation_suggestions": [
+    {{
+      "action": "add",
+      "name": "Mutation Name",
+      "reason": "Why this mutation helps this build"
+    }}
+  ],
+  "legendary_targets": "What legendary effects to aim for on weapons and armor",
+  "priority": "Top 1-2 things to do first for the biggest improvement"
+}}
+
+rating is 1-10. action must be one of: add, remove, change_rank"""
+
+    try:
+        client   = _get_anthropic()
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=3500,
+            messages=[
+                {'role': 'user',      'content': prompt},
+                {'role': 'assistant', 'content': '{'}
+            ]
+        )
+        if response.stop_reason == 'max_tokens':
+            return jsonify({'success': False, 'error': 'Response too long — try a build with fewer perk cards.'}), 500
+        text   = '{' + response.content[0].text.strip()
+        text   = re.sub(r'```[\w]*\s*$', '', text).strip()
+        result = json.loads(text)
+        return jsonify({'success': True, 'result': result, 'build': dict(b)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Weapon Quick Parse ──────────────────────────────────────────────────────────
+@app.route('/weapons/parse', methods=['POST'])
+def weapons_parse():
+    """Parse free-text item description into structured weapon fields."""
+    data  = request.get_json()
+    text  = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'success': False, 'error': 'No text provided'}), 400
+
+    prompt = f"""You are a Fallout 76 item parser. The player typed a weapon description.
+Extract structured fields. Use standard FO76 terminology.
+
+INPUT: "{text}"
+
+Return ONLY valid JSON:
+{{
+  "name": "Base weapon name (e.g. Fixer, Handmade, Gatling Plasma)",
+  "weapon_type": "One of: Rifle, Commando, Pistol, Shotgun, Sniper, Heavy Gun, Two-Handed Melee, One-Handed Melee, Unarmed, Bow, Thrown",
+  "legendary_1star": "1-star legendary effect or empty string",
+  "legendary_2star": "2-star legendary effect or empty string",
+  "legendary_3star": "3-star legendary effect or empty string",
+  "ammo_type": "Ammo type or empty string",
+  "notes": "Any extra details"
+}}
+
+Common shorthand: B=Bloodied, AA=Anti-Armor, E=Explosive, Q=Quad, TS=Two Shot, J=Junkie's, V=Vampire's, FFR=Faster Fire Rate, FR=Fire Rate, SW=Swing Speed, SS=Swing Speed, 25FR=25% faster fire rate, 50B=50% more limb damage, 15RL=15% faster reload, +1S=+1 Strength, 25vats=25% less VATS cost"""
+
+    try:
+        client   = _get_anthropic()
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=400,
+            messages=[
+                {'role': 'user',      'content': prompt},
+                {'role': 'assistant', 'content': '{'}
+            ]
+        )
+        t     = '{' + response.content[0].text.strip()
+        t     = re.sub(r'```[\w]*\s*$', '', t).strip()
+        fields = json.loads(t)
+        return jsonify({'success': True, 'fields': fields})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5000)

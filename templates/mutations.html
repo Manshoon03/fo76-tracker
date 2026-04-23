@@ -126,7 +126,8 @@
            style="width:100%;padding:.45rem .7rem;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--fg);margin-bottom:1rem">
     <div class="mut-ref-grid" id="mutRefGrid">
       {% for name, m in wiki_mutations.items()|sort %}
-      <div class="mut-ref-card" data-name="{{ name|lower }}">
+      {% set already = name|lower in logged_names %}
+      <div class="mut-ref-card" data-name="{{ name|lower }}" id="mutcard-{{ loop.index }}">
         <div class="mut-ref-name">
           {{ name }}
           {% if m.wiki_url %}<a href="{{ m.wiki_url }}" target="_blank" style="font-size:.7rem;margin-left:.4rem;opacity:.5">↗</a>{% endif %}
@@ -134,7 +135,11 @@
         <div class="mut-ref-pos">+ {{ m.positive_effects or '—' }}</div>
         <div class="mut-ref-neg">- {{ m.negative_effects or '—' }}</div>
         {% if m.serum_name %}<div class="mut-ref-serum">💉 {{ m.serum_name }}</div>{% endif %}
-        <button class="btn-sm btn-add-wiki" onclick="fillMutation('{{ name|e }}','{{ m.positive_effects|e }}','{{ m.negative_effects|e }}')">+ Add to My Mutations</button>
+        <button class="btn-sm {% if already %}btn-keep{% else %}btn-add-wiki{% endif %}"
+                id="mutbtn-{{ loop.index }}"
+                onclick="quickAddMutation('{{ name|e }}','{{ m.positive_effects|e }}','{{ m.negative_effects|e }}', {{ loop.index }})">
+          {% if already %}✓ Added{% else %}+ Add to My Mutations{% endif %}
+        </button>
       </div>
       {% endfor %}
     </div>
@@ -194,6 +199,26 @@ function fillMutation(name, pos, neg) {
   const panel = document.getElementById('addPanel');
   if (!panel.classList.contains('open')) togglePanel('addPanel');
   panel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function quickAddMutation(name, pos, neg, idx) {
+  const btn = document.getElementById(`mutbtn-${idx}`);
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const r = await fetch('/mutations/quick-add', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, positive: pos, negative: neg})
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    btn.textContent = data.already_exists ? '✓ Already Added' : '✓ Added!';
+    btn.className = 'btn-sm btn-keep';
+  } catch(e) {
+    btn.textContent = 'Error';
+    btn.disabled = false;
+  }
 }
 
 function filterMutRef(q) {

@@ -130,4 +130,78 @@
   </table>
 </div>
 
+<!-- Import from Price Research -->
+{% if importable %}
+<section class="add-panel" id="importPanel" style="margin-top:1.5rem">
+  <div class="panel-toggle" onclick="togglePanel('importPanel')">
+    <span>📥 Import from Price Research ({{ importable|length }} plans not yet tracked)</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px">
+      These plans appear in your price research but aren't tracked yet.
+      Check the ones you own and click Import — they'll be added as Learned / Sell.
+    </p>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px" onclick="selectAllPlans(true)">Select All</button>
+      <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px" onclick="selectAllPlans(false)">Clear</button>
+      <input type="text" placeholder="Filter..." oninput="filterImport(this.value)"
+             style="flex:1;min-width:140px;font-size:12px;padding:4px 8px">
+      <button class="btn btn-primary" style="font-size:12px;padding:4px 14px" onclick="importSelected()">Import Selected</button>
+      <span id="import-status" style="font-size:12px;color:var(--text-dim);align-self:center"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px;max-height:400px;overflow-y:auto" id="importGrid">
+      {% for p in importable %}
+      <label class="import-row" data-name="{{ p.item_name|lower }}"
+             style="display:flex;align-items:center;gap:8px;background:var(--bg-main,#111);
+                    border:1px solid var(--border);border-radius:4px;padding:6px 8px;cursor:pointer">
+        <input type="checkbox" class="import-chk" value="{{ p.item_name }}" data-avg="{{ p.avg_price or 0 }}">
+        <span style="flex:1;font-size:12px">{{ p.item_name }}</span>
+        <span style="font-size:11px;color:var(--accent);white-space:nowrap">
+          {% if p.avg_price %}avg {{ p.avg_price|int }}c{% else %}no price{% endif %}
+          · {{ p.seen }}×
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<script>
+function selectAllPlans(val) {
+  document.querySelectorAll('.import-chk').forEach(c => c.checked = val);
+}
+
+function filterImport(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#importGrid .import-row').forEach(r => {
+    r.style.display = r.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+
+async function importSelected() {
+  const checked = [...document.querySelectorAll('.import-chk:checked')];
+  if (!checked.length) { document.getElementById('import-status').textContent = 'Nothing selected.'; return; }
+  const plans = checked.map(c => ({name: c.value, avg_price: parseInt(c.dataset.avg) || 0}));
+  const st = document.getElementById('import-status');
+  st.textContent = `Importing ${plans.length}...`;
+  try {
+    const r = await fetch('/plans/import-research', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({plans})
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    st.textContent = `✓ Added ${data.added} plans!`;
+    // Remove imported rows
+    checked.forEach(c => c.closest('.import-row').remove());
+    setTimeout(() => location.reload(), 1200);
+  } catch(e) {
+    st.textContent = 'Error: ' + e.message;
+  }
+}
+</script>
+{% endif %}
+
 {% endblock %}

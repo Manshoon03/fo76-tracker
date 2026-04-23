@@ -62,10 +62,12 @@
   <div class="sidebar-section">
     <a href="/perk-cards" class="sidebar-item {% if '/perk-cards' in ni %}active{% endif %}" title="Perk Cards"><span class="si-icon">🃏</span><span class="si-label">Perk Cards</span></a>
     <a href="/builds"           class="sidebar-item {% if '/builds' in ni and '/compare' not in ni and '/build-generator' not in ni %}active{% endif %}" title="Builds"><span class="si-icon">🔨</span><span class="si-label">Builds</span></a>
-    <a href="/build-generator" class="sidebar-item {% if '/build-generator' in ni %}active{% endif %}" title="Build Generator"><span class="si-icon">🤖</span><span class="si-label">Build Gen</span></a>
-    <a href="/weapon-advisor"  class="sidebar-item {% if '/weapon-advisor'  in ni %}active{% endif %}" title="Weapon Advisor"><span class="si-icon">🔫</span><span class="si-label">Wep Advisor</span></a>
-    <a href="/builds/compare" class="sidebar-item {% if '/builds/compare' in ni %}active{% endif %}" title="Compare Builds"><span class="si-icon">⚖</span><span class="si-label">Compare</span></a>
-    <a href="/legendary-mods" class="sidebar-item {% if '/legendary-mods' in ni %}active{% endif %}" title="Legendary Mods"><span class="si-icon">⭐</span><span class="si-label">Leg. Mods</span></a>
+    <a href="/build-generator"     class="sidebar-item {% if '/build-generator' in ni %}active{% endif %}"     title="Build Generator"><span class="si-icon">🤖</span><span class="si-label">Build Gen</span></a>
+    <a href="/build-coach"         class="sidebar-item {% if '/build-coach' in ni %}active{% endif %}"         title="Build Coach"><span class="si-icon">🎯</span><span class="si-label">Build Coach</span></a>
+    <a href="/weapon-advisor"      class="sidebar-item {% if '/weapon-advisor'  in ni %}active{% endif %}"     title="Weapon Advisor"><span class="si-icon">🔫</span><span class="si-label">Wep Advisor</span></a>
+    <a href="/builds/compare"      class="sidebar-item {% if '/builds/compare' in ni %}active{% endif %}"     title="Compare Builds"><span class="si-icon">⚖</span><span class="si-label">Compare</span></a>
+    <a href="/legendary-mods"      class="sidebar-item {% if '/legendary-mods' in ni %}active{% endif %}"     title="Legendary Mods"><span class="si-icon">⭐</span><span class="si-label">Leg. Mods</span></a>
+    <a href="/legendary-optimizer" class="sidebar-item {% if '/legendary-optimizer' in ni %}active{% endif %}" title="Legendary Optimizer"><span class="si-icon">⚡</span><span class="si-label">Leg. Optimizer</span></a>
     <a href="/mutations"  class="sidebar-item {% if '/mutations' in ni %}active{% endif %}"  title="Mutations">  <span class="si-icon">🧬</span><span class="si-label">Mutations</span></a>
   </div>
 
@@ -82,7 +84,8 @@
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section">
-    <a href="/vendor"  class="sidebar-item {% if '/vendor' in ni %}active{% endif %}"  title="My Vendor"><span class="si-icon">🏪</span><span class="si-label">My Vendor</span></a>
+    <a href="/vendor"         class="sidebar-item {% if '/vendor' in ni and '/vendor-advisor' not in ni %}active{% endif %}" title="My Vendor"><span class="si-icon">🏪</span><span class="si-label">My Vendor</span></a>
+    <a href="/vendor-advisor" class="sidebar-item {% if '/vendor-advisor' in ni %}active{% endif %}" title="Vendor Advisor"><span class="si-icon">💡</span><span class="si-label">Vend. Advisor</span></a>
     <a href="/prices"  class="sidebar-item {% if '/prices' in ni %}active{% endif %}"  title="Prices">   <span class="si-icon">💰</span><span class="si-label">Prices</span></a>
     <a href="/caps"    class="sidebar-item {% if '/caps' in ni %}active{% endif %}"    title="Caps Ledger"><span class="si-icon">💵</span><span class="si-label">Caps Ledger</span></a>
     <a href="/plans"   class="sidebar-item {% if '/plans' in ni %}active{% endif %}"   title="Plans">    <span class="si-icon">📜</span><span class="si-label">Plans</span></a>

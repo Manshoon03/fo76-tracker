@@ -187,6 +187,9 @@
 <!-- Embed build data for JS -->
 <script>
 const BUILDS_DATA = {{ items | tojson }};
+const MUTATIONS_BY_BUILD = {{ mutations_by_build | tojson }};
+const INV_WEAPONS = {{ inv_weapons | tojson }};
+const INV_ARMOR   = {{ inv_armor | tojson }};
 </script>
 
 <div class="builds-header">
@@ -238,17 +241,52 @@ const BUILDS_DATA = {{ items | tojson }};
           Key Perk Cards
           <span style="font-weight:400;color:var(--fg-dim);margin-left:.5rem">— add each card with its recommended rank</span>
         </label>
-        <div id="perkRowList" style="display:flex;flex-direction:column;gap:6px;margin:8px 0"></div>
+        <div id="perkRowList" style="display:flex;flex-direction:column;gap:6px;margin:8px 0;max-height:280px;overflow-y:auto;padding-right:4px"></div>
         <button type="button" class="btn btn-secondary" style="font-size:12px;padding:4px 12px" onclick="addPerkRow()">+ Add Perk Card</button>
         <!-- Hidden fields written by JS before submit -->
         <input type="hidden" name="key_cards" id="keyCardsHidden">
         <input type="hidden" name="perk_cards_json" id="perkCardsJsonHidden">
       </div>
 
+      <!-- Weapon / Armor assignment from inventory -->
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-size:.75rem;color:var(--fg-dim);text-transform:uppercase;letter-spacing:.05em">⚔ Assign Weapons from Inventory</label>
+          <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px 8px;margin-top:6px;background:var(--surface2)">
+            {% if inv_weapons %}
+              {% for w in inv_weapons %}
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;cursor:pointer">
+                <input type="checkbox" name="weapon_ids" value="{{ w.id }}"
+                  {{ 'checked' if edit_item and w.build_id == edit_item.id else '' }}>
+                <span>{{ w.name }}{% if w.star1 %} <span style="color:var(--accent);font-size:11px">★{{ w.star1 }}{% if w.star2 %}/{{ w.star2 }}{% endif %}{% if w.star3 %}/{{ w.star3 }}{% endif %}</span>{% endif %}</span>
+              </label>
+              {% endfor %}
+            {% else %}
+              <span style="font-size:12px;color:var(--fg-dim)">No weapons in inventory yet</span>
+            {% endif %}
+          </div>
+        </div>
+        <div>
+          <label style="font-size:.75rem;color:var(--fg-dim);text-transform:uppercase;letter-spacing:.05em">🛡 Assign Armor from Inventory</label>
+          <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px 8px;margin-top:6px;background:var(--surface2)">
+            {% if inv_armor %}
+              {% for a in inv_armor %}
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;cursor:pointer">
+                <input type="checkbox" name="armor_ids" value="{{ a.id }}"
+                  {{ 'checked' if edit_item and a.build_id == edit_item.id else '' }}>
+                <span>{{ a.name }} <span style="color:var(--fg-dim);font-size:11px">{{ a.slot }}{% if a.star1 %} · ★{{ a.star1 }}{% if a.star2 %}/{{ a.star2 }}{% endif %}{% endif %}</span></span>
+              </label>
+              {% endfor %}
+            {% else %}
+              <span style="font-size:12px;color:var(--fg-dim)">No armor in inventory yet</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
       <div class="form-grid wide" style="margin-top:10px">
         <div class="form-group span3">
-          <label>Notes</label>
-          <textarea name="notes">{{ edit_item['notes'] if edit_item else '' }}</textarea>
+          <label>📋 Notes / Tips</label>
+          <textarea name="notes" id="buildNotes">{{ edit_item['notes'] if edit_item else '' }}</textarea>
         </div>
       </div>
       <div class="form-actions">
@@ -337,8 +375,9 @@ function serializePerks() {
     const maxRank = parseInt(row.querySelector('.pr-max').value);
     if (name) cards.push({name, rank, max_rank: maxRank, reason: ''});
   });
-  document.getElementById('keyCardsHidden').value    = cards.map(c => c.name).join(', ');
+  document.getElementById('keyCardsHidden').value      = cards.map(c => c.name).join(', ');
   document.getElementById('perkCardsJsonHidden').value = JSON.stringify(cards);
+
 }
 </script>
 <datalist id="perkNameListBuilds">
@@ -566,30 +605,57 @@ function openBuildModal(id) {
   // Parse notes into sections
   const notes = b.notes || '';
   const lines  = notes.split('\n');
-  let weapons = '', armor = '', mutations = '', tips = '';
+  let weapons = '', armor = '', tips = '';
   const other = [];
   lines.forEach(l => {
-    if      (l.startsWith('Weapons:'))   weapons   = l.replace('Weapons:','').trim();
-    else if (l.startsWith('Armor:'))     armor     = l.replace('Armor:','').trim();
-    else if (l.startsWith('Mutations:')) mutations = l.replace('Mutations:','').trim();
-    else if (l.trim())                   other.push(l);
+    if      (l.startsWith('Weapons:')) weapons = l.replace('Weapons:','').trim();
+    else if (l.startsWith('Armor:'))   armor   = l.replace('Armor:','').trim();
+    else if (l.trim())                 other.push(l);
   });
   tips = other.join('\n').trim();
+
+  // Mutations from DB (linked via build_id)
+  const dbMuts = MUTATIONS_BY_BUILD[b.id] || [];
+  let mutHtml = '—';
+  if (dbMuts.length) {
+    mutHtml = dbMuts.map(m =>
+      `<div style="margin-bottom:4px"><span style="color:var(--accent)">${m.name}</span>` +
+      (m.pos ? `<span style="font-size:11px;color:var(--accent);margin-left:6px">+${m.pos}</span>` : '') +
+      (m.neg ? `<span style="font-size:11px;color:#e04040;margin-left:6px">-${m.neg}</span>` : '') +
+      `</div>`
+    ).join('');
+  }
+
+  // Linked weapons and armor from inventory
+  const linkedWeapons = INV_WEAPONS.filter(w => w.build_id === b.id);
+  const linkedArmor   = INV_ARMOR.filter(a => a.build_id === b.id);
+
+  function starStr(item) {
+    const stars = [item.star1, item.star2, item.star3, item.star4].filter(Boolean);
+    return stars.length ? ' <span style="color:var(--accent);font-size:11px">★ ' + stars.join(' / ') + '</span>' : '';
+  }
+
+  const weaponHtml = linkedWeapons.length
+    ? linkedWeapons.map(w => `<div style="padding:3px 0;font-size:13px">${w.name}${starStr(w)}</div>`).join('')
+    : '—';
+  const armorHtml = linkedArmor.length
+    ? linkedArmor.map(a => `<div style="padding:3px 0;font-size:13px">${a.name} <span style="color:var(--fg-dim);font-size:11px">${a.slot}</span>${starStr(a)}</div>`).join('')
+    : '—';
 
   document.getElementById('bm-details').innerHTML = `
     <div class="bm-detail">
       <h3>⚔ Weapons</h3>
-      <p>${weapons || '—'}</p>
+      <div>${weaponHtml}</div>
     </div>
     <div class="bm-detail">
       <h3>🛡 Armor</h3>
-      <p>${armor || '—'}</p>
+      <div>${armorHtml}</div>
     </div>
-    <div class="bm-detail">
+    <div class="bm-detail" style="grid-column:1/-1">
       <h3>🧬 Mutations</h3>
-      <p>${mutations || '—'}</p>
+      <div>${mutHtml}</div>
     </div>
-    <div class="bm-detail">
+    <div class="bm-detail" style="grid-column:1/-1">
       <h3>📋 Notes / Tips</h3>
       <p>${tips || '—'}</p>
     </div>`;

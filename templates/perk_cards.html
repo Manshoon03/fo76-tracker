@@ -164,6 +164,7 @@
     {% if sp in wiki_perks_by_special %}
     <div class="pb-grid" id="pbgrid-{{ sp }}" style="{{ 'display:grid' if loop.first else 'display:none' }}">
       {% for p in wiki_perks_by_special[sp] %}
+      {% set already_owned = p.name|lower in logged_perks %}
       <div class="pb-card" data-name="{{ p.name|lower }}" data-sp="{{ sp }}">
         <div class="pb-card-head">
           <span class="pb-name">{{ p.name }}</span>
@@ -182,9 +183,11 @@
         {% elif p.description %}
         <div class="pb-desc">{{ p.description[:200] }}</div>
         {% endif %}
-        <button class="btn-sm btn-add-wiki" style="margin-top:.4rem"
-                onclick="fillPerk('{{ p.name|e }}','{{ sp if sp != 'Legendary' else 'S' }}',{{ p.max_rank }},'{{ (p.ranks[0].effect if p.ranks else p.description)|e }}')">
-          + Add to My Cards
+        <button class="btn-sm {% if already_owned %}btn-keep{% else %}btn-add-wiki{% endif %}"
+                style="margin-top:.4rem"
+                id="pb-btn-{{ p.name|lower|replace(' ','_')|replace("'","") }}"
+                onclick="quickAddPerk('{{ p.name|e }}','{{ sp if sp != 'Legendary' else 'S' }}',1,{{ p.max_rank }},'{{ (p.ranks[0].effect if p.ranks else p.description)|e }}',this)">
+          {% if already_owned %}✓ Owned{% else %}+ Add to My Cards{% endif %}
         </button>
       </div>
       {% endfor %}
@@ -280,6 +283,25 @@ function perkAutoFill(val) {
   if (sp)  sp.value  = data.special;
   if (mr)  { mr.value = data.max_rank; if (!mr.querySelector(`option[value="${data.max_rank}"]`)) { const o = document.createElement('option'); o.value = data.max_rank; o.textContent = data.max_rank; mr.appendChild(o); } mr.value = data.max_rank; }
   if (eff && !eff.value) eff.value = data.effect || '';
+}
+
+async function quickAddPerk(name, sp, rank, maxRank, effect, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const r = await fetch('/perk-cards/quick-add', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, special: sp, rank, max_rank: maxRank, effect})
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    btn.textContent = data.already_exists ? '✓ Already Owned' : '✓ Added!';
+    btn.className = 'btn-sm btn-keep';
+  } catch(e) {
+    btn.textContent = 'Error';
+    btn.disabled = false;
+  }
 }
 
 function fillPerk(name, sp, maxRank, effect) {

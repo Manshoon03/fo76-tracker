@@ -33,6 +33,20 @@
     <span class="toggle-icon">▼</span>
   </div>
   <div class="panel-body">
+    <!-- Quick Parse strip -->
+    <div style="background:var(--bg-main,#111);border:1px dashed var(--border);border-radius:6px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+        ⚡ Quick Parse — type or paste item shorthand, AI fills the form
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <input type="text" id="qp-input" placeholder='e.g. "B/E/25FR Fixer" or "AA explosive 15RL Handmade"'
+               style="flex:1;font-size:13px" onkeydown="if(event.key==='Enter'){event.preventDefault();quickParse()}">
+        <button type="button" class="btn btn-secondary" id="qp-btn" onclick="quickParse()"
+                style="font-size:12px;padding:5px 12px;white-space:nowrap">Parse</button>
+        <span id="qp-status" style="font-size:11px;color:var(--text-dim);align-self:center"></span>
+      </div>
+    </div>
+
     <form method="POST" action="{% if edit_item %}/weapons/{{ edit_item['id'] }}/update{% else %}/weapons/add{% endif %}">
       <div class="form-grid">
         <div class="form-group span2">
@@ -274,6 +288,55 @@ function copyNotationRow(cellId) {
 }
 
 document.addEventListener('DOMContentLoaded', populateNotations);
+
+// ── Quick Parse ───────────────────────────────────────────────────────────────
+const WTYPE_MAP = {
+  'rifle':'Rifle','commando':'Rifle','pistol':'Pistol','shotgun':'Shotgun',
+  'smg':'SMG','heavy':'Heavy','heavy gun':'Heavy',
+  'melee 1h':'Melee 1H','one-handed melee':'Melee 1H','one handed melee':'Melee 1H',
+  'melee 2h':'Melee 2H','two-handed melee':'Melee 2H','two handed melee':'Melee 2H',
+  'bow':'Bow','crossbow':'Crossbow','thrown':'Thrown','flamer':'Flamer','unarmed':'Melee 1H',
+};
+
+async function quickParse() {
+  const input = document.getElementById('qp-input');
+  const btn   = document.getElementById('qp-btn');
+  const st    = document.getElementById('qp-status');
+  const text  = input.value.trim();
+  if (!text) return;
+  btn.disabled = true;
+  st.textContent = 'Parsing...';
+  try {
+    const r = await fetch('/weapons/parse', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    const f = data.fields;
+    const form = document.querySelector('#addPanel form');
+    if (f.name)             form.querySelector('[name=name]').value = f.name;
+    if (f.weapon_type) {
+      const mapped = WTYPE_MAP[(f.weapon_type||'').toLowerCase()] || f.weapon_type;
+      const sel = form.querySelector('[name=wtype]');
+      for (const opt of sel.options) { if (opt.value === mapped) { sel.value = mapped; break; } }
+    }
+    if (f.legendary_1star)  form.querySelector('[name=star1]').value = f.legendary_1star;
+    if (f.legendary_2star)  form.querySelector('[name=star2]').value = f.legendary_2star;
+    if (f.legendary_3star)  form.querySelector('[name=star3]').value = f.legendary_3star;
+    if (f.notes)            form.querySelector('[name=notes]').value = f.notes;
+    st.textContent = 'Filled!';
+    setTimeout(() => st.textContent = '', 3000);
+    // Open the panel if closed
+    const panel = document.getElementById('addPanel');
+    if (!panel.classList.contains('open')) togglePanel('addPanel');
+  } catch(e) {
+    st.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
 </script>
 
 {% endblock %}

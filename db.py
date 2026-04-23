@@ -284,6 +284,8 @@ def init_db():
         "ALTER TABLE power_armor ADD COLUMN star4 TEXT DEFAULT ''",
         "ALTER TABLE builds ADD COLUMN perk_cards_json TEXT DEFAULT ''",
         "ALTER TABLE builds ADD COLUMN legendary_perks_json TEXT DEFAULT ''",
+        "ALTER TABLE armor ADD COLUMN build_id INTEGER DEFAULT 0",
+        "ALTER TABLE weapons ADD COLUMN build_id INTEGER DEFAULT 0",
         """CREATE TABLE IF NOT EXISTS caps_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             session_date TEXT DEFAULT (date('now')),
