@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block title %}Characters{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>👥 CHARACTERS</h1>
+  <span class="count-badge">{{ chars|length }} characters</span>
+</div>
+
+<section class="add-panel open" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>+ Add Character</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/characters/add">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Character Name *</label>
+          <input type="text" name="name" required placeholder="e.g. PC Main, Xbox Mule 1">
+        </div>
+        <div class="form-group">
+          <label>Platform</label>
+          <select name="platform">
+            {% for p in ['PC','Xbox','PS5','PS4'] %}
+            <option value="{{ p }}">{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select name="char_type">
+            <option value="Playable">Playable — full tracking</option>
+            <option value="Mule">Mule — vendor & caps only</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Level</label>
+          <input type="number" name="level" min="1" max="1000" value="1">
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="e.g. Bloodied build, storage mule">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Add Character</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% set platforms = chars|map(attribute='platform')|unique|list %}
+{% for platform in ['PC','Xbox','PS5','PS4'] %}
+  {% set platform_chars = chars|selectattr('platform','equalto',platform)|list %}
+  {% if platform_chars %}
+<h2 style="color:var(--text-dim);font-size:13px;letter-spacing:2px;margin:20px 0 10px">
+  <span class="plat-badge plat-{{ platform|lower }}">{{ platform }}</span>
+  {{ platform }}
+</h2>
+<div class="char-cards">
+  {% for c in platform_chars %}
+  <div class="char-card {{ 'char-card-active' if active_char and c['id'] == active_char['id'] }}">
+    <div class="char-card-top">
+      <div>
+        <span class="plat-badge plat-{{ c['platform']|lower }}">{{ c['platform'] }}</span>
+        <strong class="char-card-name">{{ c['name'] }}</strong>
+        {% if c['char_type'] == 'Mule' %}<span class="badge badge-scrap" style="font-size:9px">MULE</span>{% endif %}
+        {% if active_char and c['id'] == active_char['id'] %}<span class="badge badge-sell" style="font-size:9px">ACTIVE</span>{% endif %}
+      </div>
+      <div class="char-card-meta">Lv {{ c['level'] }} · {{ c['char_type'] }}</div>
+    </div>
+    {% if c['notes'] %}<div class="char-card-notes dim">{{ c['notes'] }}</div>{% endif %}
+
+    <div class="char-card-actions">
+      {% if not (active_char and c['id'] == active_char['id']) %}
+      <form method="POST" action="/characters/switch/{{ c['id'] }}" class="inline-form">
+        <button class="btn btn-primary btn-sm">Switch to this</button>
+      </form>
+      {% endif %}
+      <button class="btn btn-secondary btn-sm" onclick="toggleEditForm({{ c['id'] }})">✎ Edit</button>
+      <form method="POST" action="/characters/{{ c['id'] }}/delete" class="inline-form"
+            onsubmit="return confirm('Delete {{ c['name'] }}? This only removes the character record — your data stays.')">
+        <button class="btn btn-danger btn-sm">🗑</button>
+      </form>
+    </div>
+
+    <!-- Inline edit form -->
+    <div id="editForm-{{ c['id'] }}" class="char-edit-form" style="display:none">
+      <form method="POST" action="/characters/{{ c['id'] }}/update">
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-group span2">
+            <label>Name</label>
+            <input type="text" name="name" value="{{ c['name'] }}" required>
+          </div>
+          <div class="form-group">
+            <label>Platform</label>
+            <select name="platform">
+              {% for p in ['PC','Xbox','PS5','PS4'] %}
+              <option value="{{ p }}" {{ 'selected' if c['platform']==p }}>{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select name="char_type">
+              <option value="Playable" {{ 'selected' if c['char_type']=='Playable' }}>Playable</option>
+              <option value="Mule"     {{ 'selected' if c['char_type']=='Mule' }}>Mule</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Level</label>
+            <input type="number" name="level" min="1" max="1000" value="{{ c['level'] }}">
+          </div>
+          <div class="form-group span2">
+            <label>Notes</label>
+            <input type="text" name="notes" value="{{ c['notes'] }}">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Save</button>
+          <button class="btn btn-secondary" type="button" onclick="toggleEditForm({{ c['id'] }})">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+  {% endif %}
+{% endfor %}
+
+{% if not chars %}
+<p class="no-data">No characters yet. Add one above!</p>
+{% endif %}
+
+<script>
+function toggleEditForm(id) {
+  const f = document.getElementById('editForm-' + id);
+  if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+
+<style>
+.char-cards { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; }
+.char-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 6px; padding: 14px 16px; min-width: 260px; max-width: 380px; flex: 1;
+}
+.char-card-active { border-color: var(--accent); box-shadow: 0 0 8px rgba(34,197,94,0.2); }
+.char-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+.char-card-name { font-size: 14px; color: var(--text-hi); margin-left: 6px; }
+.char-card-meta { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.char-card-notes { font-size: 11px; margin-bottom: 8px; }
+.char-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.char-edit-form { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+</style>
+
+{% endblock %}

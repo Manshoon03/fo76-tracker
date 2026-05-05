@@ -51,8 +51,9 @@
       <div class="form-grid">
         <div class="form-group span2">
           <label>Weapon Name *</label>
-          <input type="text" name="name" required
+          <input type="text" name="name" required list="weaponNameList" autocomplete="off"
                  value="{{ edit_item['name'] if edit_item else scan.scan_name }}">
+          <datalist id="weaponNameList">{% for n in wiki_weapon_names %}<option value="{{ n }}">{% endfor %}</datalist>
         </div>
         <div class="form-group">
           <label>Type</label>

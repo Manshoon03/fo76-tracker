@@ -32,7 +32,28 @@
     <button class="theme-dot" data-theme="red"   onclick="setTheme('red')"   title="Nuka Red"></button>
     <button class="theme-dot" data-theme="teal"  onclick="setTheme('teal')"  title="Ghoul Teal"></button>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;margin-left:auto;padding-right:4px;flex-shrink:0">
+  {% if active_char %}
+  <div class="char-switcher" id="charSwitcher">
+    <button class="char-btn" onclick="toggleCharMenu(event)" title="Switch character">
+      <span class="plat-badge plat-{{ active_char['platform']|lower|replace(' ','') }}">{{ active_char['platform'] }}</span>
+      <span class="char-btn-name">{{ active_char['name'] }}</span>{% if active_char['char_type'] == 'Mule' %}<span class="dim" style="font-size:10px">mule</span>{% endif %} ▾
+    </button>
+    <div class="char-menu" id="charMenu" style="display:none">
+      {% for c in all_chars %}
+      <form method="POST" action="/characters/switch/{{ c['id'] }}" style="margin:0">
+        <button type="submit" class="char-menu-item {{ 'char-menu-active' if c['id'] == active_char['id'] }}">
+          <span class="plat-badge plat-{{ c['platform']|lower|replace(' ','') }}">{{ c['platform'] }}</span>
+          {{ c['name'] }}{% if c['char_type'] == 'Mule' %} <span class="dim" style="font-size:10px">mule</span>{% endif %}
+          {% if c['id'] == active_char['id'] %} <span style="color:var(--accent);margin-left:auto">✓</span>{% endif %}
+        </button>
+      </form>
+      {% endfor %}
+      <div style="height:1px;background:var(--border);margin:4px 0"></div>
+      <a href="/characters" class="char-menu-link">⚙ Manage characters</a>
+    </div>
+  </div>
+  {% endif %}
+  <div style="display:flex;gap:8px;align-items:center;padding-right:4px;flex-shrink:0">
     <a href="/change-password" style="font-size:11px;color:var(--text-dim);text-decoration:none" title="Account">🔒</a>
     <a href="/logout" style="font-size:11px;color:var(--text-dim);text-decoration:none" title="Log out">⏻</a>
   </div>
@@ -43,16 +64,17 @@
 
   <div class="sidebar-section">
     {% set ni = request.path %}
-    <a href="/"           class="sidebar-item {% if ni == '/' %}active{% endif %}"          title="Dashboard">   <span class="si-icon">📋</span><span class="si-label">Dashboard</span></a>
-    <a href="/character"  class="sidebar-item {% if '/character' in ni %}active{% endif %}"  title="Character">   <span class="si-icon">👤</span><span class="si-label">Character</span></a>
+    <a href="/"            class="sidebar-item {% if ni == '/' %}active{% endif %}"              title="Dashboard">   <span class="si-icon">📋</span><span class="si-label">Dashboard</span></a>
+    <a href="/characters"  class="sidebar-item {% if ni == '/characters' %}active{% endif %}"  title="Characters">  <span class="si-icon">👥</span><span class="si-label">Characters</span></a>
+    <a href="/character"   class="sidebar-item {% if '/character' in ni and '/characters' not in ni %}active{% endif %}" title="Character"><span class="si-icon">👤</span><span class="si-label">Character</span></a>
     <a href="/challenges"  class="sidebar-item {% if '/challenges' in ni and '/daily' not in ni %}active{% endif %}" title="Challenges">  <span class="si-icon">🎯</span><span class="si-label">Challenges</span></a>
     <a href="/daily"       class="sidebar-item {% if '/daily' in ni %}active{% endif %}"       title="Daily Checklist"><span class="si-icon">✅</span><span class="si-label">Daily</span></a>
     <a href="/nuke-codes"  class="sidebar-item {% if '/nuke-codes' in ni %}active{% endif %}"  title="Nuke Codes">  <span class="si-icon">☢</span><span class="si-label">Nuke Codes</span></a>
     <a href="/legend-runs" class="sidebar-item {% if '/legend-runs' in ni %}active{% endif %}" title="Legendary Runs"><span class="si-icon">⚔</span><span class="si-label">Legend Runs</span></a>
-    <a href="/fishing"     class="sidebar-item {% if '/fishing' in ni %}active{% endif %}"     title="Fishing Log">   <span class="si-icon">🎣</span><span class="si-label">Fishing</span></a>
-    <a href="/server-hops"  class="sidebar-item {% if '/server-hops' in ni %}active{% endif %}"  title="Server Hops"><span class="si-icon">🌐</span><span class="si-label">Server Hops</span></a>
-    <a href="/vendor-route" class="sidebar-item {% if '/vendor-route' in ni %}active{% endif %}" title="Vendor Route"><span class="si-icon">🗺</span><span class="si-label">Vendor Route</span></a>
-    <a href="/notices"      class="sidebar-item {% if '/notices' in ni %}active{% endif %}"      title="Notices">     <span class="si-icon">📌</span><span class="si-label">Notices</span></a>
+    <a href="/fishing"      class="sidebar-item {% if '/fishing' in ni %}active{% endif %}"      title="Fishing Log">   <span class="si-icon">🎣</span><span class="si-label">Fishing</span></a>
+    <a href="/world-finds" class="sidebar-item {% if '/world-finds' in ni %}active{% endif %}" title="World Finds">   <span class="si-icon">🗺</span><span class="si-label">World Finds</span></a>
+    <a href="/spawn-notes"     class="sidebar-item {% if '/spawn-notes' in ni %}active{% endif %}"     title="Spawn Notes">    <span class="si-icon">🎯</span><span class="si-label">Spawn Notes</span></a>
+    <a href="/session-journal" class="sidebar-item {% if '/session-journal' in ni %}active{% endif %}" title="Session Journal"><span class="si-icon">📓</span><span class="si-label">Session Journal</span></a>
     <a href="/season"       class="sidebar-item {% if '/season' in ni %}active{% endif %}"       title="Season">      <span class="si-icon">🏆</span><span class="si-label">Season</span></a>
     <a href="/analytics"    class="sidebar-item {% if '/analytics' in ni %}active{% endif %}"    title="Analytics">   <span class="si-icon">📊</span><span class="si-label">Analytics</span></a>
   </div>
@@ -96,13 +118,12 @@
   <div class="sidebar-section">
     <a href="/decode"          class="sidebar-item {% if '/decode' in ni %}active{% endif %}"          title="Shorthand Decoder"><span class="si-icon">🔍</span><span class="si-label">Decoder</span></a>
     <a href="/trade-post"      class="sidebar-item {% if '/trade-post' in ni %}active{% endif %}"      title="Trade Post"><span class="si-icon">📢</span><span class="si-label">Trade Post</span></a>
-    <a href="/trade-partners"  class="sidebar-item {% if '/trade-partners' in ni %}active{% endif %}"  title="Trade Partners"><span class="si-icon">🤝</span><span class="si-label">Partners</span></a>
+
     <a href="/wishlist"    class="sidebar-item {% if '/wishlist' in ni %}active{% endif %}"    title="Wishlist">    <span class="si-icon">⭐</span><span class="si-label">Wishlist</span></a>
     <a href="/atom-shop"   class="sidebar-item {% if '/atom-shop' in ni %}active{% endif %}"   title="Atom Shop">   <span class="si-icon">⚛</span><span class="si-label">Atom Shop</span></a>
     <a href="/ammo"        class="sidebar-item {% if '/ammo' in ni %}active{% endif %}"        title="Ammo Counter"><span class="si-icon">🔫</span><span class="si-label">Ammo</span></a>
     <a href="/vendor-scan" class="sidebar-item {% if '/vendor-scan' in ni %}active{% endif %}" title="Vendor Scan"><span class="si-icon">📷</span><span class="si-label">Vendor Scan</span></a>
     <a href="/craft-calc"  class="sidebar-item {% if '/craft-calc' in ni %}active{% endif %}"  title="Craft Calc"><span class="si-icon">🌿</span><span class="si-label">Craft Calc</span></a>
-    <a href="/playtime"    class="sidebar-item {% if '/playtime' in ni %}active{% endif %}"    title="Playtime">   <span class="si-icon">⏱</span><span class="si-label">Playtime</span></a>
     <a href="/export"      class="sidebar-item {% if '/export' in ni %}active{% endif %}"      title="Export CSV"> <span class="si-icon">⬇</span><span class="si-label">Export CSV</span></a>
     <a href="/backup"      class="sidebar-item {% if '/backup' in ni %}active{% endif %}"      title="Backup">     <span class="si-icon">💾</span><span class="si-label">Backup</span></a>
   </div>
@@ -178,7 +199,7 @@
           </select>
         </div>
         <div class="ql-fields" id="ql-weapon">
-          <input type="text" name="ql_name" placeholder="Weapon name *" autocomplete="off">
+          <input type="text" name="ql_name" placeholder="Weapon name *" autocomplete="off" list="qlWeaponNames">
           <select name="ql_wtype">
             <option value="">Type</option>
             <option>Rifle</option><option>Pistol</option><option>Shotgun</option>
@@ -194,7 +215,7 @@
           </select>
         </div>
         <div class="ql-fields" id="ql-armor">
-          <input type="text" name="ql_name" placeholder="Armor name *" autocomplete="off">
+          <input type="text" name="ql_name" placeholder="Armor name *" autocomplete="off" list="qlArmorNames">
           <select name="ql_slot">
             <option value="">Slot</option>
             <option>Head</option><option>Chest</option><option>Left Arm</option>
@@ -220,8 +241,16 @@
         <datalist id="qlAStar2">{% for x in ref.ARMOR_STAR2 %}<option value="{{ x }}">{% endfor %}</datalist>
         <datalist id="qlAStar3">{% for x in ref.ARMOR_STAR3 %}<option value="{{ x }}">{% endfor %}</datalist>
         <datalist id="qlAStar4">{% for x in ref.ARMOR_STAR4 %}<option value="{{ x }}">{% endfor %}</datalist>
+        {# Name datalists for Quick Log weapon/armor/inventory tabs #}
+        <datalist id="qlWeaponNames">{% for n in wiki_weapon_names %}<option value="{{ n }}">{% endfor %}</datalist>
+        <datalist id="qlArmorNames">{% for n in wiki_armor_names %}<option value="{{ n }}">{% endfor %}</datalist>
+        <datalist id="qlDlAid">{% for n in ref.CHEMS %}<option value="{{ n }}">{% endfor %}</datalist>
+        <datalist id="qlDlAmmo">{% for n in ref.AMMO_NAMES %}<option value="{{ n }}">{% endfor %}</datalist>
+        <datalist id="qlDlFood">{% for n in ref.FOOD_ITEMS %}<option value="{{ n }}">{% endfor %}</datalist>
+        <datalist id="qlDlComponent">{% for n in ref.COMPONENTS %}<option value="{{ n }}">{% endfor %}</datalist>
+        <datalist id="qlDlPlan">{% for n in ref.PLAN_NAMES %}<option value="{{ n }}">{% endfor %}</datalist>
         <div class="ql-fields" id="ql-plan">
-          <input type="text" name="ql_name" placeholder="Plan / Recipe name *" autocomplete="off">
+          <input type="text" name="ql_name" placeholder="Plan / Recipe name *" autocomplete="off" list="qlDlPlan">
           <select name="ql_category">
             <option value="">Category</option>
             <option>Weapon</option><option>Armor</option><option>Power Armor</option>
@@ -233,8 +262,8 @@
           <input type="number" name="ql_qty_unlearned" placeholder="Unlearned dupes" min="0" value="0">
         </div>
         <div class="ql-fields" id="ql-inventory">
-          <input type="text" name="ql_name" placeholder="Item name *" autocomplete="off">
-          <select name="ql_category">
+          <input type="text" name="ql_name" placeholder="Item name *" autocomplete="off" id="qlInvName">
+          <select name="ql_category" onchange="updateQlInvName(this)">
             <option value="">Category</option>
             <option>Aid</option><option>Ammo</option><option>Junk</option>
             <option>Food/Drink</option><option>Chem</option>
@@ -277,6 +306,18 @@
 
 <script src="/static/app.js"></script>
 <script>
+function toggleCharMenu(e) {
+  e.stopPropagation();
+  const m = document.getElementById('charMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const sw = document.getElementById('charSwitcher');
+  if (sw && !sw.contains(e.target)) {
+    const m = document.getElementById('charMenu');
+    if (m) m.style.display = 'none';
+  }
+});
 document.addEventListener('keydown', e => {
   if (e.key === 'q' && !e.ctrlKey && !e.metaKey &&
       !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {

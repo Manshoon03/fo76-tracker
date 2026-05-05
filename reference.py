@@ -1,6 +1,26 @@
-# FO76 Reference Data — legendary mod effects and mutations
-# Used to populate <datalist> autocomplete on weapon, armor, and mutation forms.
-# Verified against nukaknights.com and fallout.wiki (2026-03).
+# FO76 Reference Data
+# Populates <datalist> autocomplete on all major forms throughout the app.
+# Last updated: 2026-04-27
+#
+# ── How to add new items ──────────────────────────────────────────────────────
+# Just drop the new name into the relevant list below and save.
+# sorted() keeps everything alphabetical — order doesn't matter.
+# Restart the app and autocomplete picks it up immediately.
+# No DB migrations, no route changes needed.
+#
+# ── Where to find new items after patches ────────────────────────────────────
+# nukaknights.com      — datamine, has items before patches drop
+# fallout.wiki         — full reference, updated post-patch by community
+# r/fo76 patch threads — quickest community summary after Tuesday resets
+#
+# ── What lives here vs the DB ────────────────────────────────────────────────
+# reference.py  → PLAN_NAMES, FOOD_ITEMS, CHEMS, AMMO_NAMES, COMPONENTS,
+#                 MOD_NAMES, MUTATIONS, all legendary effect lists
+# DB (wiki_*)   → weapon names (wiki_weapons), armor names (wiki_armor),
+#                 perk names (wiki_perks), mutations detail (wiki_mutations)
+#                 To add a new weapon to weapon name autocomplete, run:
+#                 python scrapers/weapon_advisor.py  (re-scrapes wiki_weapons)
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ── Weapon Legendary Effects ──────────────────────────────────────────────────
 
@@ -352,3 +372,225 @@ OUR_CODE_STAR4 = {
     "Pyromaniac's": 'PYR', "Ranger's": 'RNG', "Stabilizer's": 'STB',
     "Thrill-Seeker's": 'THL', "Viper's": 'VPR',
 }
+
+# ── Chems / Aid ───────────────────────────────────────────────────────────────
+
+CHEMS = sorted([
+    "Addictol", "Antibiotics", "Berry Mentats", "Blood Pack",
+    "Buffjet", "Buffout", "Bufftats", "Calmex", "Cranberry Mentats",
+    "Daddy-O", "Daytripper", "Diluted Rad-X", "Diluted RadAway",
+    "Diluted Stimpak", "Disease Cure (Ash Heap)", "Disease Cure (Cranberry Bog)",
+    "Disease Cure (Forest)", "Disease Cure (Savage Divide)",
+    "Disease Cure (The Mire)", "Disease Cure (Toxic Valley)",
+    "Fury", "Grape Mentats", "Healing Salve", "Healing Salve (Ash Heap)",
+    "Healing Salve (Cranberry Bog)", "Healing Salve (Forest)",
+    "Healing Salve (Savage Divide)", "Healing Salve (The Mire)",
+    "Healing Salve (Toxic Valley)", "Hydra", "Jet", "Jet Fuel",
+    "Med-X", "Mentats", "Mutant Frenzy", "Nuka-Cola", "Nuka-Cola Cherry",
+    "Nuka-Cola Dark", "Nuka-Cola Orange", "Nuka-Cola Quantum",
+    "Nuka-Cola Scorched", "Nuka-Cola Wild", "Orange Mentats", "Overdrive",
+    "Psycho", "Psychobuff", "Psychojet", "Psychotats", "Rad-X", "RadAway",
+    "Stimpak", "Stimpak Diffuser", "Super Stimpak", "Vim!",
+    "Vim! Captain's Blend", "Vim! Quartz", "Vim! Refresh",
+    "White Lightning", "X-Cell",
+])
+
+# ── Ammo ─────────────────────────────────────────────────────────────────────
+
+AMMO_NAMES = sorted([
+    ".308 Round", ".38 Round", ".44 Round", ".45 Round",
+    ".50 Cal Bullet", "10mm Round", "2mm EC", "40mm Grenade",
+    "5.56 Round", "5mm Round", "Alien Blaster Round", "Arrow",
+    "BB", "Cannonball", "Crossbow Bolt", "Cryo Cell",
+    "Flamer Fuel", "Fusion Cell", "Fusion Core", "Gamma Round",
+    "Harpoon", "Mini Nuke", "Missile", "Plasma Cartridge",
+    "Railway Spike", "Shotgun Shell",
+    "Ultracite .308 Round", "Ultracite .38 Round", "Ultracite .45 Round",
+    "Ultracite .50 Cal Bullet", "Ultracite 10mm Round",
+    "Ultracite 5.56 Round", "Ultracite 5mm Round",
+    "Ultracite Plasma Cartridge", "Ultracite Railway Spike",
+    "Ultracite Shotgun Shell",
+])
+
+# ── Mod names (all legendary effects combined for mod tracker autocomplete) ───
+
+# ── Enemy Types (Spawn Notes) ─────────────────────────────────────────────────
+# Add new enemies here as they're introduced (e.g., seasonal events, patches)
+
+ENEMY_TYPES = [
+    # ── Beasts ──
+    "Anglers", "Bloatfly (Glowing)", "Bloatfly Swarm", "Cave Cricket",
+    "Deathclaw", "Deathclaw (Glowing)", "Deathclaw (Matriarch)",
+    "Deathclaw (Savage)", "Fog Crawler", "Fog Crawler (Glowing)",
+    "Gulper", "Hermit Crab", "Mirelurk", "Mirelurk Crab",
+    "Mirelurk Hunter", "Mirelurk King", "Mirelurk Queen",
+    "Mutant Hound", "Radscorpion", "Radscorpion (Glowing)",
+    "Radstag", "Radstag (Glowing)", "Snallygaster", "Wolf", "Yao Guai",
+    # ── Humanoids ──
+    "Cultist", "Cultist (Master)", "Feral Ghoul", "Feral Ghoul (Glowing)",
+    "Raider", "Scorched", "Scorched (Glowing)", "Super Mutant",
+    "Super Mutant Behemoth", "Super Mutant Skirmisher",
+    "Super Mutant Suicider", "Wendigo",
+    # ── Robots ──
+    "Assaultron", "Eyebot", "Liberator", "Mister Gutsy",
+    "Mister Handy", "Protectron", "Robobrain", "Sentry Bot",
+    "Sentry Bot (Superior)", "Turret",
+    # ── Cryptids & Bosses ──
+    "Earl Williams (Wendigo Colossus)", "Flatwoods Monster",
+    "Grafton Monster", "Imposter Sheepsquatch", "Mothman",
+    "Mothman (Glowing)", "Scorchbeast", "Scorchbeast Queen",
+    "Sheepsquatch", "Treeminders", "Wendigo Colossus",
+]
+
+MOD_NAMES = sorted(set(
+    WEAPON_STAR1 + WEAPON_STAR2 + WEAPON_STAR3 + WEAPON_STAR4 +
+    ARMOR_STAR1 + ARMOR_STAR2 + ARMOR_STAR3 + ARMOR_STAR4
+))
+
+# ── Crafting Components / Junk ────────────────────────────────────────────────
+
+COMPONENTS = sorted([
+    "Acid", "Adhesive", "Aluminum", "Antiseptic", "Asbestos",
+    "Ballistic Fiber", "Black Titanium", "Bone", "Ceramic", "Circuitry",
+    "Cloth", "Coal", "Concrete", "Copper", "Cork", "Crystal",
+    "Fabric", "Fertilizer", "Fiber Optics", "Fiberglass", "Gear",
+    "Glass", "Gold", "Lead", "Leather", "Nuclear Material", "Oil",
+    "Plastic", "Rubber", "Screw", "Silver", "Spring", "Steel",
+    "Titanium", "Ultracite", "Wood",
+])
+
+# ── Food & Drink ───────────────────────────────────────────────────────────────
+
+FOOD_ITEMS = sorted([
+    "Appalachian Chicken", "Ash Rose Tea", "Backwoods Hunter Stew",
+    "Baked Bloatfly", "Baked Potato", "Beaver Poutine", "Bear Chili",
+    "Blackberry Honey Crunch", "Blackberry Jam", "Bloatfly Meat",
+    "Boiled Water", "Brahmin Meat", "Brahmin Milk", "Brain Fungus Soup",
+    "Broiled Mirelurk Meat", "Burnt Meat", "Bubblegum", "Caps Stew",
+    "Cave Cricket Jerky", "Cheeseburger", "Chimichurri Roach",
+    "Corn Pone", "Cranberry Relish", "Cranberry Sauce",
+    "Crispy Squirrel Bits", "Dandy Boy Apples", "Deviled Meat",
+    "Deathclaw Wellington", "Delbert's Bunko Saltine",
+    "Fancy Lads Snack Cakes", "Firecracker Berry Juice",
+    "Flatwoods Diner Chili", "Flatwoods Monster Filet",
+    "Fog Crawler Meat", "Gararbage", "Glowing Fungus Puree",
+    "Grilled Radscorpion", "Grilled Radstag", "Gulper Stuffed Skin",
+    "Honey", "Hunter's Stew", "Ionized Meat", "Leech Jerky",
+    "Mirelurk Cake", "Mirelurk Egg Omelette", "Mirelurk Jerky",
+    "Mirelurk Meat", "Mutant Hound Chops", "Mystery Meat Pie",
+    "Nuke-Cola", "Nuka-Cola Cherry", "Nuka-Cola Dark",
+    "Nuka-Cola Orange", "Nuka-Cola Quantum", "Nuka-Cola Scorched",
+    "Nuka-Cola Wild", "Nukashine", "Oligarch's Squash Blossom",
+    "Perfectly Preserved Pie", "Pork n' Beans", "Possum Jerky",
+    "Purified Water", "Radscorpion Egg Omelette", "Radstag Jerky",
+    "Radstag Stew", "Razorgrain Bread", "Ribeye Steak",
+    "Seared Venison with Berries", "Snallygaster Chops",
+    "Squirrel Bacon", "Squirrel Stew",
+    "Steeped Aster Tea", "Steeped Fern Flower Tea",
+    "Steeped Gourd Blossom Tea", "Steeped Melon Blossom Tea",
+    "Steeped Motherwing Tea", "Steeped Strangler Bloom Tea",
+    "Steeped Sunberry Tea", "Steeped Tato Flower Tea",
+    "Strange Meat Pie", "Sugar Bombs", "Sweet Labrador Tea",
+    "Tato Salad", "Tick Blood Tequila", "Tick Meat Sandwich",
+    "Turkey Dinner", "Vegetable Soup", "Vegetable Stew",
+    "Vim!", "Vim! Captain's Blend", "Vim! Quartz", "Vim! Refresh",
+    "White Lightning", "Yao Guai Meat", "Yao Guai Ribs", "Yao Guai Roast",
+])
+
+# ── Plan / Recipe Names ────────────────────────────────────────────────────────
+
+PLAN_NAMES = sorted([
+    # ── Weapons ──
+    "Plan: .44 Pistol", "Plan: 10mm Pistol", "Plan: 10mm Submachine Gun",
+    "Plan: Auto Grenade Launcher", "Plan: Broadsider",
+    "Plan: Civil War Era Rifle", "Plan: Combat Rifle", "Plan: Combat Shotgun",
+    "Plan: Crossbow", "Plan: Crusader Pistol", "Plan: Double-Barrel Shotgun",
+    "Plan: Dragon", "Plan: Enclave Plasma Gun", "Plan: Experimental MIRV",
+    "Plan: Fat Man", "Plan: Flamer", "Plan: Flare Gun",
+    "Plan: Gauss Minigun", "Plan: Gauss Pistol", "Plan: Gauss Rifle",
+    "Plan: Gauss Shotgun", "Plan: Handmade Rifle", "Plan: Hunting Rifle",
+    "Plan: Laser Gun", "Plan: Lever Action Rifle", "Plan: Light Machine Gun",
+    "Plan: Minigun", "Plan: Missile Launcher", "Plan: Pepper Shaker",
+    "Plan: Pipe Bolt-Action Pistol", "Plan: Pipe Pistol", "Plan: Pipe Revolver",
+    "Plan: Plasma Caster", "Plan: Pump Action Shotgun", "Plan: Railway Rifle",
+    "Plan: Submachine Gun", "Plan: Syringer", "Plan: Tesla Rifle",
+    "Plan: The Dragon", "Plan: Thirst Zapper", "Plan: War Glaive",
+    # ── Melee ──
+    "Plan: Auto Axe", "Plan: Bear Arm", "Plan: Board",
+    "Plan: Chainsaw", "Plan: Death Tambo", "Plan: Deathclaw Gauntlet",
+    "Plan: Drill", "Plan: Fire Axe", "Plan: Guitar Sword",
+    "Plan: Grognak's Axe", "Plan: Knuckles", "Plan: Meat Hook",
+    "Plan: Mole Miner Gauntlet", "Plan: Multi-Purpose Axe",
+    "Plan: Pipe Wrench", "Plan: Power Fist", "Plan: Powerfist",
+    "Plan: Ripper", "Plan: Shishkebab", "Plan: Ski Sword",
+    "Plan: Sledgehammer", "Plan: Super Sledge", "Plan: Switchblade",
+    "Plan: Tire Iron",
+    # ── Armor ──
+    "Plan: Armor Ace Outfit", "Plan: Brotherhood of Steel Uniform",
+    "Plan: Brotherhood Recon Armor", "Plan: BOS Combat Armor",
+    "Plan: Chinese Stealth Armor", "Plan: Civil War Soldier Outfit",
+    "Plan: Covert Scout Armor", "Plan: Enclave Officer Uniform",
+    "Plan: Forest Scout Armor", "Plan: Heavy Combat Armor",
+    "Plan: Leather Armor", "Plan: Light Combat Armor",
+    "Plan: Marine Armor", "Plan: Metal Armor",
+    "Plan: Operative Underarmor", "Plan: Radstag Hide Outfit",
+    "Plan: Secret Service Armor", "Plan: Sturdy Combat Armor",
+    "Plan: Thorn Armor", "Plan: Trapper Armor",
+    "Plan: Urban Scout Armor", "Plan: Vault-Tec Security Armor",
+    "Plan: Wood Armor",
+    # ── Power Armor ──
+    "Plan: Excavator Power Armor", "Plan: Hellcat Power Armor",
+    "Plan: Strangler Heart Power Armor", "Plan: T-45 Power Armor",
+    "Plan: T-51 Power Armor", "Plan: T-60 Power Armor",
+    "Plan: T-65 Power Armor", "Plan: Union Power Armor",
+    "Plan: Ultracite Power Armor", "Plan: X-01 Power Armor",
+    # ── CAMP / Structures ──
+    "Plan: Alarm System", "Plan: Ammo Factory", "Plan: Armory Locker",
+    "Plan: Auto Converter", "Plan: Automated Missile Launcher",
+    "Plan: Beer Tap", "Plan: Brahmin Feed Trough",
+    "Plan: Butcher's Table", "Plan: Chem Bench",
+    "Plan: Comm Array", "Plan: Cook Station",
+    "Plan: Decontamination Arch", "Plan: Display Case",
+    "Plan: Drum Trap", "Plan: Eyebot Pod",
+    "Plan: Fertilizer Producer", "Plan: Fusion Generator",
+    "Plan: Guard Tower", "Plan: Industrial Purifier",
+    "Plan: Large Generator", "Plan: Large Water Purifier",
+    "Plan: Mannequin", "Plan: Missile Turret",
+    "Plan: Mr. Farmhand", "Plan: Nuka-Cola Machine",
+    "Plan: Pendulum Trap", "Plan: Pillory",
+    "Plan: Power Armor Station", "Plan: Protectron Pod",
+    "Plan: Radiation Scrubber", "Plan: Recruitment Radio Beacon",
+    "Plan: Sandbag Wall", "Plan: Scrapper",
+    "Plan: Sentry Bot Station", "Plan: Solar Generator",
+    "Plan: Spring Trap", "Plan: Taxidermy Bear",
+    "Plan: Tesla Arch", "Plan: Tinkerer's Workbench",
+    "Plan: Turbo-Fert Fertilizer Producer", "Plan: Vending Machine",
+    "Plan: Water Pump", "Plan: Water Purifier - Electric",
+    "Plan: Water Purifier - Industrial",
+    # ── Recipes (Food/Chem) ──
+    "Recipe: Appalachian Chicken", "Recipe: Bear Chili",
+    "Recipe: Blackberry Honey Crunch", "Recipe: Brain Fungus Soup",
+    "Recipe: Broiled Mirelurk Meat", "Recipe: Caps Stew",
+    "Recipe: Cranberry Relish", "Recipe: Cranberry Sauce",
+    "Recipe: Deathclaw Wellington", "Recipe: Glowing Fungus Puree",
+    "Recipe: Grilled Radscorpion", "Recipe: Grilled Radstag",
+    "Recipe: Hunter's Stew", "Recipe: Mirelurk Cake",
+    "Recipe: Mirelurk Egg Omelette", "Recipe: Mystery Meat Pie",
+    "Recipe: Nuka-Cola", "Recipe: Nuka-Cola Dark",
+    "Recipe: Nukashine", "Recipe: Possum Jerky",
+    "Recipe: Radstag Jerky", "Recipe: Radstag Stew",
+    "Recipe: Seared Venison with Berries", "Recipe: Squirrel Stew",
+    "Recipe: Strange Meat Pie", "Recipe: Tick Blood Tequila",
+    "Recipe: Turkey Dinner", "Recipe: Vegetable Soup",
+    "Recipe: Vegetable Stew", "Recipe: Yao Guai Roast",
+    "Recipe: Addictol", "Recipe: Antibiotics",
+    "Recipe: Berry Mentats", "Recipe: Buffjet", "Recipe: Buffout",
+    "Recipe: Bufftats", "Recipe: Disease Cure",
+    "Recipe: Grape Mentats", "Recipe: Healing Salve",
+    "Recipe: Mentats", "Recipe: Orange Mentats",
+    "Recipe: Overdrive", "Recipe: Psycho", "Recipe: Psychobuff",
+    "Recipe: Psychojet", "Recipe: Psychotats",
+    "Recipe: Rad-X", "Recipe: RadAway", "Recipe: Stimpak",
+    "Recipe: Super Stimpak", "Recipe: X-Cell",
+    "Recipe: White Lightning",
+])

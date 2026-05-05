@@ -1,0 +1,371 @@
+{% extends 'base.html' %}
+{% block title %}Spawn Notes{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🎯 SPAWN NOTES</h1>
+  <span class="count-badge">{{ total }} logged</span>
+</div>
+
+<p class="dim" style="font-size:11px;margin-bottom:14px">
+  Track reliable enemy spawn locations for farming and challenges. Add screenshots and directions so you can find them again fast.
+</p>
+
+<!-- Filter tabs — by region -->
+<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap">
+  <a href="/spawn-notes"
+     class="btn {{ 'btn-primary' if active_region == 'all' else 'btn-secondary' }}"
+     style="font-size:12px;padding:4px 12px">
+    🗺 All <span style="opacity:0.7;margin-left:4px">({{ total }})</span>
+  </a>
+  {% for r in regions_used %}
+  <a href="/spawn-notes/{{ r | urlencode }}"
+     class="btn {{ 'btn-primary' if active_region == r else 'btn-secondary' }}"
+     style="font-size:12px;padding:4px 12px">
+    {{ r }}
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Add / Edit panel -->
+<section class="add-panel" id="addPanel" {% if edit_id %}style="display:block"{% endif %}>
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_id %}✎ Edit Spawn Note{% else %}+ Log a Spawn{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    {% if edit_item %}
+    <form method="POST" action="/spawn-notes/{{ edit_id }}/edit" enctype="multipart/form-data">
+    {% else %}
+    <form method="POST" action="/spawn-notes/add" enctype="multipart/form-data">
+    {% endif %}
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Enemy Type *</label>
+          <input type="text" name="enemy_type" required list="enemyTypeList" autocomplete="off"
+                 value="{{ edit_item['enemy_type'] if edit_item else '' }}"
+                 placeholder="e.g. Deathclaw, Scorchbeast...">
+          <datalist id="enemyTypeList">
+            {% for e in enemy_types %}<option value="{{ e }}">{% endfor %}
+          </datalist>
+        </div>
+
+        <div class="form-group">
+          <label>Location Name</label>
+          <input type="text" name="location_name"
+                 value="{{ edit_item['location_name'] if edit_item else '' }}"
+                 placeholder="e.g. South of Spruce Knob">
+        </div>
+
+        <div class="form-group">
+          <label>Region</label>
+          <select name="region">
+            <option value="">— Select region —</option>
+            {% for r in regions %}
+            <option value="{{ r }}" {% if edit_item and edit_item['region']==r %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Reliability</label>
+          <select name="reliability">
+            {% for opt in ['Always','Usually','Sometimes','Rare'] %}
+            <option value="{{ opt }}"
+              {% if (edit_item and edit_item['reliability']==opt) or (not edit_item and opt=='Usually') %}selected{% endif %}>
+              {{ opt }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Enemy Count</label>
+          <input type="text" name="enemy_count"
+                 value="{{ edit_item['enemy_count'] if edit_item else '' }}"
+                 placeholder="e.g. 2–3, Pack, Solo">
+        </div>
+
+        <div class="form-group">
+          <label>Legendary Chance</label>
+          <select name="has_legendary">
+            {% for opt in ['Often','Sometimes','Rarely','Never'] %}
+            <option value="{{ opt }}"
+              {% if (edit_item and edit_item['has_legendary']==opt) or (not edit_item and opt=='Sometimes') %}selected{% endif %}>
+              {{ opt }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Server Type</label>
+          <select name="server_type">
+            {% for s in ['Public','Private','Friends Only'] %}
+            <option value="{{ s }}"
+              {% if (edit_item and edit_item['server_type']==s) or (not edit_item and s=='Public') %}selected{% endif %}>
+              {{ s }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" name="date_added"
+                 value="{{ edit_item['date_added'] if edit_item else '' }}">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:4px">
+        <label>Landmark / Directions</label>
+        <input type="text" name="landmark"
+               value="{{ edit_item['landmark'] if edit_item else '' }}"
+               placeholder="e.g. Fast travel to Spruce Knob, head south along the cliff face">
+      </div>
+
+      <div class="form-group" style="margin-top:6px">
+        <label>Notes</label>
+        <input type="text" name="notes"
+               value="{{ edit_item['notes'] if edit_item else '' }}"
+               placeholder="e.g. Good for weekly kill challenges, watch for the matriarch variant">
+      </div>
+
+      <!-- Screenshots -->
+      <div class="form-group" style="margin-top:10px">
+        <label>Screenshots
+          <span class="dim" style="font-weight:normal;font-size:10px;margin-left:6px">
+            PNG, JPG, WEBP, GIF — select multiple
+          </span>
+        </label>
+        <input type="file" name="screenshots" accept="image/*" multiple
+               style="color:var(--text);font-size:12px" id="snScreenshotInput"
+               onchange="previewSNScreenshots(this)">
+        <div id="snScreenshotPreviews" class="wf-preview-strip"></div>
+      </div>
+
+      {% if edit_shots %}
+      <div style="margin-top:8px">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">
+          Current screenshots — click ✕ to remove:
+        </div>
+        <div class="wf-preview-strip">
+          {% for shot in edit_shots %}
+          <div class="wf-preview-item" style="position:relative">
+            <img src="/static/uploads/spawn_notes/{{ shot['filename'] }}"
+                 alt="screenshot"
+                 onclick="openSNLightbox('/static/uploads/spawn_notes/{{ shot['filename'] }}', {{ loop.index0 }}, {{ edit_shots|length }})"
+                 style="cursor:zoom-in">
+            <form method="POST"
+                  action="/spawn-notes/{{ edit_id }}/screenshot/{{ shot['id'] }}/delete"
+                  style="display:inline"
+                  onsubmit="return confirm('Remove this screenshot?')">
+              <button type="submit" class="wf-del-shot" title="Remove">✕</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">
+          {% if edit_id %}💾 Save Changes{% else %}📍 Log Spawn{% endif %}
+        </button>
+        {% if edit_id %}
+        <a href="/spawn-notes" class="btn btn-secondary">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Card grid -->
+{% if rows %}
+<div class="wf-grid">
+  {% for row in rows %}
+  {% set shots = shots_map.get(row['id'], []) %}
+  <div class="wf-card">
+
+    <!-- Photo strip -->
+    {% if shots %}
+    <div class="wf-photo-strip">
+      {% for shot in shots %}
+      <div class="wf-strip-thumb"
+           onclick="openSNLightbox('/static/uploads/spawn_notes/{{ shot['filename'] }}', {{ loop.index0 }}, {{ shots|length }}, {{ row['id'] }})">
+        <img src="/static/uploads/spawn_notes/{{ shot['filename'] }}"
+             alt="screenshot {{ loop.index }}" loading="lazy">
+        {% if loop.first and shots|length > 1 %}
+        <div class="wf-strip-count">+{{ shots|length - 1 }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="wf-no-screenshot">
+      <span>🎯</span>
+      <div>No screenshots</div>
+    </div>
+    {% endif %}
+
+    <div class="wf-body">
+      <!-- Badges row -->
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
+        <span class="sn-badge sn-rely-{{ row['reliability']|lower }}">{{ row['reliability'] }}</span>
+        {% if row['has_legendary'] in ('Often','Sometimes') %}
+        <span class="sn-badge sn-leg">⭐ {{ row['has_legendary'] }}</span>
+        {% endif %}
+        {% if row['server_type'] and row['server_type'] != 'Public' %}
+        <span class="wf-server-badge">{{ row['server_type'] }}</span>
+        {% endif %}
+        {% if shots %}
+        <span style="font-size:10px;color:var(--text-dim)">📷 {{ shots|length }}</span>
+        {% endif %}
+      </div>
+
+      <!-- Enemy name -->
+      <div class="wf-name">{{ row['enemy_type'] }}
+        {% if row['enemy_count'] %}
+        <span style="font-size:11px;color:var(--text-dim);font-weight:400"> × {{ row['enemy_count'] }}</span>
+        {% endif %}
+      </div>
+
+      <!-- Location -->
+      {% if row['location_name'] or row['region'] %}
+      <div class="wf-location">
+        📍 {{ row['location_name'] }}{% if row['location_name'] and row['region'] %} · {% endif %}{{ row['region'] }}
+      </div>
+      {% endif %}
+
+      <!-- Landmark/directions -->
+      {% if row['landmark'] %}
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:3px">🧭 {{ row['landmark'] }}</div>
+      {% endif %}
+
+      <!-- Notes -->
+      {% if row['notes'] %}
+      <div class="wf-notes">{{ row['notes'] }}</div>
+      {% endif %}
+
+      <div class="wf-date">{{ row['date_added'] }}</div>
+    </div>
+
+    <div class="wf-actions">
+      <a href="/spawn-notes?edit_id={{ row['id'] }}#addPanel"
+         class="btn btn-secondary" style="font-size:11px;padding:3px 10px">✎ Edit</a>
+      <form method="POST" action="/spawn-notes/{{ row['id'] }}/delete" style="display:inline"
+            onsubmit="return confirm('Delete this spawn note and all screenshots?')">
+        <button class="btn btn-danger" style="font-size:11px;padding:3px 10px" type="submit">✕ Delete</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <div style="font-size:2.5rem">🎯</div>
+  <div>No spawn notes yet{% if active_region != 'all' %} for {{ active_region }}{% endif %}.</div>
+  <div class="dim" style="font-size:12px;margin-top:4px">Use the form above to log your first spawn location.</div>
+</div>
+{% endif %}
+
+<!-- Lightbox -->
+<div id="snLightbox" onclick="closeSNLightbox()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;
+            cursor:zoom-out;align-items:center;justify-content:center;flex-direction:column">
+  <div style="position:relative;display:flex;align-items:center;gap:12px" onclick="event.stopPropagation()">
+    <button id="snLbPrev" onclick="snLbNav(-1)"
+            style="background:rgba(255,255,255,0.12);border:none;color:#fff;font-size:22px;
+                   cursor:pointer;padding:8px 14px;border-radius:4px;display:none">‹</button>
+    <img id="snLightboxImg" src="" alt="screenshot"
+         style="max-width:88vw;max-height:88vh;border-radius:6px;box-shadow:0 4px 32px rgba(0,0,0,0.7)">
+    <button id="snLbNext" onclick="snLbNav(1)"
+            style="background:rgba(255,255,255,0.12);border:none;color:#fff;font-size:22px;
+                   cursor:pointer;padding:8px 14px;border-radius:4px;display:none">›</button>
+  </div>
+  <div id="snLbCounter" style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:10px"></div>
+  <div style="position:absolute;top:16px;right:20px;color:#fff;font-size:24px;cursor:pointer"
+       onclick="closeSNLightbox()">✕</div>
+</div>
+
+<style>
+/* Reliability badge colours */
+.sn-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.sn-rely-always   { background:rgba(0,200,100,0.15);  color:#0c8; border:1px solid rgba(0,200,100,0.3); }
+.sn-rely-usually  { background:rgba(100,200,50,0.15); color:#8c4; border:1px solid rgba(100,200,50,0.3); }
+.sn-rely-sometimes{ background:rgba(240,180,40,0.15); color:var(--accent); border:1px solid rgba(240,180,40,0.3); }
+.sn-rely-rare     { background:rgba(200,80,80,0.12);  color:#c88; border:1px solid rgba(200,80,80,0.25); }
+.sn-leg { background:rgba(255,200,50,0.15); color:#f0b030; border:1px solid rgba(255,200,50,0.3); }
+</style>
+
+<script>
+function previewSNScreenshots(input) {
+  const strip = document.getElementById('snScreenshotPreviews');
+  strip.innerHTML = '';
+  if (!input.files) return;
+  Array.from(input.files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const div = document.createElement('div');
+      div.className = 'wf-preview-item';
+      div.innerHTML = `<img src="${e.target.result}" alt="preview">`;
+      strip.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+let _snLbSrcs = [], _snLbIdx = 0;
+
+function openSNLightbox(src, idx, total, noteId) {
+  if (noteId !== undefined) {
+    const strip = document.querySelector(`.wf-strip-thumb img[src="${src}"]`)?.closest('.wf-photo-strip');
+    if (strip) {
+      _snLbSrcs = Array.from(strip.querySelectorAll('img')).map(i => i.src);
+      _snLbIdx  = _snLbSrcs.indexOf(src);
+      if (_snLbIdx < 0) _snLbIdx = 0;
+    } else { _snLbSrcs = [src]; _snLbIdx = 0; }
+  } else { _snLbSrcs = [src]; _snLbIdx = idx || 0; }
+  _snLbRender();
+  document.getElementById('snLightbox').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function _snLbRender() {
+  document.getElementById('snLightboxImg').src = _snLbSrcs[_snLbIdx];
+  const multi = _snLbSrcs.length > 1;
+  document.getElementById('snLbPrev').style.display = multi ? 'block' : 'none';
+  document.getElementById('snLbNext').style.display = multi ? 'block' : 'none';
+  document.getElementById('snLbCounter').textContent = multi ? `${_snLbIdx+1} / ${_snLbSrcs.length}` : '';
+}
+
+function snLbNav(dir) {
+  _snLbIdx = (_snLbIdx + dir + _snLbSrcs.length) % _snLbSrcs.length;
+  _snLbRender();
+}
+
+function closeSNLightbox() {
+  document.getElementById('snLightbox').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+  const lb = document.getElementById('snLightbox');
+  if (lb.style.display === 'none') return;
+  if (e.key === 'Escape')     closeSNLightbox();
+  if (e.key === 'ArrowRight') snLbNav(1);
+  if (e.key === 'ArrowLeft')  snLbNav(-1);
+});
+
+{% if edit_id %}
+document.getElementById('addPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+{% endif %}
+</script>
+
+{% endblock %}

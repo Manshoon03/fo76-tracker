@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fo76.db')
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
     conn.row_factory = sqlite3.Row
     # Performance pragmas — WAL mode allows reads while writing,
     # larger cache reduces disk hits, NORMAL sync is safe and faster
@@ -20,6 +20,15 @@ def get_db():
 def init_db():
     conn = get_db()
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS characters (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL,
+            platform   TEXT DEFAULT 'PC',
+            char_type  TEXT DEFAULT 'Playable',
+            level      INTEGER DEFAULT 1,
+            notes      TEXT DEFAULT '',
+            created_at TEXT DEFAULT (date('now'))
+        );
         CREATE TABLE IF NOT EXISTS perk_cards (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             name         TEXT NOT NULL,
@@ -282,6 +291,25 @@ def init_db():
         "ALTER TABLE weapons ADD COLUMN star4 TEXT DEFAULT ''",
         "ALTER TABLE armor ADD COLUMN star4 TEXT DEFAULT ''",
         "ALTER TABLE power_armor ADD COLUMN star4 TEXT DEFAULT ''",
+        "ALTER TABLE vendor_stock ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE weapons ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE armor ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE power_armor ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE mods ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE inventory ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE caps_sessions ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE caps_ledger ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE builds ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE mutations ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE challenges ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE daily_tasks ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE ammo ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE plans ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE legend_runs ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE perk_cards ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE season_score_log ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE fish_log ADD COLUMN character_id INTEGER DEFAULT 1",
+        "ALTER TABLE session_journal ADD COLUMN character_id INTEGER DEFAULT 1",
         "ALTER TABLE builds ADD COLUMN perk_cards_json TEXT DEFAULT ''",
         "ALTER TABLE builds ADD COLUMN legendary_perks_json TEXT DEFAULT ''",
         "ALTER TABLE armor ADD COLUMN build_id INTEGER DEFAULT 0",
@@ -394,6 +422,62 @@ def init_db():
             weather    TEXT DEFAULT '',
             notes      TEXT DEFAULT '',
             caught_at  TEXT DEFAULT (date('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS world_finds (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_type   TEXT NOT NULL DEFAULT 'Bobblehead',
+            item_name   TEXT NOT NULL,
+            location    TEXT DEFAULT '',
+            region      TEXT DEFAULT '',
+            server_type TEXT DEFAULT 'Public',
+            notes       TEXT DEFAULT '',
+            found_date  TEXT DEFAULT (date('now')),
+            created_at  TEXT DEFAULT (date('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS world_find_screenshots (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            find_id    INTEGER NOT NULL,
+            filename   TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS spawn_notes (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            enemy_type    TEXT NOT NULL,
+            location_name TEXT DEFAULT '',
+            region        TEXT DEFAULT '',
+            landmark      TEXT DEFAULT '',
+            reliability   TEXT DEFAULT 'Usually',
+            enemy_count   TEXT DEFAULT '',
+            has_legendary TEXT DEFAULT 'Sometimes',
+            server_type   TEXT DEFAULT 'Public',
+            notes         TEXT DEFAULT '',
+            date_added    TEXT DEFAULT (date('now')),
+            created_at    TEXT DEFAULT (datetime('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS spawn_note_screenshots (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            spawn_note_id INTEGER NOT NULL,
+            filename      TEXT NOT NULL,
+            created_at    TEXT DEFAULT (datetime('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS session_journal (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            date         TEXT DEFAULT (date('now')),
+            server_vibe  TEXT DEFAULT 'Good',
+            server_type  TEXT DEFAULT 'Public',
+            nuke_status  TEXT DEFAULT 'None',
+            caps_made    INTEGER DEFAULT 0,
+            legendaries  INTEGER DEFAULT 0,
+            events_done  INTEGER DEFAULT 0,
+            highlight    TEXT DEFAULT '',
+            notes        TEXT DEFAULT '',
+            created_at   TEXT DEFAULT (datetime('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS session_journal_screenshots (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            journal_id INTEGER NOT NULL,
+            filename   TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
         )""",
     ]:
         try:
@@ -513,6 +597,13 @@ def init_db():
         )
         conn.commit()
 
+    # Seed default character (PC Main) if no characters exist yet
+    if conn.execute("SELECT COUNT(*) FROM characters").fetchone()[0] == 0:
+        conn.execute(
+            "INSERT INTO characters (id, name, platform, char_type, level) VALUES (1, 'PC Main', 'PC', 'Playable', 1)"
+        )
+        conn.commit()
+
     conn.close()
 
 def query(sql, params=()):
@@ -541,29 +632,30 @@ def get_one(sql, params=()):
     conn.close()
     return row
 
-def dashboard_stats():
+def dashboard_stats(character_id=1):
     conn = get_db()
-    # Single query for all counts + action alerts
+    cid = int(character_id)
+    # Single query for all counts + action alerts (character-scoped)
     row = conn.execute("""
         SELECT
-            (SELECT COUNT(*) FROM perk_cards)                          AS perk_cards,
-            (SELECT COUNT(*) FROM builds)                              AS builds,
-            (SELECT COUNT(*) FROM weapons)                             AS weapons,
-            (SELECT COUNT(*) FROM armor)                               AS armor,
-            (SELECT COUNT(*) FROM mods)                                AS mods,
-            (SELECT COUNT(*) FROM vendor_stock)                        AS vendor_items,
-            (SELECT COUNT(*) FROM price_research)                      AS price_records,
-            (SELECT COUNT(*) FROM plans)                               AS plans,
-            (SELECT COUNT(*) FROM inventory)                           AS inventory,
-            (SELECT COUNT(*) FROM perk_cards WHERE can_scrap='Yes')    AS scrappable,
-            (SELECT COUNT(*) FROM weapons WHERE status='Sell')         AS sell_weapons,
-            (SELECT COUNT(*) FROM armor   WHERE status='Sell')         AS sell_armor,
-            (SELECT COUNT(*) FROM mods    WHERE status='Sell')         AS sell_mods,
-            (SELECT COUNT(*) FROM plans   WHERE qty_unlearned > 0)     AS dupe_plans,
-            (SELECT COALESCE(SUM(my_price*qty),0) FROM vendor_stock)   AS vendor_total,
-            (SELECT COUNT(*) FROM wishlist WHERE found=0)               AS wishlist_active,
-            (SELECT COUNT(*) FROM (SELECT name FROM weapons GROUP BY name HAVING COUNT(*)>1)) AS dupe_weapons
-    """).fetchone()
+            (SELECT COUNT(*) FROM perk_cards  WHERE character_id=:c)                          AS perk_cards,
+            (SELECT COUNT(*) FROM builds      WHERE character_id=:c)                          AS builds,
+            (SELECT COUNT(*) FROM weapons     WHERE character_id=:c)                          AS weapons,
+            (SELECT COUNT(*) FROM armor       WHERE character_id=:c)                          AS armor,
+            (SELECT COUNT(*) FROM mods        WHERE character_id=:c)                          AS mods,
+            (SELECT COUNT(*) FROM vendor_stock WHERE character_id=:c)                         AS vendor_items,
+            (SELECT COUNT(*) FROM price_research)                                             AS price_records,
+            (SELECT COUNT(*) FROM plans       WHERE character_id=:c)                          AS plans,
+            (SELECT COUNT(*) FROM inventory   WHERE character_id=:c)                          AS inventory,
+            (SELECT COUNT(*) FROM perk_cards  WHERE character_id=:c AND can_scrap='Yes')      AS scrappable,
+            (SELECT COUNT(*) FROM weapons     WHERE character_id=:c AND status='Sell')        AS sell_weapons,
+            (SELECT COUNT(*) FROM armor       WHERE character_id=:c AND status='Sell')        AS sell_armor,
+            (SELECT COUNT(*) FROM mods        WHERE character_id=:c AND status='Sell')        AS sell_mods,
+            (SELECT COUNT(*) FROM plans       WHERE character_id=:c AND qty_unlearned > 0)    AS dupe_plans,
+            (SELECT COALESCE(SUM(my_price*qty),0) FROM vendor_stock WHERE character_id=:c)   AS vendor_total,
+            (SELECT COUNT(*) FROM wishlist WHERE found=0)                                     AS wishlist_active,
+            (SELECT COUNT(*) FROM (SELECT name FROM weapons WHERE character_id=:c GROUP BY name HAVING COUNT(*)>1)) AS dupe_weapons
+    """, {'c': cid}).fetchone()
 
     s = {
         'Perk Cards':    row['perk_cards'],
@@ -599,12 +691,14 @@ def dashboard_stats():
 
     wt = conn.execute("""
         SELECT
-            COALESCE((SELECT SUM(weight) FROM weapons), 0)                                      AS weapon_wt,
-            COALESCE((SELECT SUM(weight) FROM armor),   0)                                      AS armor_wt,
-            COALESCE((SELECT SUM(weight) FROM power_armor), 0)                                  AS pa_wt,
+            COALESCE((SELECT SUM(weight) FROM weapons     WHERE character_id=:c), 0)           AS weapon_wt,
+            COALESCE((SELECT SUM(weight) FROM armor       WHERE character_id=:c), 0)           AS armor_wt,
+            COALESCE((SELECT SUM(weight) FROM power_armor WHERE character_id=:c), 0)           AS pa_wt,
             COALESCE((SELECT SUM(qty * weight_each) FROM inventory
-                       WHERE source_table NOT IN ('weapons','armor','power_armor') AND fo1st_stored = 0), 0) AS other_wt
-    """).fetchone()
+                       WHERE character_id=:c
+                         AND source_table NOT IN ('weapons','armor','power_armor')
+                         AND fo1st_stored = 0), 0) AS other_wt
+    """, {'c': cid}).fetchone()
     s['stash_weight'] = {
         'weapons': round(float(wt['weapon_wt']), 1),
         'armor':   round(float(wt['armor_wt']),   1),
@@ -616,7 +710,8 @@ def dashboard_stats():
     s['stash_cap'] = int((_cap_row[0] if _cap_row else None) or 1200)
 
     _cur_caps = conn.execute(
-        "SELECT end_caps FROM caps_sessions ORDER BY session_date DESC, id DESC LIMIT 1"
+        "SELECT end_caps FROM caps_sessions WHERE character_id=? ORDER BY session_date DESC, id DESC LIMIT 1",
+        (cid,)
     ).fetchone()
     s['current_caps'] = int(_cur_caps['end_caps']) if _cur_caps else 0
 
@@ -643,7 +738,8 @@ def dashboard_stats():
     # Ammo low-stock alerts
     s['low_ammo'] = conn.execute(
         "SELECT ammo_type, qty, low_threshold FROM ammo "
-        "WHERE low_threshold > 0 AND qty < low_threshold ORDER BY ammo_type"
+        "WHERE character_id=? AND low_threshold > 0 AND qty < low_threshold ORDER BY ammo_type",
+        (cid,)
     ).fetchall()
 
     # Daily tasks pending today
@@ -666,23 +762,19 @@ def dashboard_stats():
 
     # Session summary — what happened today
     s['today_caps_delta'] = conn.execute(
-        "SELECT COALESCE(SUM(end_caps - start_caps), 0) FROM caps_sessions WHERE session_date = ?",
-        (today_str,)
+        "SELECT COALESCE(SUM(end_caps - start_caps), 0) FROM caps_sessions WHERE character_id=? AND session_date=?",
+        (cid, today_str)
     ).fetchone()[0]
     s['today_weapons'] = conn.execute(
-        "SELECT COUNT(*) FROM weapons WHERE created_at = ?", (today_str,)
+        "SELECT COUNT(*) FROM weapons WHERE character_id=? AND created_at=?", (cid, today_str)
     ).fetchone()[0]
     s['today_prices'] = conn.execute(
         "SELECT COUNT(*) FROM price_research WHERE created_at = ?", (today_str,)
     ).fetchone()[0]
     s['today_challenges'] = conn.execute(
-        "SELECT COUNT(*) FROM challenges WHERE completed=1 AND date(completed_at) = ?", (today_str,)
+        "SELECT COUNT(*) FROM challenges WHERE character_id=? AND completed=1 AND date(completed_at)=?",
+        (cid, today_str)
     ).fetchone()[0]
-    _play_s = conn.execute(
-        "SELECT COALESCE(SUM(duration_s), 0) FROM play_sessions WHERE date(start_time) = ?", (today_str,)
-    ).fetchone()[0]
-    s['today_play_mins'] = round(int(_play_s) / 60)
-
     conn.close()
     return s
 
@@ -694,12 +786,6 @@ def get_setting(key, default=''):
 def set_setting(key, value):
     execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (key, value))
 
-def get_active_notices():
-    return query("""
-        SELECT * FROM notices
-        WHERE expires_at = '' OR expires_at >= date('now')
-        ORDER BY CASE level WHEN 'urgent' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, created_at DESC
-    """)
 
 def ensure_nuke_silos():
     conn = get_db()

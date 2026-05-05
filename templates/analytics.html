@@ -27,36 +27,7 @@
   </div>
 </div>
 
-<!-- ── 2 & 3. Play Time + Weapons (two-col) ──────────────────────────── -->
-<div id="section-mid" style="display:none">
-  <div class="two-col" style="margin-bottom:0">
-
-    <div>
-      <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('playtime-body')">
-        PLAY TIME PER WEEK
-      </div>
-      <div id="playtime-body">
-        <div style="height:280px;max-height:300px;margin-bottom:32px">
-          <canvas id="playtimeChart"></canvas>
-        </div>
-      </div>
-    </div>
-
-    <div>
-      <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('weapons-body')">
-        WEAPONS FOUND PER WEEK
-      </div>
-      <div id="weapons-body">
-        <div style="height:280px;max-height:300px;margin-bottom:32px">
-          <canvas id="weaponsChart"></canvas>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- ── 4. Prices Logged Per Week ─────────────────────────────────────── -->
+<!-- ── 2. Prices Logged Per Week ─────────────────────────────────────── -->
 <div id="section-prices" style="display:none">
   <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('prices-body')">
     PRICES LOGGED PER WEEK
@@ -154,17 +125,15 @@ document.addEventListener('DOMContentLoaded', function () {
       // Hide loading, reveal sections
       document.getElementById('loadingMsg').style.display = 'none';
 
-      const sections = ['section-caps', 'section-mid', 'section-prices', 'section-vendor'];
+      const sections = ['section-caps', 'section-prices', 'section-vendor'];
       sections.forEach(function (id) {
         const el = document.getElementById(id);
         if (el) el.style.display = '';
       });
 
       // Render charts
-      makeChart('capsChart',     'line', data.caps.labels,     data.caps.values,     'Caps',                accent);
-      makeChart('playtimeChart', 'bar',  data.playtime.labels, data.playtime.values, 'Hours',               accent);
-      makeChart('weaponsChart',  'bar',  data.weapons.labels,  data.weapons.values,  'Weapons Found',       gold);
-      makeChart('pricesChart',   'bar',  data.prices.labels,   data.prices.values,   'Prices Logged',       teal);
+      makeChart('capsChart',     'line', data.caps.labels,    data.caps.values,    'Caps',               accent);
+      makeChart('pricesChart',   'bar',  data.prices.labels,  data.prices.values,  'Prices Logged',      teal);
       makeChart('vendorChart',   'bar',  data.vendor.labels,   data.vendor.values,   'Total Value (caps)',  accent);
 
       // Last updated stamp

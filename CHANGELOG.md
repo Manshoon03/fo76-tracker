@@ -5,6 +5,61 @@ Format: Version | Date | What changed
 
 ---
 
+## [0.11.0] — 2026-05-01
+
+### Removed
+- **Notices system** — removed `/notices` routes, `notices.html` template, dashboard widget, sidebar link, and CSS classes. Table definition kept dormant in `db.py`; existing data unaffected.
+- **Server Hops tracker** — removed all routes, `server_hops.html` template, and sidebar link.
+- **Vendor Route tracker** — removed all routes (`/vendor-route/*`), `vendor_route.html` template, and sidebar link.
+- **Playtime Tracker** — removed `/playtime` routes, `playtime.html` template, `_fmt_duration()` helper, sidebar link, dashboard "Today's Summary" Playtime link, `today_play_mins` DB query from `dashboard_stats()`, and "Play Time per Week" chart from Analytics.
+- **Weapons Found per Week** — removed analytics chart and `weapon_rows` query from `/analytics/data`.
+- **Trade Partners** — removed all `/trade-partners` and `/trade-history` routes, `trade_partners.html` template, and sidebar link. Tables kept dormant.
+
+### Fixed
+- **Nuke codes fetch stuck at "running" after server restart** — on startup, any `nuke_fetch_status` DB value beginning with `running|` is now reset to a `fail|` message with instructions to retry. Previously the fetch would appear to be running forever after a crash or manual restart.
+
+### Changed
+- **UI — full visual refresh** — base font bumped from 13 px → 15 px, line-height 1.5 → 1.6, sidebar expanded width 196 px → 224 px. Table cell padding, stat card padding, button sizes, badge sizes, form input font size, and max content width all increased for improved readability.
+- **Analytics page** — now shows three charts only: Caps Over Time, Prices Logged per Week, Top Vendor Items by Value.
+- **Dashboard "Today's Summary"** — shows Caps Today, Weapons Added, Prices Logged, Challenges Done. Play time stat removed.
+
+---
+
+## [0.10.0] — 2026-04-27
+
+### Added
+- **World Finds tracker** (`/world-finds`) — log bobbleheads, magazines, and other items found in the world.
+  - Item types: Bobblehead, Magazine, Other — with pre-populated name autocomplete (datalist) per type
+  - Fields: item name, location description, region (all 9 FO76 regions), server type (public/private/friend), date found, notes
+  - Filter tabs: All / Bobbleheads / Magazines / Other with live counts
+  - **Multi-screenshot support** — attach multiple screenshots per find; stored in `world_find_screenshots` table (one-to-many)
+  - Horizontal scrollable photo strip on each find card
+  - Individual screenshot delete buttons in edit mode (removes file + DB row, no page reload)
+  - Full-screen lightbox with ‹ › previous/next navigation, keyboard arrow support, Esc to close
+  - Live upload preview strip before submitting (shows thumbnails of selected files)
+  - `world_finds` and `world_find_screenshots` tables added via safe migration
+  - Sidebar entry 🗺 World Finds (after Fishing)
+
+### Fixed
+- **Flask server freezing on concurrent requests** — `run.py` was launching a single-threaded
+  Werkzeug server. Added `threaded=True` to `app.run()`. This caused playtime stop and other
+  routes to time out whenever a nuke code fetch (blocking HTTP) was in progress simultaneously.
+- **Nuke codes fetch blocking the server** — the `/nuke-codes/fetch` route was performing a
+  synchronous `requests.get()` call on the main thread, freezing all other requests for up to
+  10 seconds. Rewritten to spawn a background daemon thread (`threading.Thread`) and return
+  immediately. A `_nuke_fetch` global tracks running/status state across threads.
+- **Nuke codes not updating after fetch** — nukacrypt.com JSON API returns a flat dict
+  `{"ALPHA":"code","BRAVO":"code","CHARLIE":"code"}` but the parser only handled lists and
+  nested dicts. Added direct flat-dict parsing via `data.get(key.upper())` as the primary
+  parse path. Codes now save correctly on every successful fetch.
+- **SQLite connection timeout** — added `timeout=10` to `sqlite3.connect()` in `db.py` to
+  prevent indefinite hangs when the DB is locked during concurrent access.
+
+### Changed
+- **Nuke Codes page** — fetch button disabled and status banner shown while fetch is running;
+  page auto-refreshes every 4 seconds until fetch completes. Success/failure banner displayed
+  after each fetch attempt with color-coded result.
+
 ## [0.9.0] — 2026-04-19
 
 ### Added
@@ -471,18 +526,22 @@ Format: Version | Date | What changed
 
 ## Planned / Backlog (Parking Lot)
 
-- [ ] Trade log — peer-to-peer trades separate from vendor
-- [ ] Nuke codes auto-fetch — scrape nukacrypt.com weekly, no API needed
-- [ ] Error pages — custom 404/500 instead of raw Python tracebacks
 - [ ] Image gallery — per-item screenshots (weapons/armor/builds). Parked to avoid scope creep.
 - [ ] Weapon/Armor/Plans screenshot scanning — extend Vendor Scan AI to other sections
 - [ ] Mobile responsive layout — revisit if project goes public on GitHub
+- [x] Reference data / smart dropdowns — all major forms now have autocomplete datalists (v0.10.0)
 
-- [ ] Reference data / smart dropdowns — pre-populate mutations, legendary mod effects,
-      weapon types, perk cards so forms use dropdowns instead of free-text. Data to be
-      written directly from training knowledge (no scraping needed). Enables auto-fill
-      when adding weapons/armor/mutations/builds. Build reference tables in DB, wire
-      into existing forms progressively.
+### Completed
+- [x] Nuke codes auto-fetch — background fetch from nukacrypt.com API (v0.10.0)
+- [x] Error pages — custom 404/500 templates (v0.8.0 or earlier)
+- [x] World Finds tracker with multi-screenshot support (v0.10.0)
+
+### Removed features (no longer in app)
+- Trade Partners / Trade History — removed v0.11.0 (low usage, clutter)
+- Notices system — removed v0.11.0 (never used)
+- Server Hops tracker — removed v0.11.0 (not needed)
+- Vendor Route tracker — removed v0.11.0 (not needed)
+- Playtime Tracker — removed v0.11.0 (not needed)
 
 ## Dumb Idea Lot
 

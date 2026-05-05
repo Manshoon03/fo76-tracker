@@ -3,9 +3,77 @@
 {% block content %}
 
 <div class="page-header">
-  <h1>📋 VAULT-TEC DASHBOARD</h1>
+  <h1>📋 {% if active_char and active_char['char_type'] == 'Mule' %}MULE DASHBOARD{% else %}VAULT-TEC DASHBOARD{% endif %}</h1>
+  {% if active_char %}<span class="count-badge"><span class="plat-badge plat-{{ active_char['platform']|lower }}">{{ active_char['platform'] }}</span> {{ active_char['name'] }}</span>{% endif %}
 </div>
 
+{% if active_char and active_char['char_type'] == 'Mule' %}
+{# ── Mule: stripped-down view — vendor + caps only ── #}
+<div class="stat-grid">
+  <a href="/vendor" class="stat-card" style="text-decoration:none">
+    <span class="stat-num">{{ stats['Vendor Items'] }}</span>
+    <span class="stat-label">🏪 Items Listed</span>
+  </a>
+  <div class="stat-card">
+    <span class="stat-num accent">{{ "{:,}".format(stats['vendor_total']) }}</span>
+    <span class="stat-label">Vendor Value (caps)</span>
+  </div>
+  <a href="/caps" class="stat-card" style="text-decoration:none">
+    <span class="stat-num accent">{{ "{:,}".format(stats['current_caps']) }}</span>
+    <span class="stat-label">💵 Current Caps</span>
+  </a>
+  <div class="stat-card">
+    <span class="stat-num">{{ stats['Inventory'] }}</span>
+    <span class="stat-label">🎒 Inventory Items</span>
+  </div>
+</div>
+
+<div class="two-col" style="margin-top:20px">
+  <div>
+    <div class="section-title">🏪 VENDOR LISTINGS</div>
+    {% set vendor_items = stats.get('vendor_items_list', []) %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Item</th><th>Qty</th><th>Price</th></tr></thead>
+        <tbody>
+          {% for item in vendor_items %}
+          <tr>
+            <td class="hi">{{ item['name'] }}</td>
+            <td class="dim">{{ item['qty'] }}</td>
+            <td class="gold">{{ "{:,}".format(item['my_price']) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="no-data">No vendor listings. <a href="/vendor" class="accent">Add some →</a></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div>
+    <div class="section-title">💰 RECENT PRICES LOGGED</div>
+    {% if stats['recent_prices'] %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Item</th><th>Price</th><th>Date</th></tr></thead>
+        <tbody>
+          {% for r in stats['recent_prices'] %}
+          <tr>
+            <td class="hi">{{ r['item_name'] }}</td>
+            <td class="gold">{{ "{:,}".format(r['price_seen']) }}</td>
+            <td class="dim">{{ r['date_seen'] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="no-data">No prices logged yet.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+{# ── Full playable character dashboard ── #}
 <div class="stat-grid">
   <div class="stat-card"><span class="stat-num">{{ stats['Perk Cards'] }}</span><span class="stat-label">Perk Cards</span></div>
   <div class="stat-card"><span class="stat-num">{{ stats['Builds'] }}</span><span class="stat-label">Builds</span></div>
@@ -204,24 +272,6 @@
 </div>
 {% endif %}
 
-<!-- Notices widget -->
-{% if active_notices %}
-<div style="margin-top:24px">
-  <div class="section-title" style="margin-bottom:10px">
-    📌 ACTIVE NOTICES
-    <a href="/notices" style="float:right;font-size:10px;color:var(--text-dim)">Manage →</a>
-  </div>
-  <div style="display:flex;flex-direction:column;gap:6px">
-    {% for n in active_notices %}
-    <div class="notice-banner notice-{{ n['level'] }}" style="margin:0;border-radius:4px">
-      <strong>{% if n['level'] == 'urgent' %}⚠ {% endif %}{{ n['title'] }}</strong>
-      {% if n['body'] %} — {{ n['body'] }}{% endif %}
-      {% if n['expires_at'] %}<span class="dim" style="font-size:10px;margin-left:8px">expires {{ n['expires_at'] }}</span>{% endif %}
-    </div>
-    {% endfor %}
-  </div>
-</div>
-{% endif %}
 
 <!-- Nuke Codes widget -->
 <div style="margin-top:24px">
@@ -289,7 +339,6 @@
 <div style="margin-top:16px">
   <div class="section-title" style="margin-bottom:10px">
     📅 TODAY'S SUMMARY
-    <a href="/playtime" style="float:right;font-size:10px;color:var(--text-dim)">Playtime →</a>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap">
     <div class="stat-card" style="flex:1;min-width:90px;text-align:center">
@@ -310,12 +359,6 @@
       <span class="stat-num {{ 'accent' if stats['today_challenges'] > 0 else 'dim' }}">{{ stats['today_challenges'] }}</span>
       <span class="stat-label">Challenges Done</span>
     </div>
-    <div class="stat-card" style="flex:1;min-width:90px;text-align:center">
-      <span class="stat-num {{ 'accent' if stats['today_play_mins'] > 0 else 'dim' }}">
-        {% if stats['today_play_mins'] >= 60 %}{{ (stats['today_play_mins'] // 60) }}h {{ stats['today_play_mins'] % 60 }}m{% else %}{{ stats['today_play_mins'] }}m{% endif %}
-      </span>
-      <span class="stat-label">Play Time</span>
-    </div>
   </div>
 </div>
 
@@ -334,5 +377,6 @@ document.addEventListener('DOMContentLoaded', function() { startNukeCountdown('d
 </div>
 {% endif %}
 
+{% endif %}{# end mule/playable branch #}
 
 {% endblock %}

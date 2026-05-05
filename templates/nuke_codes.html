@@ -76,16 +76,31 @@
 </section>
 
 <div class="section-title" style="margin-top:20px">QUICK LINKS</div>
-<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center">
   <form method="POST" action="/nuke-codes/fetch" style="display:inline">
-    <button class="btn btn-primary" type="submit"
-            onclick="return confirm('Auto-fetch current codes from nukacrypt.com?')">
-      🔄 Fetch Codes
+    <button class="btn btn-primary" type="submit" {% if fetch_running %}disabled{% endif %}>
+      🔄 {% if fetch_running %}Fetching...{% else %}Fetch Codes{% endif %}
     </button>
   </form>
   <a href="https://nukacrypt.com" target="_blank" class="btn btn-secondary">NukaCrypt ↗</a>
   <a href="https://www.reddit.com/r/fo76/search/?q=nuke+codes+weekly&sort=new" target="_blank" class="btn btn-secondary">r/fo76 Nuke Codes ↗</a>
 </div>
+
+{% if fetch_running %}
+<div style="margin-top:10px;padding:8px 12px;background:rgba(232,160,69,0.12);border:1px solid var(--accent);border-radius:4px;font-size:12px;color:var(--accent)">
+  ⏳ Fetching codes in background — this page will refresh automatically...
+</div>
+<script>setTimeout(function(){ location.reload(); }, 4000);</script>
+{% elif fetch_status %}
+{% set fs_parts = fetch_status.split('|', 1) %}
+{% set fs_type  = fs_parts[0] %}
+{% set fs_msg   = fs_parts[1] if fs_parts|length > 1 else fetch_status %}
+<div style="margin-top:10px;padding:8px 12px;border-radius:4px;font-size:12px;
+  {% if fs_type == 'ok' %}background:rgba(0,200,100,0.08);border:1px solid #0c4;color:#0c4;
+  {% else %}background:rgba(200,60,60,0.08);border:1px solid #c44;color:#c88;{% endif %}">
+  {% if fs_type == 'ok' %}✓{% else %}⚠{% endif %} {{ fs_msg }}
+</div>
+{% endif %}
 
 <script>
 document.addEventListener('DOMContentLoaded', function() { startNukeCountdown('nukeResetTimer'); });

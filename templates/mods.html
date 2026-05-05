@@ -19,7 +19,9 @@
       <div class="form-grid">
         <div class="form-group span2">
           <label>Mod Name *</label>
-          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+          <input type="text" name="name" required list="modNameList" autocomplete="off"
+                 value="{{ edit_item['name'] if edit_item else '' }}">
+          <datalist id="modNameList">{% for x in ref.MOD_NAMES %}<option value="{{ x }}">{% endfor %}</datalist>
         </div>
         <div class="form-group">
           <label>Mod Type</label>

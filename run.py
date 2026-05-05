@@ -31,4 +31,4 @@ if __name__ == '__main__':
     print("  Press Ctrl+C to stop")
     print("=" * 50)
     threading.Timer(1.2, open_browser).start()
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True)

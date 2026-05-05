@@ -138,6 +138,12 @@ function startNukeCountdown(elementId) {
 }
 
 // ── Quick Log Modal ────────────────────────────────────────────────────────
+const _QL_INV_DL_MAP = { Aid:'qlDlAid', Chem:'qlDlAid', Ammo:'qlDlAmmo', 'Food/Drink':'qlDlFood', Junk:'qlDlComponent', Component:'qlDlComponent' };
+function updateQlInvName(sel) {
+  const el = document.getElementById('qlInvName');
+  if (el) el.setAttribute('list', _QL_INV_DL_MAP[sel.value] || '');
+}
+
 function openQuickLog() {
   document.getElementById('qlOverlay').classList.add('open');
   // Focus first visible input
@@ -465,6 +471,86 @@ async function incrementChallenge(id) {
   } catch {
     showToast('Error', 'error');
   }
+}
+
+// ── Universal item autocomplete ───────────────────────────────────────────
+function initItemAutocomplete(inputId, catSelectId) {
+  const input  = document.getElementById(inputId);
+  const catSel = catSelectId ? document.getElementById(catSelectId) : null;
+  if (!input) return;
+
+  const wrap = input.parentNode;
+  wrap.style.position = 'relative';
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'ac-dropdown';
+  wrap.appendChild(dropdown);
+
+  let timer, activeIdx = -1, items = [];
+
+  function render() {
+    dropdown.innerHTML = '';
+    if (!items.length) { dropdown.style.display = 'none'; return; }
+    items.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'ac-item';
+      row.innerHTML = `<span>${item.name}</span><span class="ac-cat">${item.category}</span>`;
+      row.addEventListener('mousedown', e => { e.preventDefault(); pick(i); });
+      dropdown.appendChild(row);
+    });
+    dropdown.style.display = 'block';
+    activeIdx = -1;
+  }
+
+  function pick(i) {
+    const item = items[i];
+    if (!item) return;
+    input.value = item.name;
+    if (catSel) {
+      const opt = Array.from(catSel.options).find(o => o.value === item.category);
+      if (opt) {
+        catSel.value = item.category;
+        catSel.dispatchEvent(new Event('change'));
+      }
+    }
+    items = [];
+    dropdown.style.display = 'none';
+  }
+
+  input.addEventListener('input', function() {
+    clearTimeout(timer);
+    const q = this.value.trim();
+    if (q.length < 2) { items = []; dropdown.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      try {
+        items = await fetch(`/api/item-search?q=${encodeURIComponent(q)}`).then(r => r.json());
+        render();
+      } catch { dropdown.style.display = 'none'; }
+    }, 180);
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (dropdown.style.display === 'none') return;
+    const rows = dropdown.querySelectorAll('.ac-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx + 1, rows.length - 1);
+      rows.forEach((r, i) => r.classList.toggle('active', i === activeIdx));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, 0);
+      rows.forEach((r, i) => r.classList.toggle('active', i === activeIdx));
+    } else if (e.key === 'Enter' && activeIdx >= 0) {
+      e.preventDefault();
+      pick(activeIdx);
+    } else if (e.key === 'Escape') {
+      items = []; dropdown.style.display = 'none';
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) { items = []; dropdown.style.display = 'none'; }
+  });
 }
 
 // ── Sidebar toggle ─────────────────────────────────────────────────────────

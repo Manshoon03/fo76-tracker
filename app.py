@@ -10,6 +10,7 @@ import base64
 import json
 import zipfile
 import re
+import threading
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -31,6 +32,107 @@ db.init_db()
 db.ensure_nuke_silos()
 db.auto_backup()
 
+# ── Nuke code background fetch ────────────────────────────────────────────────
+_nuke_fetch = {'running': False}
+# If server restarted mid-fetch, the DB status is stuck at "running" — clear it
+if db.get_setting('nuke_fetch_status', '').startswith('running|'):
+    db.set_setting('nuke_fetch_status', 'fail|Fetch was interrupted (server restarted) — click Fetch to retry')
+
+def _do_nuke_fetch():
+    """Background thread: scrape nukacrypt.com and update nuke codes in DB."""
+    from datetime import date as _date
+    _HDRS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36'}
+    SILO_KEYS = {'alpha': 'Alpha', 'bravo': 'Bravo', 'charlie': 'Charlie'}
+    _BAD = {'CHARLIE', 'ALPHA', 'BRAVO', 'SITE', 'LAUNCH', 'CODES', 'SILO', 'NUKE'}
+    CODE_RE = re.compile(r'\b([A-Z0-9]{7,10})\b')
+    try:
+        from bs4 import BeautifulSoup
+        codes = {}
+
+        # --- Attempt 1: JSON API endpoint ---
+        # nukacrypt.com/api/codes returns: {"ALPHA":"61436701","BRAVO":"36758567","CHARLIE":"79473176",...}
+        try:
+            r = requests.get('https://nukacrypt.com/api/codes', headers=_HDRS, timeout=(5, 8))
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, dict):
+                    for key, silo in SILO_KEYS.items():
+                        val = str(data.get(key.upper(), data.get(key, ''))).strip()
+                        if val and re.match(r'^[A-Z0-9]{5,12}$', val.upper()) and val.upper() not in _BAD:
+                            codes[silo] = val.upper()
+                elif isinstance(data, list):
+                    for item in data:
+                        name = str(item.get('silo', item.get('name', ''))).lower()
+                        code = str(item.get('code', item.get('value', ''))).upper().strip()
+                        for key, silo in SILO_KEYS.items():
+                            if key in name and re.match(r'^[A-Z0-9]{5,12}$', code) and code not in _BAD:
+                                codes[silo] = code
+        except Exception:
+            pass
+
+        # --- Attempt 2: HTML page + embedded JSON ---
+        if len(codes) < 3:
+            try:
+                r = requests.get('https://nukacrypt.com', headers=_HDRS, timeout=(5, 10))
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+
+                    # Next.js / embedded JSON in <script> tags
+                    for script in soup.find_all('script'):
+                        stext = script.get_text() or ''
+                        if not any(k in stext.lower() for k in SILO_KEYS):
+                            continue
+                        upper = stext.upper()
+                        for key, silo in SILO_KEYS.items():
+                            if silo in codes:
+                                continue
+                            idx = upper.find(key.upper())
+                            if idx != -1:
+                                chunk = upper[max(0, idx - 5):idx + 120]
+                                m = CODE_RE.search(chunk)
+                                if m and m.group(1) not in _BAD:
+                                    codes[silo] = m.group(1)
+
+                    # Plain-text fallback
+                    if len(codes) < 3:
+                        full = soup.get_text(separator=' ').upper()
+                        for key, silo in SILO_KEYS.items():
+                            if silo in codes:
+                                continue
+                            search_start = 0
+                            while True:
+                                idx = full.find(key.upper(), search_start)
+                                if idx == -1:
+                                    break
+                                chunk = full[idx:idx + 120]
+                                m = CODE_RE.search(chunk)
+                                if m and m.group(1) not in _BAD:
+                                    codes[silo] = m.group(1)
+                                    break
+                                search_start = idx + 1
+            except Exception:
+                pass
+
+        if codes:
+            week_of = str(_date.today() - timedelta(days=_date.today().weekday()))
+            for silo, code in codes.items():
+                db.execute(
+                    "UPDATE nuke_codes SET code=?, week_of=?, updated_at=date('now') WHERE silo=?",
+                    (code, week_of, silo),
+                )
+            found = ', '.join(sorted(codes.keys()))
+            db.set_setting('nuke_fetch_status', f'ok|Fetched {found} — {datetime.now().strftime("%b %d %H:%M")}')
+        else:
+            db.set_setting('nuke_fetch_status',
+                           f'fail|Could not parse codes from nukacrypt.com — enter manually '
+                           f'({datetime.now().strftime("%H:%M")})')
+    except ImportError:
+        db.set_setting('nuke_fetch_status', 'fail|beautifulsoup4 not installed — run: pip install beautifulsoup4')
+    except Exception as e:
+        db.set_setting('nuke_fetch_status', f'fail|Fetch error: {str(e)[:100]}')
+    finally:
+        _nuke_fetch['running'] = False
+
 app.permanent_session_lifetime = timedelta(days=30)
 
 def _ensure_default_credentials():
@@ -48,7 +150,27 @@ _ensure_default_credentials()
 
 @app.context_processor
 def inject_reference():
-    return {'ref': reference}
+    weapon_names = sorted(set(
+        r['name'].replace(' (Fallout 76)', '').strip()
+        for r in db.query("SELECT name FROM wiki_weapons ORDER BY name")
+    ))
+    armor_names = [r['name'] for r in db.query("SELECT name FROM wiki_armor ORDER BY name")]
+    return {'ref': reference, 'wiki_weapon_names': weapon_names, 'wiki_armor_names': armor_names}
+
+@app.context_processor
+def inject_characters():
+    all_chars = db.query("SELECT * FROM characters ORDER BY platform, name")
+    cid = get_active_char_id()
+    active_char = db.get_one("SELECT * FROM characters WHERE id=?", (cid,))
+    return {'all_chars': all_chars, 'active_char': active_char}
+
+
+def get_active_char_id():
+    """Return the active character id (int), defaulting to 1."""
+    try:
+        return int(db.get_setting('active_character_id') or 1)
+    except (ValueError, TypeError):
+        return 1
 
 @app.errorhandler(404)
 def not_found(e):
@@ -114,6 +236,62 @@ def change_password():
     return render_template('change_password.html', current_user=current_user)
 
 
+# ── Characters ───────────────────────────────────────────────────────────────
+
+@app.route('/characters')
+def characters():
+    chars = db.query("SELECT * FROM characters ORDER BY platform, name")
+    return render_template('characters.html', chars=chars)
+
+@app.route('/characters/add', methods=['POST'])
+def characters_add():
+    name      = fs('name')
+    platform  = fs('platform', 'PC')
+    char_type = fs('char_type', 'Playable')
+    level     = fi('level', 1)
+    notes     = fs('notes')
+    if not name:
+        flash('Name is required.', 'error')
+        return redirect(url_for('characters'))
+    db.execute(
+        "INSERT INTO characters (name, platform, char_type, level, notes) VALUES (?,?,?,?,?)",
+        (name, platform, char_type, level, notes)
+    )
+    flash(f'Character "{name}" added!', 'success')
+    return redirect(url_for('characters'))
+
+@app.route('/characters/<int:cid>/update', methods=['POST'])
+def characters_update(cid):
+    db.execute(
+        "UPDATE characters SET name=?, platform=?, char_type=?, level=?, notes=? WHERE id=?",
+        (fs('name'), fs('platform','PC'), fs('char_type','Playable'), fi('level',1), fs('notes'), cid)
+    )
+    flash('Character updated.', 'success')
+    return redirect(url_for('characters'))
+
+@app.route('/characters/<int:cid>/delete', methods=['POST'])
+def characters_delete(cid):
+    # Don't delete the last character
+    count = db.get_one("SELECT COUNT(*) AS c FROM characters")
+    if count and count['c'] <= 1:
+        flash('Cannot delete the only character.', 'error')
+        return redirect(url_for('characters'))
+    # If deleting active character, switch to character 1 (or first available)
+    if get_active_char_id() == cid:
+        fallback = db.get_one("SELECT id FROM characters WHERE id != ? ORDER BY id LIMIT 1", (cid,))
+        db.set_setting('active_character_id', str(fallback['id']) if fallback else '1')
+    db.execute("DELETE FROM characters WHERE id=?", (cid,))
+    flash('Character deleted.', 'info')
+    return redirect(url_for('characters'))
+
+@app.route('/characters/switch/<int:cid>', methods=['POST'])
+def characters_switch(cid):
+    row = db.get_one("SELECT id FROM characters WHERE id=?", (cid,))
+    if row:
+        db.set_setting('active_character_id', str(cid))
+    return redirect(request.referrer or url_for('index'))
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def fi(key, default=0):
@@ -134,22 +312,24 @@ def fs(key, default=''):
     """Get form string value."""
     return request.form.get(key, default).strip()
 
-def _inv_sync(source_table, source_id, name, category, sub_type, qty, weight, value, status):
+def _inv_sync(source_table, source_id, name, category, sub_type, qty, weight, value, status, cid=None):
     """Create or update the inventory mirror entry for a section record."""
+    if cid is None:
+        cid = get_active_char_id()
     existing = db.get_one(
         "SELECT id FROM inventory WHERE source_table=? AND source_id=?",
         (source_table, source_id)
     )
     if existing:
         db.execute(
-            "UPDATE inventory SET name=?,category=?,sub_type=?,qty=?,weight_each=?,value_each=?,status=? WHERE id=?",
-            (name, category, sub_type, qty, weight, value, status, existing['id'])
+            "UPDATE inventory SET name=?,category=?,sub_type=?,qty=?,weight_each=?,value_each=?,status=?,character_id=? WHERE id=?",
+            (name, category, sub_type, qty, weight, value, status, cid, existing['id'])
         )
     else:
         db.execute(
-            "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,source_table,source_id) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
-            (name, category, sub_type, qty, weight, value, status, source_table, source_id)
+            "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,source_table,source_id,character_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (name, category, sub_type, qty, weight, value, status, source_table, source_id, cid)
         )
 
 def _inv_delete(source_table, source_id):
@@ -164,8 +344,12 @@ def _inv_delete(source_table, source_id):
 @app.route('/')
 def index():
     from datetime import date, timedelta
-    stats = db.dashboard_stats()
-    active_notices = db.get_active_notices()
+    cid   = get_active_char_id()
+    stats = db.dashboard_stats(cid)
+    # Mule dashboard: include vendor listings list
+    stats['vendor_items_list'] = db.query(
+        "SELECT name, qty, my_price FROM vendor_stock WHERE character_id=? ORDER BY category, name", (cid,)
+    )
     silos = {r['silo']: r for r in db.query("SELECT * FROM nuke_codes ORDER BY silo")}
     today = date.today()
     today_week = str(today - timedelta(days=today.weekday()))
@@ -189,7 +373,7 @@ def index():
     except Exception:
         pass
     return render_template('index.html', stats=stats,
-                           active_notices=active_notices, silos=silos, today_week=today_week,
+                           silos=silos, today_week=today_week,
                            season=season_data, quote=quotes.get_random())
 
 # ── Search ───────────────────────────────────────────────────────────────────
@@ -204,7 +388,8 @@ def search():
 
 @app.route('/perk-cards')
 def perk_cards():
-    items = db.query("SELECT * FROM perk_cards ORDER BY special, name")
+    cid = get_active_char_id()
+    items = db.query("SELECT * FROM perk_cards WHERE character_id=? ORDER BY special, name", (cid,))
     edit_id = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM perk_cards WHERE id=?", (edit_id,)) if edit_id else None
     # Wiki perk browser data — all perks with ranks
@@ -229,7 +414,7 @@ def perk_cards():
         del entry['rank_data']
         grp = 'Legendary' if entry['is_legendary'] else entry['special']
         wiki_perks_by_special[grp].append(entry)
-    logged_perks = {r['name'].lower() for r in db.query("SELECT name FROM perk_cards")}
+    logged_perks = {r['name'].lower() for r in db.query("SELECT name FROM perk_cards WHERE character_id=?", (cid,))}
     return render_template('perk_cards.html', items=items, edit_item=edit_item,
                            wiki_perks_by_special=dict(wiki_perks_by_special),
                            logged_perks=logged_perks)
@@ -237,9 +422,9 @@ def perk_cards():
 @app.route('/perk-cards/add', methods=['POST'])
 def perk_cards_add():
     db.execute(
-        "INSERT INTO perk_cards (name,special,current_rank,max_rank,copies_owned,effect,used_in,can_scrap,notes) VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO perk_cards (name,special,current_rank,max_rank,copies_owned,effect,used_in,can_scrap,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (fs('name'), fs('special','S'), fi('current_rank',1), fi('max_rank',3),
-         fi('copies_owned',1), fs('effect'), fs('used_in'), fs('can_scrap','No'), fs('notes'))
+         fi('copies_owned',1), fs('effect'), fs('used_in'), fs('can_scrap','No'), fs('notes'), get_active_char_id())
     )
     flash('Perk card added!', 'success')
     return redirect(url_for('perk_cards'))
@@ -264,12 +449,13 @@ def perk_cards_delete(id):
 
 @app.route('/builds')
 def builds():
-    items = [dict(r) for r in db.query("SELECT *, (s+p+e+c+i+a+l) as total FROM builds ORDER BY name")]
+    cid = get_active_char_id()
+    items = [dict(r) for r in db.query("SELECT *, (s+p+e+c+i+a+l) as total FROM builds WHERE character_id=? ORDER BY name", (cid,))]
     edit_id = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM builds WHERE id=?", (edit_id,)) if edit_id else None
     wiki_perks_list = [r['name'] for r in db.query("SELECT name FROM wiki_perks ORDER BY name")]
     # Mutations linked to builds
-    mut_rows = db.query("SELECT build_id, name, effects_positive, effects_negative FROM mutations WHERE build_id > 0")
+    mut_rows = db.query("SELECT build_id, name, effects_positive, effects_negative FROM mutations WHERE character_id=? AND build_id > 0", (cid,))
     mutations_by_build = {}
     for r in mut_rows:
         bid = r['build_id']
@@ -277,8 +463,8 @@ def builds():
             'name': r['name'], 'pos': r['effects_positive'], 'neg': r['effects_negative']
         })
     # Weapons & armor for inventory picker and modal
-    inv_weapons = [dict(r) for r in db.query("SELECT id, name, wtype, star1, star2, star3, star4, status, build_id FROM weapons ORDER BY name")]
-    inv_armor   = [dict(r) for r in db.query("SELECT id, name, slot, material, star1, star2, star3, star4, status, build_id FROM armor ORDER BY name")]
+    inv_weapons = [dict(r) for r in db.query("SELECT id, name, wtype, star1, star2, star3, star4, status, build_id FROM weapons WHERE character_id=? ORDER BY name", (cid,))]
+    inv_armor   = [dict(r) for r in db.query("SELECT id, name, slot, material, star1, star2, star3, star4, status, build_id FROM armor WHERE character_id=? ORDER BY name", (cid,))]
     return render_template('builds.html', items=items, edit_item=edit_item,
                            wiki_perks_list=wiki_perks_list,
                            mutations_by_build=mutations_by_build,
@@ -288,9 +474,9 @@ def builds():
 def builds_add():
     pcj = fs('perk_cards_json')
     db.execute(
-        "INSERT INTO builds (name,playstyle,s,p,e,c,i,a,l,key_cards,notes,perk_cards_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO builds (name,playstyle,s,p,e,c,i,a,l,key_cards,notes,perk_cards_json,character_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (fs('name'), fs('playstyle'), fi('s',1), fi('p',1), fi('e',1), fi('c',1),
-         fi('i',1), fi('a',1), fi('l',1), fs('key_cards'), fs('notes'), pcj)
+         fi('i',1), fi('a',1), fi('l',1), fs('key_cards'), fs('notes'), pcj, get_active_char_id())
     )
     build_id = db.query("SELECT last_insert_rowid() as id")[0]['id']
     _assign_build_gear(build_id, request.form.getlist('weapon_ids'), request.form.getlist('armor_ids'))
@@ -348,19 +534,20 @@ def character():
 
 @app.route('/mutations')
 def mutations():
+    cid = get_active_char_id()
     filter_active = request.args.get('active', '')
     edit_id = request.args.get('edit_id', type=int)
     if filter_active == '1':
-        items = db.query("SELECT * FROM mutations WHERE active=1 ORDER BY name")
+        items = db.query("SELECT * FROM mutations WHERE character_id=? AND active=1 ORDER BY name", (cid,))
     elif filter_active == '0':
-        items = db.query("SELECT * FROM mutations WHERE active=0 ORDER BY name")
+        items = db.query("SELECT * FROM mutations WHERE character_id=? AND active=0 ORDER BY name", (cid,))
     else:
-        items = db.query("SELECT * FROM mutations ORDER BY active DESC, name")
+        items = db.query("SELECT * FROM mutations WHERE character_id=? ORDER BY active DESC, name", (cid,))
     edit_item = db.get_one("SELECT * FROM mutations WHERE id=?", (edit_id,)) if edit_id else None
-    builds = db.query("SELECT id, name FROM builds ORDER BY name")
+    builds = db.query("SELECT id, name FROM builds WHERE character_id=? ORDER BY name", (cid,))
     wiki_rows = db.query("SELECT name, positive_effects, negative_effects, serum_name, wiki_url FROM wiki_mutations ORDER BY name")
     wiki_mutations = {r['name']: dict(r) for r in wiki_rows}
-    logged_names = {r['name'].lower() for r in db.query("SELECT name FROM mutations")}
+    logged_names = {r['name'].lower() for r in db.query("SELECT name FROM mutations WHERE character_id=?", (cid,))}
     return render_template('mutations.html', items=items, edit_item=edit_item,
                            filter_active=filter_active, builds=builds,
                            mutation_names=reference.MUTATION_NAMES,
@@ -370,9 +557,9 @@ def mutations():
 @app.route('/mutations/add', methods=['POST'])
 def mutations_add():
     db.execute(
-        "INSERT INTO mutations (name,effects_positive,effects_negative,active,build_id,notes) VALUES (?,?,?,?,?,?)",
+        "INSERT INTO mutations (name,effects_positive,effects_negative,active,build_id,notes,character_id) VALUES (?,?,?,?,?,?,?)",
         (fs('name'), fs('effects_positive'), fs('effects_negative'),
-         1 if request.form.get('active') else 0, fi('build_id'), fs('notes'))
+         1 if request.form.get('active') else 0, fi('build_id'), fs('notes'), get_active_char_id())
     )
     flash('Mutation added!', 'success')
     return redirect(url_for('mutations'))
@@ -404,14 +591,15 @@ def mutations_toggle(id):
 
 @app.route('/weapons')
 def weapons():
+    cid = get_active_char_id()
     status_filter = request.args.get('status', '')
     edit_id = request.args.get('edit_id', type=int)
     if status_filter:
-        items = db.query("SELECT * FROM weapons WHERE status=? ORDER BY name", (status_filter,))
+        items = db.query("SELECT * FROM weapons WHERE character_id=? AND status=? ORDER BY name", (cid, status_filter))
     else:
-        items = db.query("SELECT * FROM weapons ORDER BY name")
+        items = db.query("SELECT * FROM weapons WHERE character_id=? ORDER BY name", (cid,))
     edit_item = db.get_one("SELECT * FROM weapons WHERE id=?", (edit_id,)) if edit_id else None
-    dupes_rows = db.query("SELECT name FROM weapons GROUP BY name HAVING COUNT(*) > 1")
+    dupes_rows = db.query("SELECT name FROM weapons WHERE character_id=? GROUP BY name HAVING COUNT(*) > 1", (cid,))
     dupes = {r['name'] for r in dupes_rows}
     # Scan pre-fill params
     scan = {k: request.args.get(k, '') for k in
@@ -424,9 +612,9 @@ def weapons():
 @app.route('/weapons/add', methods=['POST'])
 def weapons_add():
     wid = db.insert(
-        "INSERT INTO weapons (name,wtype,damage_type,star1,star2,star3,star4,mods,condition_pct,weight,value,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO weapons (name,wtype,damage_type,star1,star2,star3,star4,mods,condition_pct,weight,value,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (fs('name'), fs('wtype'), fs('damage_type','Ballistic'), fs('star1'), fs('star2'), fs('star3'), fs('star4'),
-         fs('mods'), fi('condition_pct',100), ff('weight'), fi('value'), fs('status','Keep'), fs('notes'))
+         fs('mods'), fi('condition_pct',100), ff('weight'), fi('value'), fs('status','Keep'), fs('notes'), get_active_char_id())
     )
     _inv_sync('weapons', wid, fs('name'), 'Weapon', fs('wtype'), 1, ff('weight'), fi('value'), fs('status','Keep'))
     flash('Weapon added!', 'success')
@@ -476,12 +664,13 @@ def weapons_bulk():
 
 @app.route('/armor')
 def armor():
+    cid = get_active_char_id()
     status_filter = request.args.get('status', '')
     edit_id = request.args.get('edit_id', type=int)
     if status_filter:
-        items = db.query("SELECT * FROM armor WHERE status=? ORDER BY name", (status_filter,))
+        items = db.query("SELECT * FROM armor WHERE character_id=? AND status=? ORDER BY name", (cid, status_filter))
     else:
-        items = db.query("SELECT * FROM armor ORDER BY slot, name")
+        items = db.query("SELECT * FROM armor WHERE character_id=? ORDER BY slot, name", (cid,))
     edit_item = db.get_one("SELECT * FROM armor WHERE id=?", (edit_id,)) if edit_id else None
     wiki_armor_names = [r['name'] for r in db.query("SELECT name FROM wiki_armor ORDER BY name")]
     return render_template('armor.html', items=items, edit_item=edit_item,
@@ -490,9 +679,9 @@ def armor():
 @app.route('/armor/add', methods=['POST'])
 def armor_add():
     aid = db.insert(
-        "INSERT INTO armor (name,slot,material,star1,star2,star3,star4,mods,dr,er,rr,weight,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO armor (name,slot,material,star1,star2,star3,star4,mods,dr,er,rr,weight,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (fs('name'), fs('slot'), fs('material'), fs('star1'), fs('star2'), fs('star3'), fs('star4'),
-         fs('mods'), fi('dr'), fi('er'), fi('rr'), ff('weight'), fs('status','Keep'), fs('notes'))
+         fs('mods'), fi('dr'), fi('er'), fi('rr'), ff('weight'), fs('status','Keep'), fs('notes'), get_active_char_id())
     )
     _inv_sync('armor', aid, fs('name'), 'Armor', fs('slot'), 1, ff('weight'), 0, fs('status','Keep'))
     flash('Armor added!', 'success')
@@ -542,25 +731,27 @@ def armor_bulk():
 
 @app.route('/power-armor')
 def power_armor():
+    cid = get_active_char_id()
     status_filter = request.args.get('status', '')
     edit_id = request.args.get('edit_id', type=int)
     if status_filter:
-        items = db.query("SELECT * FROM power_armor WHERE status=? ORDER BY name", (status_filter,))
+        items = db.query("SELECT * FROM power_armor WHERE character_id=? AND status=? ORDER BY name", (cid, status_filter))
     else:
-        items = db.query("SELECT * FROM power_armor ORDER BY name")
+        items = db.query("SELECT * FROM power_armor WHERE character_id=? ORDER BY name", (cid,))
     edit_item = db.get_one("SELECT * FROM power_armor WHERE id=?", (edit_id,)) if edit_id else None
     return render_template('power_armor.html', items=items, edit_item=edit_item, status_filter=status_filter)
 
 @app.route('/power-armor/add', methods=['POST'])
 def power_armor_add():
+    cid  = get_active_char_id()
     name = fs('name')
     pid = db.insert(
-        "INSERT INTO power_armor (name,pa_set,slot,star1,star2,star3,star4,mods,condition_pct,weight,value,status,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO power_armor (name,pa_set,slot,star1,star2,star3,star4,mods,condition_pct,weight,value,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (name, fs('pa_set'), fs('slot'), fs('star1'), fs('star2'), fs('star3'), fs('star4'),
-         fs('mods'), fi('condition_pct', 100), ff('weight'), fi('value'), fs('status','Keep'), fs('notes'))
+         fs('mods'), fi('condition_pct', 100), ff('weight'), fi('value'), fs('status','Keep'), fs('notes'), cid)
     )
     sub = (fs('pa_set') + ' ' + fs('slot')).strip()
-    _inv_sync('power_armor', pid, name, 'Power Armor', sub, 1, ff('weight'), fi('value'), fs('status','Keep'))
+    _inv_sync('power_armor', pid, name, 'Power Armor', sub, 1, ff('weight'), fi('value'), fs('status','Keep'), cid)
     flash('Power armor added!', 'success')
     return redirect(url_for('power_armor'))
 
@@ -612,7 +803,8 @@ def power_armor_bulk():
 
 @app.route('/mods')
 def mods():
-    items = db.query("SELECT * FROM mods ORDER BY applies_to, name")
+    cid = get_active_char_id()
+    items = db.query("SELECT * FROM mods WHERE character_id=? ORDER BY applies_to, name", (cid,))
     edit_id = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM mods WHERE id=?", (edit_id,)) if edit_id else None
     return render_template('mods.html', items=items, edit_item=edit_item)
@@ -620,8 +812,8 @@ def mods():
 @app.route('/mods/add', methods=['POST'])
 def mods_add():
     mid = db.insert(
-        "INSERT INTO mods (name,mod_type,applies_to,effect,qty,value_each,status,notes) VALUES (?,?,?,?,?,?,?,?)",
-        (fs('name'), fs('mod_type','Normal'), fs('applies_to'), fs('effect'), fi('qty',1), fi('value_each'), fs('status','Keep'), fs('notes'))
+        "INSERT INTO mods (name,mod_type,applies_to,effect,qty,value_each,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?)",
+        (fs('name'), fs('mod_type','Normal'), fs('applies_to'), fs('effect'), fi('qty',1), fi('value_each'), fs('status','Keep'), fs('notes'), get_active_char_id())
     )
     sub = (fs('mod_type','Normal') + ' — ' + fs('applies_to')).strip(' —')
     _inv_sync('mods', mid, fs('name'), 'Mod', sub, fi('qty',1), 0, fi('value_each'), fs('status','Keep'))
@@ -664,7 +856,8 @@ def mods_bulk():
 
 @app.route('/vendor')
 def vendor():
-    items = db.query("SELECT * FROM vendor_stock ORDER BY category, name")
+    cid = get_active_char_id()
+    items = db.query("SELECT * FROM vendor_stock WHERE character_id=? ORDER BY category, name", (cid,))
     edit_id = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM vendor_stock WHERE id=?", (edit_id,)) if edit_id else None
     return render_template('vendor.html', items=items, edit_item=edit_item)
@@ -677,35 +870,36 @@ def vendor_add():
     price    = fi('my_price')
     notes    = fs('notes')
 
+    cid = get_active_char_id()
     # Insert vendor record first
     vid = db.insert(
-        "INSERT INTO vendor_stock (name,category,description,qty,my_price,avg_market_price,date_listed,notes) VALUES (?,?,?,?,?,?,?,?)",
-        (name, category, fs('description'), qty, price, fi('avg_market_price'), fs('date_listed'), notes)
+        "INSERT INTO vendor_stock (name,category,description,qty,my_price,avg_market_price,date_listed,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?)",
+        (name, category, fs('description'), qty, price, fi('avg_market_price'), fs('date_listed'), notes, cid)
     )
 
     if category == 'Weapon':
         # Create weapon record with bonus fields from vendor form
         wid = db.insert(
-            "INSERT INTO weapons (name,wtype,star1,star2,star3,weight,value,status,notes) VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO weapons (name,wtype,star1,star2,star3,weight,value,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (name, fs('wtype'), fs('star1'), fs('star2'), fs('star3'),
-             ff('weight'), price, 'Sell', notes)
+             ff('weight'), price, 'Sell', notes, cid)
         )
         _inv_sync('weapons', wid, name, 'Weapon', fs('wtype'), qty, ff('weight'), price, 'Sell')
 
     elif category == 'Armor':
         # Create armor record
         aid = db.insert(
-            "INSERT INTO armor (name,slot,star1,star2,star3,weight,status,notes) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO armor (name,slot,star1,star2,star3,weight,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?)",
             (name, fs('slot'), fs('star1'), fs('star2'), fs('star3'),
-             ff('weight'), 'Sell', notes)
+             ff('weight'), 'Sell', notes, cid)
         )
         _inv_sync('armor', aid, name, 'Armor', fs('slot'), qty, ff('weight'), 0, 'Sell')
 
     elif category == 'Mod':
         # Create mod record
         mid = db.insert(
-            "INSERT INTO mods (name,mod_type,applies_to,qty,value_each,status,notes) VALUES (?,?,?,?,?,?,?)",
-            (name, fs('mod_type','Normal'), fs('applies_to'), qty, price, 'Sell', notes)
+            "INSERT INTO mods (name,mod_type,applies_to,qty,value_each,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?)",
+            (name, fs('mod_type','Normal'), fs('applies_to'), qty, price, 'Sell', notes, cid)
         )
         sub = (fs('mod_type','Normal') + ' — ' + fs('applies_to')).strip(' —')
         _inv_sync('mods', mid, name, 'Mod', sub, qty, 0, price, 'Sell')
@@ -750,6 +944,45 @@ def vendor_delete(id):
         # else: Aid/Ammo/Misc — inventory is independent, no automatic update
     db.execute("DELETE FROM vendor_stock WHERE id=?", (id,))
     flash('Removed from vendor. Inventory updated.', 'info')
+    return redirect(url_for('vendor'))
+
+@app.route('/vendor/<int:id>/sold', methods=['POST'])
+def vendor_sold(id):
+    row = db.get_one("SELECT name, category FROM vendor_stock WHERE id=?", (id,))
+    if row and row['category'] in ('Weapon', 'Armor', 'Mod'):
+        section_map = {'Weapon': 'weapons', 'Armor': 'armor', 'Mod': 'mods'}
+        tbl = section_map[row['category']]
+        sec_row = db.get_one(
+            "SELECT id FROM " + tbl + " WHERE name=? AND status='Sell' ORDER BY id DESC LIMIT 1",
+            (row['name'],)
+        )
+        if sec_row:
+            inv = db.get_one("SELECT id FROM inventory WHERE source_table=? AND source_id=?", (tbl, sec_row['id']))
+            if inv:
+                db.execute("DELETE FROM inventory WHERE id=?", (inv['id'],))
+            db.execute("DELETE FROM " + tbl + " WHERE id=?", (sec_row['id'],))
+    db.execute("DELETE FROM vendor_stock WHERE id=?", (id,))
+    flash('Sold! Removed from inventory.', 'success')
+    return redirect(url_for('vendor'))
+
+@app.route('/vendor/wipe', methods=['POST'])
+def vendor_wipe():
+    items = db.query("SELECT name, category FROM vendor_stock")
+    section_map = {'Weapon': 'weapons', 'Armor': 'armor', 'Mod': 'mods'}
+    for row in items:
+        if row['category'] in section_map:
+            tbl = section_map[row['category']]
+            sec_row = db.get_one(
+                "SELECT id FROM " + tbl + " WHERE name=? AND status='Sell' ORDER BY id DESC LIMIT 1",
+                (row['name'],)
+            )
+            if sec_row:
+                inv = db.get_one("SELECT id FROM inventory WHERE source_table=? AND source_id=?", (tbl, sec_row['id']))
+                if inv:
+                    db.execute("DELETE FROM inventory WHERE id=?", (inv['id'],))
+                db.execute("DELETE FROM " + tbl + " WHERE id=?", (sec_row['id'],))
+    db.execute("DELETE FROM vendor_stock")
+    flash('Vendor wiped. Items removed from inventory.', 'info')
     return redirect(url_for('vendor'))
 
 # ── Price Research ───────────────────────────────────────────────────────────
@@ -918,11 +1151,12 @@ def prices_chart_data():
 
 @app.route('/plans')
 def plans():
-    items = db.query("SELECT * FROM plans ORDER BY category, name")
+    cid = get_active_char_id()
+    items = db.query("SELECT * FROM plans WHERE character_id=? ORDER BY category, name", (cid,))
     edit_id = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM plans WHERE id=?", (edit_id,)) if edit_id else None
     # Unique plan names from price research not yet in plans tracker
-    existing_plans = {r['name'].lower() for r in db.query("SELECT name FROM plans")}
+    existing_plans = {r['name'].lower() for r in db.query("SELECT name FROM plans WHERE character_id=?", (cid,))}
     research_plans = db.query("""
         SELECT item_name, COUNT(*) as seen, ROUND(AVG(price_seen)) as avg_price
         FROM price_research WHERE category='Plan'
@@ -935,10 +1169,10 @@ def plans():
 @app.route('/plans/add', methods=['POST'])
 def plans_add():
     db.execute(
-        "INSERT INTO plans (name,category,unlocks,learned,qty_unlearned,sell_price,status,notes) VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO plans (name,category,unlocks,learned,qty_unlearned,sell_price,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?)",
         (fs('name'), fs('category'), fs('unlocks'),
          1 if request.form.get('learned') else 0,
-         fi('qty_unlearned'), fi('sell_price'), fs('status','Keep'), fs('notes'))
+         fi('qty_unlearned'), fi('sell_price'), fs('status','Keep'), fs('notes'), get_active_char_id())
     )
     flash('Plan added!', 'success')
     return redirect(url_for('plans'))
@@ -977,16 +1211,17 @@ def plans_bulk():
 
 @app.route('/inventory')
 def inventory():
+    cid = get_active_char_id()
     cat_filter = request.args.get('cat', '')
     edit_id = request.args.get('edit_id', type=int)
     if cat_filter:
-        items = db.query("SELECT * FROM inventory WHERE category=? ORDER BY name", (cat_filter,))
+        items = db.query("SELECT * FROM inventory WHERE character_id=? AND category=? ORDER BY name", (cid, cat_filter))
     else:
-        items = db.query("SELECT * FROM inventory ORDER BY category, name")
+        items = db.query("SELECT * FROM inventory WHERE character_id=? ORDER BY category, name", (cid,))
     edit_item = db.get_one("SELECT * FROM inventory WHERE id=?", (edit_id,)) if edit_id else None
     # Vendor allocation lookup: (name, category) → qty currently listed in vendor
     vendor_qtys = {}
-    for v in db.query("SELECT name, category, SUM(qty) as total FROM vendor_stock GROUP BY name, category"):
+    for v in db.query("SELECT name, category, SUM(qty) as total FROM vendor_stock WHERE character_id=? GROUP BY name, category", (cid,)):
         vendor_qtys[(v['name'], v['category'])] = v['total']
     return render_template('inventory.html', items=items, edit_item=edit_item,
                            cat_filter=cat_filter, vendor_qtys=vendor_qtys)
@@ -994,10 +1229,10 @@ def inventory():
 @app.route('/inventory/add', methods=['POST'])
 def inventory_add():
     db.execute(
-        "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,notes,fo1st_stored) VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,notes,fo1st_stored,character_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (fs('name'), fs('category'), fs('sub_type'), fi('qty',1),
          ff('weight_each'), fi('value_each'), fs('status','Keep'), fs('notes'),
-         1 if request.form.get('fo1st_stored') else 0)
+         1 if request.form.get('fo1st_stored') else 0, get_active_char_id())
     )
     flash('Item added!', 'success')
     return redirect(url_for('inventory'))
@@ -1041,30 +1276,71 @@ def inventory_toggle_fo1st(id):
     db.execute("UPDATE inventory SET fo1st_stored=? WHERE id=?", (new_val, id))
     return jsonify(fo1st=new_val)
 
+@app.route('/inventory/<int:id>/quick-update', methods=['POST'])
+def inventory_quick_update(id):
+    data = request.get_json(force=True)
+    field = data.get('field')
+    value = data.get('value')
+    if field == 'qty':
+        try:
+            value = max(0, int(value))
+        except (ValueError, TypeError):
+            return jsonify(error='invalid'), 400
+        db.execute("UPDATE inventory SET qty=? WHERE id=?", (value, id))
+    elif field == 'status':
+        if value not in ('Keep','Sell','Scrap','Use','Donate'):
+            return jsonify(error='invalid'), 400
+        db.execute("UPDATE inventory SET status=? WHERE id=?", (value, id))
+    else:
+        return jsonify(error='unknown field'), 400
+    return jsonify(ok=True, value=value)
+
+@app.route('/vendor/<int:id>/quick-update', methods=['POST'])
+def vendor_quick_update(id):
+    data = request.get_json(force=True)
+    field = data.get('field')
+    value = data.get('value')
+    if field == 'qty':
+        try:
+            value = max(0, int(value))
+        except (ValueError, TypeError):
+            return jsonify(error='invalid'), 400
+        db.execute("UPDATE vendor_stock SET qty=? WHERE id=?", (value, id))
+    elif field == 'my_price':
+        try:
+            value = max(0, int(value))
+        except (ValueError, TypeError):
+            return jsonify(error='invalid'), 400
+        db.execute("UPDATE vendor_stock SET my_price=? WHERE id=?", (value, id))
+    else:
+        return jsonify(error='unknown field'), 400
+    return jsonify(ok=True, value=value)
+
 # ── Challenges ───────────────────────────────────────────────────────────────
 
 @app.route('/challenges')
 def challenges():
+    cid = get_active_char_id()
     ctype_filter = request.args.get('type', 'incomplete')
     edit_id = request.args.get('edit_id', type=int)
     ORDER = "CASE ctype WHEN 'Daily' THEN 1 WHEN 'Weekly' THEN 2 WHEN 'Season' THEN 3 ELSE 4 END, name"
     if ctype_filter == 'incomplete':
-        items = db.query(f"SELECT * FROM challenges WHERE completed=0 AND active=1 ORDER BY {ORDER}")
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND completed=0 AND active=1 ORDER BY {ORDER}", (cid,))
     elif ctype_filter == 'done':
-        items = db.query(f"SELECT * FROM challenges WHERE completed=1 AND active=1 ORDER BY {ORDER}")
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND completed=1 AND active=1 ORDER BY {ORDER}", (cid,))
     elif ctype_filter == 'dormant':
-        items = db.query(f"SELECT * FROM challenges WHERE active=0 ORDER BY {ORDER}")
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND active=0 ORDER BY {ORDER}", (cid,))
     elif ctype_filter in ('Daily','Weekly','Season','Static'):
-        items = db.query(f"SELECT * FROM challenges WHERE ctype=? AND active=1 ORDER BY completed, name", (ctype_filter,))
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND ctype=? AND active=1 ORDER BY completed, name", (cid, ctype_filter))
     else:
-        items = db.query(f"SELECT * FROM challenges WHERE active=1 ORDER BY completed, {ORDER}")
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND active=1 ORDER BY completed, {ORDER}", (cid,))
     edit_item = db.get_one("SELECT * FROM challenges WHERE id=?", (edit_id,)) if edit_id else None
     counts = {
-        'Daily':   db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE ctype='Daily'  AND active=1"),
-        'Weekly':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE ctype='Weekly' AND active=1"),
-        'Season':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE ctype='Season' AND active=1"),
-        'Static':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE ctype='Static' AND active=1"),
-        'dormant': db.get_one("SELECT COUNT(*) as n, 0 as done FROM challenges WHERE active=0"),
+        'Daily':   db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Daily'  AND active=1", (cid,)),
+        'Weekly':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Weekly' AND active=1", (cid,)),
+        'Season':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Season' AND active=1", (cid,)),
+        'Static':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Static' AND active=1", (cid,)),
+        'dormant': db.get_one("SELECT COUNT(*) as n, 0 as done FROM challenges WHERE character_id=? AND active=0", (cid,)),
     }
     return render_template('challenges.html', items=items, edit_item=edit_item,
                            ctype_filter=ctype_filter, counts=counts)
@@ -1072,11 +1348,11 @@ def challenges():
 @app.route('/challenges/add', methods=['POST'])
 def challenges_add():
     db.execute(
-        "INSERT INTO challenges (name,ctype,category,description,progress,target,completed,score_reward,atoms_reward,reward,repeatable,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO challenges (name,ctype,category,description,progress,target,completed,score_reward,atoms_reward,reward,repeatable,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (fs('name'), fs('ctype','Daily'), fs('category'), fs('description'),
          fi('progress',0), fi('target',1), 1 if request.form.get('completed') else 0,
          fi('score_reward'), fi('atoms_reward'), fs('reward'),
-         1 if request.form.get('repeatable') else 0, fs('notes'))
+         1 if request.form.get('repeatable') else 0, fs('notes'), get_active_char_id())
     )
     flash('Challenge added!', 'success')
     return redirect(url_for('challenges'))
@@ -1163,6 +1439,7 @@ def challenges_reset(ctype):
 def quick_log():
     section = fs('ql_section', 'price')
     try:
+        cid = get_active_char_id()
         if section == 'price':
             db.execute(
                 "INSERT INTO price_research (item_name, category, price_seen, source, date_seen) VALUES (?,?,?,?,date('now'))",
@@ -1171,29 +1448,29 @@ def quick_log():
             msg = f"Price logged: {fs('ql_item_name')} — {fi('ql_price'):,} caps"
         elif section == 'weapon':
             wid = db.insert(
-                "INSERT INTO weapons (name, wtype, star1, star2, star3, star4, status) VALUES (?,?,?,?,?,?,?)",
-                (fs('ql_name'), fs('ql_wtype'), fs('ql_star1'), fs('ql_star2'), fs('ql_star3'), fs('ql_star4'), fs('ql_status','Keep'))
+                "INSERT INTO weapons (name, wtype, star1, star2, star3, star4, status, character_id) VALUES (?,?,?,?,?,?,?,?)",
+                (fs('ql_name'), fs('ql_wtype'), fs('ql_star1'), fs('ql_star2'), fs('ql_star3'), fs('ql_star4'), fs('ql_status','Keep'), cid)
             )
-            _inv_sync('weapons', wid, fs('ql_name'), 'Weapon', fs('ql_wtype'), 1, 0, 0, fs('ql_status','Keep'))
+            _inv_sync('weapons', wid, fs('ql_name'), 'Weapon', fs('ql_wtype'), 1, 0, 0, fs('ql_status','Keep'), cid)
             msg = f"Weapon logged: {fs('ql_name')}"
         elif section == 'armor':
             aid = db.insert(
-                "INSERT INTO armor (name, slot, star1, star2, star3, star4, status) VALUES (?,?,?,?,?,?,?)",
-                (fs('ql_name'), fs('ql_slot'), fs('ql_star1'), fs('ql_star2'), fs('ql_star3'), fs('ql_star4'), fs('ql_status','Keep'))
+                "INSERT INTO armor (name, slot, star1, star2, star3, star4, status, character_id) VALUES (?,?,?,?,?,?,?,?)",
+                (fs('ql_name'), fs('ql_slot'), fs('ql_star1'), fs('ql_star2'), fs('ql_star3'), fs('ql_star4'), fs('ql_status','Keep'), cid)
             )
-            _inv_sync('armor', aid, fs('ql_name'), 'Armor', fs('ql_slot'), 1, 0, 0, fs('ql_status','Keep'))
+            _inv_sync('armor', aid, fs('ql_name'), 'Armor', fs('ql_slot'), 1, 0, 0, fs('ql_status','Keep'), cid)
             msg = f"Armor logged: {fs('ql_name')}"
         elif section == 'plan':
-            pid = db.insert(
-                "INSERT INTO plans (name, category, learned, qty_unlearned) VALUES (?,?,?,?)",
+            db.execute(
+                "INSERT INTO plans (name, category, learned, qty_unlearned, character_id) VALUES (?,?,?,?,?)",
                 (fs('ql_name'), fs('ql_category'),
-                 1 if request.form.get('ql_learned') else 0, fi('ql_qty_unlearned'))
+                 1 if request.form.get('ql_learned') else 0, fi('ql_qty_unlearned'), cid)
             )
             msg = f"Plan logged: {fs('ql_name')}"
         elif section == 'inventory':
             db.execute(
-                "INSERT INTO inventory (name, category, qty, status) VALUES (?,?,?,?)",
-                (fs('ql_name'), fs('ql_category'), fi('ql_qty',1), fs('ql_status','Keep'))
+                "INSERT INTO inventory (name, category, qty, status, character_id) VALUES (?,?,?,?,?)",
+                (fs('ql_name'), fs('ql_category'), fi('ql_qty',1), fs('ql_status','Keep'), cid)
             )
             msg = f"Logged: {fs('ql_name')} x{fi('ql_qty',1)}"
         elif section == 'challenge':
@@ -1216,6 +1493,35 @@ def quick_log():
         return jsonify({'ok': True, 'message': msg})
     except Exception as e:
         return jsonify({'ok': False, 'message': str(e)})
+
+@app.route('/api/item-search')
+def api_item_search():
+    q = (request.args.get('q') or '').strip().lower()
+    if len(q) < 2:
+        return jsonify([])
+
+    results = []
+
+    def add_matches(names, category):
+        for name in names:
+            if q in name.lower():
+                results.append({'name': name, 'category': category})
+
+    add_matches(reference.PLAN_NAMES,  'Plan')
+    add_matches(reference.FOOD_ITEMS,  'Food/Drink')
+    add_matches(reference.CHEMS,       'Aid')
+    add_matches(reference.AMMO_NAMES,  'Ammo')
+    add_matches(reference.COMPONENTS,  'Component')
+    add_matches(reference.MOD_NAMES,   'Mod')
+
+    for w in db.query("SELECT name FROM wiki_weapons WHERE LOWER(name) LIKE ? LIMIT 15", (f'%{q}%',)):
+        results.append({'name': w['name'], 'category': 'Weapon'})
+    for a in db.query("SELECT name FROM wiki_armor WHERE LOWER(name) LIKE ? LIMIT 10", (f'%{q}%',)):
+        results.append({'name': a['name'], 'category': 'Armor'})
+
+    starts   = [r for r in results if r['name'].lower().startswith(q)]
+    contains = [r for r in results if not r['name'].lower().startswith(q)]
+    return jsonify((starts + contains)[:25])
 
 @app.route('/api/challenges-active')
 def api_challenges_active():
@@ -1251,7 +1557,6 @@ EXPORT_CONFIG = {
     'caps-ledger':      ('caps_ledger',     'Caps Ledger'),
     'ammo':             ('ammo',            'Ammo Counter'),
     'legend-runs':      ('legend_runs',     'Legendary Runs'),
-    'server-hops':      ('server_hops',     'Server Hops'),
     'atom-shop':        ('atom_shop',       'Atom Shop Wishlist'),
 }
 
@@ -1621,21 +1926,22 @@ def wishlist_delete(wid):
 
 @app.route('/caps')
 def caps():
+    cid       = get_active_char_id()
     edit_id   = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM caps_sessions WHERE id=?", (edit_id,)) if edit_id else None
-    sessions  = db.query("SELECT *, (end_caps - start_caps) AS net FROM caps_sessions ORDER BY session_date DESC, id DESC")
+    sessions  = db.query("SELECT *, (end_caps - start_caps) AS net FROM caps_sessions WHERE character_id=? ORDER BY session_date DESC, id DESC", (cid,))
 
     today      = datetime.now().strftime('%Y-%m-%d')
     week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime('%Y-%m-%d')
 
     def _net(since=None):
         if since:
-            row = db.get_one("SELECT COALESCE(SUM(end_caps - start_caps),0) AS t FROM caps_sessions WHERE session_date>=?", (since,))
+            row = db.get_one("SELECT COALESCE(SUM(end_caps - start_caps),0) AS t FROM caps_sessions WHERE character_id=? AND session_date>=?", (cid, since))
         else:
-            row = db.get_one("SELECT COALESCE(SUM(end_caps - start_caps),0) AS t FROM caps_sessions")
+            row = db.get_one("SELECT COALESCE(SUM(end_caps - start_caps),0) AS t FROM caps_sessions WHERE character_id=?", (cid,))
         return int(row['t']) if row else 0
 
-    last = db.get_one("SELECT end_caps FROM caps_sessions ORDER BY session_date DESC, id DESC LIMIT 1")
+    last = db.get_one("SELECT end_caps FROM caps_sessions WHERE character_id=? ORDER BY session_date DESC, id DESC LIMIT 1", (cid,))
     stats = {
         'current_caps': last['end_caps'] if last else None,
         'today_net':    _net(today),
@@ -1659,10 +1965,11 @@ def caps_add():
     except (ValueError, TypeError):
         start = end = 0
     db.execute(
-        "INSERT INTO caps_sessions (session_date, start_caps, end_caps, note) VALUES (?,?,?,?)",
+        "INSERT INTO caps_sessions (session_date, start_caps, end_caps, note, character_id) VALUES (?,?,?,?,?)",
         (request.form.get('session_date') or datetime.now().strftime('%Y-%m-%d'),
          start, end,
-         (request.form.get('note') or '').strip())
+         (request.form.get('note') or '').strip(),
+         get_active_char_id())
     )
     flash('Session logged.', 'success')
     return redirect(url_for('caps'))
@@ -1923,6 +2230,181 @@ def weapons_scan():
         flash(f'Scan failed: {e}', 'error')
         return redirect(url_for('weapons'))
 
+
+# ── Inventory Screenshot Scan ─────────────────────────────────────────────────
+
+_INV_SCAN_PROMPT = """This is a screenshot from Fallout 76 showing the player's inventory, stash, or Pip-Boy items screen.
+
+Extract every visible item and return a JSON array. Each element must have these fields:
+{
+  "name": "<exact item name>",
+  "category": "<one of: Aid, Ammo, Junk, Food/Drink, Chem, Component, Apparel, Weapon, Armor, Mod, Plan, Misc>",
+  "qty": <integer, default 1 if not shown>,
+  "weight_each": <float, default 0 if not shown>,
+  "value_each": <integer cap value per item, default 0 if not shown>,
+  "notes": "<any relevant info: legendary stars, condition, variant — empty string if none>"
+}
+
+Rules:
+- Include every item you can read. Do not skip lines.
+- For Aid/Chems/Food: category is "Aid", "Chem", or "Food/Drink".
+- For ammo (e.g. ".308 Rounds", "5mm Rounds"): category is "Ammo".
+- For junk components (Steel, Aluminum, Wood, etc.): category is "Component".
+- If item looks like a plan or recipe: category is "Plan".
+- If unsure of category, use "Misc".
+- Return ONLY a valid JSON array with no explanation.
+- If no items are visible, return [].
+"""
+
+_VENDOR_SCAN_PROMPT = """This is a screenshot from Fallout 76 showing a player vendor machine or vendor inventory.
+
+Extract every visible listing and return a JSON array. Each element must have these fields:
+{
+  "name": "<exact item name>",
+  "category": "<one of: Weapon, Armor, Apparel, Mod, Power Armor, Plan, Aid, Ammo, Misc>",
+  "qty": <integer quantity listed, default 1>,
+  "my_price": <integer cap price shown>,
+  "description": "<legendary stars or notes visible — empty string if none>"
+}
+
+Rules:
+- Extract every item row you can see.
+- For prices: use the number shown (no commas). If unclear, use 0.
+- For weapons with legendary stars: put the star effects in description (e.g. "Bloodied / FFR / 25ffr").
+- Return ONLY a valid JSON array with no explanation.
+- If no items visible, return [].
+"""
+
+
+def _extract_json_array(text):
+    """Pull a JSON array from model response."""
+    text = text.strip()
+    # Find first '[' and last ']'
+    start = text.find('[')
+    end   = text.rfind(']')
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start:end+1])
+        except Exception:
+            pass
+    # Fallback: try whole text
+    try:
+        return json.loads(text)
+    except Exception:
+        return None
+
+
+@app.route('/inventory/scan', methods=['POST'])
+def inventory_scan():
+    api_key = db.get_setting('anthropic_api_key', '')
+    if not api_key:
+        return jsonify(error='No API key set. Go to Vendor Scan → Settings to add your Anthropic key.'), 400
+    f = request.files.get('scan_image')
+    if not f or not f.filename:
+        return jsonify(error='No image uploaded.'), 400
+    MIME = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'}
+    ext  = os.path.splitext(f.filename)[1].lower()
+    media_type = MIME.get(ext, 'image/png')
+    try:
+        raw   = _scan_image(f.read(), media_type, api_key, prompt=_INV_SCAN_PROMPT)
+        items = _extract_json_array(raw)
+        if items is None:
+            return jsonify(error='Could not parse items from image. Try a cleaner screenshot.'), 400
+        # Normalise fields
+        clean = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            clean.append({
+                'name':        str(item.get('name', '')).strip(),
+                'category':    str(item.get('category', 'Misc')).strip(),
+                'qty':         max(1, int(item.get('qty') or 1)),
+                'weight_each': round(float(item.get('weight_each') or 0), 3),
+                'value_each':  max(0, int(item.get('value_each') or 0)),
+                'notes':       str(item.get('notes', '')).strip(),
+            })
+        return jsonify(items=clean)
+    except Exception as e:
+        return jsonify(error=f'Scan failed: {e}'), 500
+
+
+@app.route('/inventory/scan/import', methods=['POST'])
+def inventory_scan_import():
+    data = request.get_json(force=True)
+    items = data.get('items', [])
+    cid   = get_active_char_id()
+    count = 0
+    for item in items:
+        name = (item.get('name') or '').strip()
+        if not name:
+            continue
+        db.execute(
+            "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,notes,fo1st_stored,character_id) "
+            "VALUES (?,?,?,?,?,?,?,?,0,?)",
+            (name, item.get('category','Misc'), '', max(1, int(item.get('qty') or 1)),
+             round(float(item.get('weight_each') or 0), 3),
+             max(0, int(item.get('value_each') or 0)),
+             'Keep', item.get('notes',''), cid)
+        )
+        count += 1
+    return jsonify(ok=True, count=count)
+
+
+# ── Vendor Screenshot Scan ────────────────────────────────────────────────────
+
+@app.route('/vendor/scan', methods=['POST'])
+def vendor_scan_import_route():
+    api_key = db.get_setting('anthropic_api_key', '')
+    if not api_key:
+        return jsonify(error='No API key set. Go to Vendor Scan → Settings to add your Anthropic key.'), 400
+    f = request.files.get('scan_image')
+    if not f or not f.filename:
+        return jsonify(error='No image uploaded.'), 400
+    MIME = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'}
+    ext  = os.path.splitext(f.filename)[1].lower()
+    media_type = MIME.get(ext, 'image/png')
+    try:
+        raw   = _scan_image(f.read(), media_type, api_key, prompt=_VENDOR_SCAN_PROMPT)
+        items = _extract_json_array(raw)
+        if items is None:
+            return jsonify(error='Could not parse items from image. Try a cleaner screenshot.'), 400
+        clean = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            clean.append({
+                'name':        str(item.get('name', '')).strip(),
+                'category':    str(item.get('category', 'Misc')).strip(),
+                'qty':         max(1, int(item.get('qty') or 1)),
+                'my_price':    max(0, int(item.get('my_price') or 0)),
+                'description': str(item.get('description', '')).strip(),
+            })
+        return jsonify(items=clean)
+    except Exception as e:
+        return jsonify(error=f'Scan failed: {e}'), 500
+
+
+@app.route('/vendor/scan/import', methods=['POST'])
+def vendor_scan_import():
+    data  = request.get_json(force=True)
+    items = data.get('items', [])
+    cid   = get_active_char_id()
+    count = 0
+    for item in items:
+        name = (item.get('name') or '').strip()
+        if not name:
+            continue
+        db.execute(
+            "INSERT INTO vendor_stock (name,category,description,qty,my_price,avg_market_price,date_listed,notes,character_id) "
+            "VALUES (?,?,?,?,?,0,date('now'),'',?)",
+            (name, item.get('category','Misc'), item.get('description',''),
+             max(1, int(item.get('qty') or 1)),
+             max(0, int(item.get('my_price') or 0)), cid)
+        )
+        count += 1
+    return jsonify(ok=True, count=count)
+
+
 @app.route('/backup')
 def backup():
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fo76.db')
@@ -1964,15 +2446,6 @@ def backup_download_zip():
     return send_file(buf, as_attachment=True, download_name=f'fo76_full_backup_{today}.zip',
                      mimetype='application/zip')
 
-# ── Playtime Tracker ─────────────────────────────────────────────────────────
-
-def _fmt_duration(seconds):
-    seconds = int(seconds or 0)
-    h, m = divmod(seconds, 3600)
-    m = m // 60
-    if h:
-        return f"{h}h {m:02d}m"
-    return f"{m}m"
 
 @app.route('/decode')
 def decode():
@@ -2030,89 +2503,9 @@ def decode():
         weapon_aliases=sorted(set(ref.WEAPON_ALIASES.values())))
 
 
-@app.route('/playtime')
-def playtime():
-    active = db.get_one("SELECT * FROM play_sessions WHERE end_time='' ORDER BY id DESC LIMIT 1")
-    sessions = db.query("SELECT * FROM play_sessions WHERE end_time!='' ORDER BY start_time DESC LIMIT 100")
-    today = datetime.now().strftime('%Y-%m-%d')
-    week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime('%Y-%m-%d')
-    today_s  = db.get_one("SELECT COALESCE(SUM(duration_s),0) AS t FROM play_sessions WHERE date(start_time)=?", (today,))
-    week_s   = db.get_one("SELECT COALESCE(SUM(duration_s),0) AS t FROM play_sessions WHERE date(start_time)>=?", (week_start,))
-    total_s  = db.get_one("SELECT COALESCE(SUM(duration_s),0) AS t FROM play_sessions")
-    total_sessions = db.get_one("SELECT COUNT(*) AS c FROM play_sessions WHERE end_time!=''")
-    stats = {
-        'today':   _fmt_duration(today_s['t'] if today_s else 0),
-        'week':    _fmt_duration(week_s['t']  if week_s  else 0),
-        'total':   _fmt_duration(total_s['t'] if total_s else 0),
-        'count':   total_sessions['c'] if total_sessions else 0,
-    }
-    return render_template('playtime.html', active=active, sessions=sessions, stats=stats)
-
-@app.route('/playtime/start', methods=['POST'])
-def playtime_start():
-    existing = db.get_one("SELECT id FROM play_sessions WHERE end_time=''")
-    if existing:
-        flash('A session is already running.', 'warning')
-    else:
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        db.execute("INSERT INTO play_sessions (start_time, end_time) VALUES (?,'')", (now,))
-        flash('Session started.', 'success')
-    return redirect(url_for('playtime'))
-
-@app.route('/playtime/stop', methods=['POST'])
-def playtime_stop():
-    active = db.get_one("SELECT * FROM play_sessions WHERE end_time='' ORDER BY id DESC LIMIT 1")
-    if not active:
-        flash('No active session.', 'warning')
-    else:
-        now = datetime.now()
-        start = datetime.strptime(active['start_time'], '%Y-%m-%d %H:%M:%S')
-        duration_s = int((now - start).total_seconds())
-        db.execute("UPDATE play_sessions SET end_time=?, duration_s=? WHERE id=?",
-                   (now.strftime('%Y-%m-%d %H:%M:%S'), duration_s, active['id']))
-        flash(f'Session stopped. Duration: {_fmt_duration(duration_s)}', 'success')
-    return redirect(url_for('playtime'))
-
-@app.route('/playtime/<int:sid>/delete', methods=['POST'])
-def playtime_delete(sid):
-    db.execute("DELETE FROM play_sessions WHERE id=?", (sid,))
-    flash('Session deleted.', 'success')
-    return redirect(url_for('playtime'))
 
 # ── News / RSS ───────────────────────────────────────────────────────────────
 
-# ── Notices ──────────────────────────────────────────────────────────────────
-
-@app.route('/notices')
-def notices():
-    items = db.query("SELECT * FROM notices ORDER BY created_at DESC")
-    edit_id = request.args.get('edit_id', type=int)
-    edit_item = db.get_one("SELECT * FROM notices WHERE id=?", (edit_id,)) if edit_id else None
-    return render_template('notices.html', items=items, edit_item=edit_item)
-
-@app.route('/notices/add', methods=['POST'])
-def notices_add():
-    db.execute(
-        "INSERT INTO notices (title, body, level, expires_at) VALUES (?,?,?,?)",
-        (fs('title'), fs('body'), fs('level','info'), fs('expires_at'))
-    )
-    flash('Notice posted!', 'success')
-    return redirect(url_for('notices'))
-
-@app.route('/notices/<int:id>/update', methods=['POST'])
-def notices_update(id):
-    db.execute(
-        "UPDATE notices SET title=?, body=?, level=?, expires_at=? WHERE id=?",
-        (fs('title'), fs('body'), fs('level','info'), fs('expires_at'), id)
-    )
-    flash('Notice updated!', 'success')
-    return redirect(url_for('notices'))
-
-@app.route('/notices/<int:id>/delete', methods=['POST'])
-def notices_delete(id):
-    db.execute("DELETE FROM notices WHERE id=?", (id,))
-    flash('Deleted.', 'info')
-    return redirect(url_for('notices'))
 
 # ── Season Tracker ────────────────────────────────────────────────────────────
 
@@ -2196,7 +2589,10 @@ def nuke_codes():
     silos = {r['silo']: r for r in db.query("SELECT * FROM nuke_codes ORDER BY silo")}
     today = date.today()
     today_week = str(today - timedelta(days=today.weekday()))
-    return render_template('nuke_codes.html', silos=silos, today_week=today_week)
+    fetch_status  = db.get_setting('nuke_fetch_status', '')
+    fetch_running = _nuke_fetch.get('running', False)
+    return render_template('nuke_codes.html', silos=silos, today_week=today_week,
+                           fetch_status=fetch_status, fetch_running=fetch_running)
 
 @app.route('/nuke-codes/update', methods=['POST'])
 def nuke_codes_update():
@@ -2216,55 +2612,21 @@ def nuke_codes_update():
 
 @app.route('/nuke-codes/fetch', methods=['POST'])
 def nuke_codes_fetch():
-    from datetime import date as _date
-    try:
-        from bs4 import BeautifulSoup
-        resp = requests.get('https://nukacrypt.com', timeout=10,
-                            headers={'User-Agent': 'Mozilla/5.0 FO76Tracker/1.0'})
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        codes = {}
-        silo_names = {'alpha': 'Alpha', 'bravo': 'Bravo', 'charlie': 'Charlie'}
-        full_text = soup.get_text(separator=' ')
-        for key, silo in silo_names.items():
-            # Try: look for the silo name then a 7-10 char code nearby
-            idx = full_text.lower().find(key)
-            if idx != -1:
-                chunk = full_text[idx:idx+80]
-                m = re.search(r'\b([A-Z0-9]{7,10})\b', chunk.upper())
-                if m:
-                    codes[silo] = m.group(1)
-        # Fallback: look for any span/td with code-like content near silo words
-        if len(codes) < 3:
-            for elem in soup.find_all(['td', 'span', 'div', 'p']):
-                text = elem.get_text(strip=True).upper()
-                if re.match(r'^[A-Z0-9]{7,10}$', text):
-                    # Check surrounding context for silo name
-                    ctx = str(elem.parent).lower()
-                    for key, silo in silo_names.items():
-                        if key in ctx and silo not in codes:
-                            codes[silo] = text
-        if codes:
-            week_of = str(_date.today() - timedelta(days=_date.today().weekday()))
-            for silo, code in codes.items():
-                db.execute(
-                    "UPDATE nuke_codes SET code=?, week_of=?, updated_at=date('now') WHERE silo=?",
-                    (code, week_of, silo)
-                )
-            flash(f'Fetched codes for: {", ".join(sorted(codes.keys()))}', 'success')
-        else:
-            flash('Could not parse codes from nukacrypt.com — enter manually.', 'warning')
-    except ImportError:
-        flash('beautifulsoup4 not installed — run: pip install beautifulsoup4', 'error')
-    except Exception as e:
-        flash(f'Fetch failed: {e} — enter codes manually.', 'warning')
+    if _nuke_fetch.get('running'):
+        flash('Fetch already in progress — refresh in a moment.', 'warning')
+        return redirect(url_for('nuke_codes'))
+    _nuke_fetch['running'] = True
+    db.set_setting('nuke_fetch_status', 'running|Contacting nukacrypt.com...')
+    threading.Thread(target=_do_nuke_fetch, daemon=True).start()
+    flash('Fetching codes in background — refresh in a few seconds.', 'info')
     return redirect(url_for('nuke_codes'))
 
 # ── Ammo Counter ─────────────────────────────────────────────────────────────
 
 @app.route('/ammo')
 def ammo():
-    items = db.query("SELECT * FROM ammo ORDER BY ammo_type")
+    cid = get_active_char_id()
+    items = db.query("SELECT * FROM ammo WHERE character_id=? ORDER BY ammo_type", (cid,))
     edit_id = request.args.get('edit_id', type=int)
     edit_item = db.get_one("SELECT * FROM ammo WHERE id=?", (edit_id,)) if edit_id else None
     low = [r for r in items if r['low_threshold'] > 0 and r['qty'] < r['low_threshold']]
@@ -2273,8 +2635,8 @@ def ammo():
 @app.route('/ammo/add', methods=['POST'])
 def ammo_add():
     db.execute(
-        "INSERT INTO ammo (ammo_type, qty, low_threshold, notes, updated_at) VALUES (?,?,?,?,date('now'))",
-        (fs('ammo_type'), fi('qty'), fi('low_threshold'), fs('notes'))
+        "INSERT INTO ammo (ammo_type, qty, low_threshold, notes, updated_at, character_id) VALUES (?,?,?,?,date('now'),?)",
+        (fs('ammo_type'), fi('qty'), fi('low_threshold'), fs('notes'), get_active_char_id())
     )
     flash('Ammo added!', 'success')
     return redirect(url_for('ammo'))
@@ -2374,8 +2736,9 @@ def daily_task_delete(tid):
 
 @app.route('/legend-runs')
 def legend_runs():
+    cid = get_active_char_id()
     from datetime import date as _date
-    bosses = db.query("SELECT * FROM legend_runs ORDER BY boss_name")
+    bosses = db.query("SELECT * FROM legend_runs WHERE character_id=? ORDER BY boss_name", (cid,))
     today = _date.today()
     boss_list = []
     for b in bosses:
@@ -2407,7 +2770,7 @@ def legend_runs_log():
 def legend_runs_add():
     name = fs('boss_name')
     if name:
-        db.execute("INSERT INTO legend_runs (boss_name) VALUES (?)", (name,))
+        db.execute("INSERT INTO legend_runs (boss_name, character_id) VALUES (?,?)", (name, get_active_char_id()))
         flash(f'{name} added!', 'success')
     return redirect(url_for('legend_runs'))
 
@@ -2423,29 +2786,6 @@ def legend_runs_reset(id):
     flash('Reset.', 'info')
     return redirect(url_for('legend_runs'))
 
-# ── Server Hop Notes ──────────────────────────────────────────────────────────
-
-@app.route('/server-hops')
-def server_hops():
-    from datetime import date as _date
-    hops = db.query("SELECT * FROM server_hops ORDER BY created_at DESC")
-    return render_template('server_hops.html', hops=hops, today=str(_date.today()))
-
-@app.route('/server-hops/add', methods=['POST'])
-def server_hops_add():
-    from datetime import date as _date
-    db.execute(
-        "INSERT INTO server_hops (hop_date, notes) VALUES (?,?)",
-        (fs('hop_date') or str(_date.today()), fs('notes'))
-    )
-    flash('Hop logged.', 'success')
-    return redirect(url_for('server_hops'))
-
-@app.route('/server-hops/<int:id>/delete', methods=['POST'])
-def server_hops_delete(id):
-    db.execute("DELETE FROM server_hops WHERE id=?", (id,))
-    flash('Deleted.', 'info')
-    return redirect(url_for('server_hops'))
 
 # ── Build Comparison ──────────────────────────────────────────────────────────
 
@@ -2537,16 +2877,6 @@ def analytics_data():
     caps_rows = conn.execute(
         "SELECT session_date, end_caps FROM caps_sessions ORDER BY session_date, id"
     ).fetchall()
-    play_rows = conn.execute("""
-        SELECT strftime('%Y-W%W', start_time) as week,
-               ROUND(SUM(duration_s)/3600.0, 1) as hours
-        FROM play_sessions WHERE duration_s > 0
-        GROUP BY week ORDER BY week LIMIT 16
-    """).fetchall()
-    weapon_rows = conn.execute("""
-        SELECT strftime('%Y-W%W', created_at) as week, COUNT(*) as cnt
-        FROM weapons GROUP BY week ORDER BY week DESC LIMIT 12
-    """).fetchall()
     price_rows = conn.execute("""
         SELECT strftime('%Y-W%W', created_at) as week, COUNT(*) as cnt
         FROM price_research GROUP BY week ORDER BY week DESC LIMIT 12
@@ -2556,168 +2886,12 @@ def analytics_data():
         FROM vendor_stock GROUP BY name ORDER BY total_value DESC LIMIT 10
     """).fetchall()
     conn.close()
-    weapon_list = list(reversed([dict(r) for r in weapon_rows]))
     price_list  = list(reversed([dict(r) for r in price_rows]))
     return jsonify({
         'caps':    {'labels': [r['session_date'] for r in caps_rows],  'values': [r['end_caps'] for r in caps_rows]},
-        'playtime':{'labels': [r['week'] for r in play_rows],          'values': [float(r['hours'] or 0) for r in play_rows]},
-        'weapons': {'labels': [r['week'] for r in weapon_list],        'values': [r['cnt'] for r in weapon_list]},
         'prices':  {'labels': [r['week'] for r in price_list],         'values': [r['cnt'] for r in price_list]},
         'vendor':  {'labels': [r['name'] for r in vendor_rows],        'values': [r['total_value'] for r in vendor_rows]},
     })
-
-# ── Trade Partners ─────────────────────────────────────────────────────────────
-
-@app.route('/trade-partners')
-def trade_partners():
-    q = request.args.get('q', '').strip()
-    partner_id = request.args.get('partner_id', type=int)
-    if q:
-        partners = db.query("SELECT * FROM trade_partners WHERE ign LIKE ? ORDER BY ign", (f'%{q}%',))
-    else:
-        partners = db.query("SELECT * FROM trade_partners ORDER BY ign")
-    selected = db.get_one("SELECT * FROM trade_partners WHERE id=?", (partner_id,)) if partner_id else None
-    history = []
-    if selected:
-        history = db.query(
-            "SELECT * FROM trade_history WHERE partner_id=? ORDER BY trade_date DESC, id DESC",
-            (partner_id,)
-        )
-    return render_template('trade_partners.html', partners=partners,
-                           selected=selected, history=history, q=q)
-
-@app.route('/trade-partners/add', methods=['POST'])
-def trade_partners_add():
-    ign = fs('ign')
-    if not ign:
-        flash('IGN required.', 'error')
-        return redirect(url_for('trade_partners'))
-    db.execute(
-        "INSERT INTO trade_partners (ign, platform, rating, notes) VALUES (?,?,?,?)",
-        (ign, fs('platform', 'PC'), fs('rating', 'Good'), fs('notes'))
-    )
-    flash(f'{ign} added!', 'success')
-    return redirect(url_for('trade_partners'))
-
-@app.route('/trade-partners/<int:pid>/rate', methods=['POST'])
-def trade_partners_rate(pid):
-    rating = fs('rating', 'Good')
-    db.execute("UPDATE trade_partners SET rating=? WHERE id=?", (rating, pid))
-    return jsonify({'ok': True, 'rating': rating})
-
-@app.route('/trade-partners/<int:pid>/notes', methods=['POST'])
-def trade_partners_notes(pid):
-    db.execute("UPDATE trade_partners SET notes=? WHERE id=?", (fs('notes'), pid))
-    flash('Notes updated.', 'success')
-    return redirect(url_for('trade_partners', partner_id=pid))
-
-@app.route('/trade-partners/<int:pid>/delete', methods=['POST'])
-def trade_partners_delete(pid):
-    db.execute("DELETE FROM trade_history WHERE partner_id=?", (pid,))
-    db.execute("DELETE FROM trade_partners WHERE id=?", (pid,))
-    flash('Partner removed.', 'info')
-    return redirect(url_for('trade_partners'))
-
-@app.route('/trade-history/add', methods=['POST'])
-def trade_history_add():
-    from datetime import date as _date
-    pid = fi('partner_id')
-    if not pid:
-        flash('Partner required.', 'error')
-        return redirect(url_for('trade_partners'))
-    trade_date = fs('trade_date') or str(_date.today())
-    db.execute(
-        "INSERT INTO trade_history (partner_id, trade_date, gave, received, caps_delta, notes) VALUES (?,?,?,?,?,?)",
-        (pid, trade_date, fs('gave'), fs('received'), fi('caps_delta'), fs('notes'))
-    )
-    db.execute(
-        "UPDATE trade_partners SET trade_count=trade_count+1, last_trade=? WHERE id=?",
-        (trade_date, pid)
-    )
-    flash('Trade logged!', 'success')
-    return redirect(url_for('trade_partners', partner_id=pid))
-
-@app.route('/trade-history/<int:hid>/delete', methods=['POST'])
-def trade_history_delete(hid):
-    row = db.get_one("SELECT partner_id FROM trade_history WHERE id=?", (hid,))
-    pid = row['partner_id'] if row else None
-    db.execute("DELETE FROM trade_history WHERE id=?", (hid,))
-    if pid:
-        db.execute("UPDATE trade_partners SET trade_count=MAX(0, trade_count-1) WHERE id=?", (pid,))
-    flash('Trade removed.', 'info')
-    if pid:
-        return redirect(url_for('trade_partners', partner_id=pid))
-    return redirect(url_for('trade_partners'))
-
-# ── Vendor Route Tracker ───────────────────────────────────────────────────────
-
-@app.route('/vendor-route')
-def vendor_route():
-    from datetime import date as _date
-    stops = db.query("SELECT * FROM vendor_route_stops ORDER BY sort_order, id")
-    today = str(_date.today())
-    this_monday = str(_date.today() - timedelta(days=_date.today().weekday()))
-    stop_list = []
-    for s in stops:
-        lc = s['last_checked'] or ''
-        if lc == today:
-            status = 'today'
-        elif lc >= this_monday and lc:
-            status = 'week'
-        elif lc:
-            status = 'old'
-        else:
-            status = 'never'
-        stop_list.append({'row': s, 'status': status})
-    return render_template('vendor_route.html', stops=stop_list, today=today)
-
-@app.route('/vendor-route/add', methods=['POST'])
-def vendor_route_add():
-    name = fs('stop_name')
-    if not name:
-        flash('Stop name required.', 'error')
-        return redirect(url_for('vendor_route'))
-    max_row = db.get_one("SELECT COALESCE(MAX(sort_order), 0) as m FROM vendor_route_stops")
-    max_order = max_row['m'] if max_row else 0
-    db.execute(
-        "INSERT INTO vendor_route_stops (stop_name, location, notes, sort_order) VALUES (?,?,?,?)",
-        (name, fs('location'), fs('notes'), max_order + 1)
-    )
-    flash(f'{name} added.', 'success')
-    return redirect(url_for('vendor_route'))
-
-@app.route('/vendor-route/<int:sid>/check', methods=['POST'])
-def vendor_route_check(sid):
-    from datetime import date as _date
-    today = str(_date.today())
-    db.execute("UPDATE vendor_route_stops SET last_checked=? WHERE id=?", (today, sid))
-    return jsonify({'ok': True, 'checked': today})
-
-@app.route('/vendor-route/<int:sid>/uncheck', methods=['POST'])
-def vendor_route_uncheck(sid):
-    db.execute("UPDATE vendor_route_stops SET last_checked='' WHERE id=?", (sid,))
-    return jsonify({'ok': True})
-
-@app.route('/vendor-route/<int:sid>/update', methods=['POST'])
-def vendor_route_update(sid):
-    db.execute(
-        "UPDATE vendor_route_stops SET stop_name=?, location=?, notes=? WHERE id=?",
-        (fs('stop_name'), fs('location'), fs('notes'), sid)
-    )
-    flash('Updated.', 'success')
-    return redirect(url_for('vendor_route'))
-
-@app.route('/vendor-route/<int:sid>/delete', methods=['POST'])
-def vendor_route_delete(sid):
-    db.execute("DELETE FROM vendor_route_stops WHERE id=?", (sid,))
-    flash('Stop removed.', 'info')
-    return redirect(url_for('vendor_route'))
-
-@app.route('/vendor-route/reset', methods=['POST'])
-def vendor_route_reset():
-    db.execute("UPDATE vendor_route_stops SET last_checked=''")
-    flash('All checks cleared.', 'info')
-    return redirect(url_for('vendor_route'))
 
 # ── Fishing Tracker ───────────────────────────────────────────────────────────
 
@@ -2736,7 +2910,8 @@ def fishing():
             WHEN 'Axolotl'      THEN 6
             ELSE 7 END, biome, name
     """)
-    log = db.query("SELECT * FROM fish_log ORDER BY caught_at DESC, id DESC LIMIT 100")
+    cid = get_active_char_id()
+    log = db.query("SELECT * FROM fish_log WHERE character_id=? ORDER BY caught_at DESC, id DESC LIMIT 100", (cid,))
     total_caught = sum(1 for s in species if s['caught'])
     biome_stats = db.query("""
         SELECT biome, COUNT(*) as total, COALESCE(SUM(caught),0) as caught_count
@@ -2744,7 +2919,7 @@ def fishing():
         WHERE biome IS NOT NULL AND biome != '' AND biome != 'All Regions'
         GROUP BY biome ORDER BY biome
     """)
-    log_total = db.get_one("SELECT COUNT(*) as n FROM fish_log")['n']
+    log_total = db.get_one("SELECT COUNT(*) as n FROM fish_log WHERE character_id=?", (cid,))['n']
     return render_template('fishing.html', species=species, log=log,
                            total_caught=total_caught, total_species=len(species),
                            biome_stats=biome_stats, log_total=log_total)
@@ -2771,11 +2946,11 @@ def fishing_log_add():
         flash('Fish name required.', 'error')
         return redirect(url_for('fishing'))
     db.execute(
-        "INSERT INTO fish_log (fish_name, rarity, biome, location, bait_used, weather, notes, caught_at) "
-        "VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO fish_log (fish_name, rarity, biome, location, bait_used, weather, notes, caught_at, character_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
         (fish_name, fs('rarity'), fs('biome'), fs('location'),
          fs('bait_used'), fs('weather'), fs('notes'),
-         fs('caught_at') or str(_date.today()))
+         fs('caught_at') or str(_date.today()), get_active_char_id())
     )
     # Auto-mark species as caught if it matches
     db.execute(
@@ -3398,6 +3573,150 @@ Common shorthand: B=Bloodied, AA=Anti-Armor, E=Explosive, Q=Quad, TS=Two Shot, J
         return jsonify({'success': True, 'fields': fields})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── World Finds ──────────────────────────────────────────────────────────────
+
+WORLD_FINDS_UPLOAD = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'world_finds')
+os.makedirs(WORLD_FINDS_UPLOAD, exist_ok=True)
+
+WORLD_FINDS_ALLOWED = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+
+BOBBLEHEAD_NAMES = [
+    'Agility', 'Big Guns', 'Charisma', 'Endurance', 'Energy Weapons',
+    'Explosives', 'Intelligence', 'Leader', 'Lock Picking', 'Luck',
+    'Medicine', 'Melee Weapons', 'Nuka-Cola', 'Perception', 'Repair',
+    'Science', 'Small Guns', 'Sneak', 'Speech', 'Strength', 'Unarmed',
+]
+
+MAGAZINE_NAMES = [
+    'Astoundingly Awesome Tales', 'Backwoodsman', 'Grognak the Barbarian',
+    'Guns and Bullets', 'Live & Love', "Pickman's Model", "Scout's Life",
+    'Tales from the West Virginia Hills', 'Tesla Science Magazine',
+    'Tumblers Today', 'U.S. Covert Operations Manual',
+]
+
+FO76_REGIONS = [
+    'The Forest', 'Toxic Valley', 'Ash Heap', 'The Mire',
+    'Cranberry Bog', 'Savage Divide', 'Skyline Valley',
+]
+
+
+def _save_wf_files(file_list):
+    """Save a list of uploaded files to world_finds upload dir. Returns list of filenames."""
+    saved = []
+    for f in file_list:
+        if not f or not f.filename:
+            continue
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in WORLD_FINDS_ALLOWED:
+            continue
+        fname = f"wf_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}{ext}"
+        f.save(os.path.join(WORLD_FINDS_UPLOAD, fname))
+        saved.append(fname)
+    return saved
+
+
+def _wf_screenshots(find_id):
+    """Return list of screenshot rows for a find."""
+    return db.query("SELECT * FROM world_find_screenshots WHERE find_id=? ORDER BY id", (find_id,))
+
+
+@app.route('/world-finds')
+@app.route('/world-finds/<filter_type>')
+def world_finds(filter_type='all'):
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    q = db.query("SELECT * FROM world_finds ORDER BY found_date DESC, id DESC")
+    filter_type = filter_type.lower()
+    if filter_type in ('bobblehead', 'magazine', 'other'):
+        rows = [r for r in q if r['item_type'].lower() == filter_type]
+    else:
+        rows = list(q)
+        filter_type = 'all'
+    counts = {
+        'all':        len(q),
+        'bobblehead': sum(1 for r in q if r['item_type'].lower() == 'bobblehead'),
+        'magazine':   sum(1 for r in q if r['item_type'].lower() == 'magazine'),
+        'other':      sum(1 for r in q if r['item_type'].lower() == 'other'),
+    }
+    # Build screenshot map {find_id: [row, ...]}
+    all_shots = db.query("SELECT * FROM world_find_screenshots ORDER BY find_id, id")
+    shots_map = {}
+    for s in all_shots:
+        shots_map.setdefault(s['find_id'], []).append(s)
+
+    edit_id   = request.args.get('edit_id', type=int)
+    edit_item = db.get_one("SELECT * FROM world_finds WHERE id=?", (edit_id,)) if edit_id else None
+    edit_shots = _wf_screenshots(edit_id) if edit_id else []
+    return render_template('world_finds.html',
+                           rows=rows, filter_type=filter_type, counts=counts,
+                           shots_map=shots_map,
+                           edit_item=edit_item, edit_id=edit_id, edit_shots=edit_shots,
+                           bobblehead_names=BOBBLEHEAD_NAMES,
+                           magazine_names=MAGAZINE_NAMES,
+                           regions=FO76_REGIONS)
+
+
+@app.route('/world-finds/add', methods=['POST'])
+def world_finds_add():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    find_id = db.insert(
+        "INSERT INTO world_finds (item_type, item_name, location, region, server_type, notes, found_date) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (fs('item_type') or 'Bobblehead', fs('item_name'), fs('location'),
+         fs('region'), fs('server_type') or 'Public', fs('notes'),
+         fs('found_date') or datetime.now().strftime('%Y-%m-%d')),
+    )
+    for fname in _save_wf_files(request.files.getlist('screenshots')):
+        db.insert("INSERT INTO world_find_screenshots (find_id, filename) VALUES (?,?)", (find_id, fname))
+    flash('Find logged!', 'success')
+    return redirect(url_for('world_finds'))
+
+
+@app.route('/world-finds/<int:id>/edit', methods=['POST'])
+def world_finds_edit(id):
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    db.execute(
+        "UPDATE world_finds SET item_type=?, item_name=?, location=?, region=?, "
+        "server_type=?, notes=?, found_date=? WHERE id=?",
+        (fs('item_type') or 'Bobblehead', fs('item_name'), fs('location'),
+         fs('region'), fs('server_type') or 'Public', fs('notes'),
+         fs('found_date') or datetime.now().strftime('%Y-%m-%d'), id),
+    )
+    for fname in _save_wf_files(request.files.getlist('screenshots')):
+        db.insert("INSERT INTO world_find_screenshots (find_id, filename) VALUES (?,?)", (id, fname))
+    flash('Find updated!', 'success')
+    return redirect(url_for('world_finds'))
+
+
+@app.route('/world-finds/<int:find_id>/screenshot/<int:shot_id>/delete', methods=['POST'])
+def world_finds_screenshot_delete(find_id, shot_id):
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    row = db.get_one("SELECT filename FROM world_find_screenshots WHERE id=? AND find_id=?", (shot_id, find_id))
+    if row:
+        path = os.path.join(WORLD_FINDS_UPLOAD, row['filename'])
+        if os.path.isfile(path):
+            os.remove(path)
+        db.execute("DELETE FROM world_find_screenshots WHERE id=?", (shot_id,))
+    return redirect(url_for('world_finds', _anchor='') + f'?edit_id={find_id}#addPanel')
+
+
+@app.route('/world-finds/<int:id>/delete', methods=['POST'])
+def world_finds_delete(id):
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    for row in db.query("SELECT filename FROM world_find_screenshots WHERE find_id=?", (id,)):
+        path = os.path.join(WORLD_FINDS_UPLOAD, row['filename'])
+        if os.path.isfile(path):
+            os.remove(path)
+    db.execute("DELETE FROM world_find_screenshots WHERE find_id=?", (id,))
+    db.execute("DELETE FROM world_finds WHERE id=?", (id,))
+    flash('Find deleted.', 'info')
+    return redirect(url_for('world_finds'))
 
 
 if __name__ == '__main__':

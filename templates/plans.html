@@ -19,7 +19,9 @@
       <div class="form-grid">
         <div class="form-group span2">
           <label>Plan / Recipe Name *</label>
-          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+          <input type="text" name="name" required list="planNameList" autocomplete="off"
+                 value="{{ edit_item['name'] if edit_item else '' }}">
+          <datalist id="planNameList">{% for n in ref.PLAN_NAMES %}<option value="{{ n }}">{% endfor %}</datalist>
         </div>
         <div class="form-group">
           <label>Category</label>

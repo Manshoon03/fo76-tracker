@@ -17,11 +17,18 @@
       <div class="form-grid">
         <div class="form-group span2">
           <label>Item Name *</label>
-          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+          <input type="text" name="name" required id="invNameInput" autocomplete="off"
+                 value="{{ edit_item['name'] if edit_item else '' }}">
+          <datalist id="invDlWeapon">{% for n in wiki_weapon_names %}<option value="{{ n }}">{% endfor %}</datalist>
+          <datalist id="invDlArmor">{% for n in wiki_armor_names %}<option value="{{ n }}">{% endfor %}</datalist>
+          <datalist id="invDlAid">{% for n in ref.CHEMS %}<option value="{{ n }}">{% endfor %}</datalist>
+          <datalist id="invDlAmmo">{% for n in ref.AMMO_NAMES %}<option value="{{ n }}">{% endfor %}</datalist>
+          <datalist id="invDlFood">{% for n in ref.FOOD_ITEMS %}<option value="{{ n }}">{% endfor %}</datalist>
+          <datalist id="invDlComponent">{% for n in ref.COMPONENTS %}<option value="{{ n }}">{% endfor %}</datalist>
         </div>
         <div class="form-group">
           <label>Category</label>
-          <select name="category">
+          <select name="category" id="invCategorySelect" onchange="updateInvNameList(this)">
             {% for c in ['','Aid','Ammo','Junk','Misc','Food/Drink','Chem','Component','Apparel','Quest'] %}
             <option value="{{ c }}" {{ 'selected' if edit_item and edit_item['category']==c else '' }}>{{ c or '— select —' }}</option>
             {% endfor %}
@@ -67,6 +74,47 @@
         {% if edit_item %}<a href="/inventory" class="btn btn-secondary">Cancel</a>{% endif %}
       </div>
     </form>
+  </div>
+</section>
+
+<section class="add-panel" id="scanInvPanel">
+  <div class="panel-toggle" onclick="togglePanel('scanInvPanel')">
+    <span>📷 Scan Screenshot → Import</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <p class="dim" style="font-size:11px;margin-bottom:10px">
+      Take a screenshot of your Pip-Boy / Stash screen and upload it. Claude reads the items, shows them in an editable table — fix anything before importing.
+    </p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label class="btn btn-secondary" style="cursor:pointer;margin-bottom:0">
+        Choose Screenshot
+        <input type="file" id="invScanFile" accept="image/*" style="display:none" onchange="invScanUpload(this)">
+      </label>
+      <span id="invScanStatus" class="dim" style="font-size:11px"></span>
+    </div>
+
+    <div id="invScanPreview" style="display:none;margin-top:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="font-size:12px">Review &amp; Edit — uncheck rows to skip</strong>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="invScanSelectAll(true)">All</button>
+          <button class="btn btn-secondary btn-sm" onclick="invScanSelectAll(false)">None</button>
+          <button class="btn btn-primary btn-sm" onclick="invScanImport()" id="invScanImportBtn">Import Selected</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="max-height:360px;overflow-y:auto">
+        <table class="data-table" id="invScanTable">
+          <thead>
+            <tr>
+              <th style="width:32px"><input type="checkbox" id="invScanAllCb" onchange="invScanSelectAll(this.checked)" checked></th>
+              <th>Name</th><th>Category</th><th>Qty</th><th>Weight</th><th>Value</th><th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="invScanBody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -117,12 +165,12 @@
         <td class="hi">{{ item['name'] }}</td>
         <td class="dim">{{ item['category'] }}</td>
         <td class="dim">{{ item['sub_type'] }}</td>
-        <td>{{ item['qty'] }}</td>
+        <td class="editable-cell" data-id="{{ item['id'] }}" data-field="qty" data-url="/inventory/{{ item['id'] }}/quick-update" title="Click to edit">{{ item['qty'] }}</td>
         {% set in_v = vendor_qtys.get((item['name'], item['category']), 0) %}
         <td>{% if in_v %}<span class="badge badge-sell">{{ in_v }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
         <td class="dim">{{ "%.1f"|format(tw) }}</td>
         <td>{{ "{:,}".format(tv) }}</td>
-        <td><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
+        <td class="editable-cell editable-select" data-id="{{ item['id'] }}" data-field="status" data-url="/inventory/{{ item['id'] }}/quick-update" data-options="Keep,Sell,Scrap,Use,Donate" title="Click to edit"><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
         <td>
           <button class="btn-sm {{ 'btn-keep' if item['fo1st_stored'] else 'btn-secondary' }}"
                   id="f1btn-{{ item['id'] }}"
@@ -155,6 +203,161 @@
 </div>
 
 <script>
+const _INV_DL_MAP = { Weapon:'invDlWeapon', Armor:'invDlArmor', Aid:'invDlAid', Chem:'invDlAid', Ammo:'invDlAmmo', 'Food/Drink':'invDlFood', Junk:'invDlComponent', Component:'invDlComponent' };
+function updateInvNameList(sel) {
+  document.getElementById('invNameInput').setAttribute('list', _INV_DL_MAP[sel.value] || '');
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var sel = document.querySelector('select[name=category]');
+  if (sel) updateInvNameList(sel);
+  initItemAutocomplete('invNameInput', 'invCategorySelect');
+});
+
+// Inline editing
+const STATUS_COLORS = {Keep:'keep',Sell:'sell',Scrap:'scrap',Use:'stash',Donate:'trade'};
+document.querySelectorAll('.editable-cell').forEach(cell => {
+  cell.style.cursor = 'pointer';
+  cell.style.borderBottom = '1px dashed var(--text-dim)';
+  cell.addEventListener('click', function() {
+    if (this.querySelector('input,select')) return;
+    const url = this.dataset.url;
+    const field = this.dataset.field;
+    const isSelect = this.classList.contains('editable-select');
+    const currentVal = this.dataset.field === 'status'
+      ? this.querySelector('.badge') ? this.querySelector('.badge').textContent.trim() : this.textContent.trim()
+      : this.textContent.trim();
+
+    if (isSelect) {
+      const sel = document.createElement('select');
+      sel.className = 'inline-input';
+      (this.dataset.options || '').split(',').forEach(opt => {
+        const o = document.createElement('option');
+        o.value = o.textContent = opt.trim();
+        if (opt.trim() === currentVal) o.selected = true;
+        sel.appendChild(o);
+      });
+      this.innerHTML = '';
+      this.appendChild(sel);
+      sel.focus();
+      sel.addEventListener('change', () => saveCell(this, url, field, sel.value));
+      sel.addEventListener('blur', () => saveCell(this, url, field, sel.value));
+    } else {
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.min = 0;
+      inp.className = 'inline-input';
+      inp.value = currentVal.replace(/,/g,'');
+      this.innerHTML = '';
+      this.appendChild(inp);
+      inp.focus(); inp.select();
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { inp.blur(); }
+        if (e.key === 'Escape') { location.reload(); }
+      });
+      inp.addEventListener('blur', () => saveCell(this, url, field, inp.value));
+    }
+  });
+});
+
+function saveCell(cell, url, field, value) {
+  fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({field, value})})
+    .then(r => r.json()).then(data => {
+      if (data.ok) {
+        if (field === 'status') {
+          const color = STATUS_COLORS[data.value] || 'secondary';
+          cell.innerHTML = `<span class="badge badge-${color}">${data.value}</span>`;
+        } else {
+          cell.textContent = parseInt(data.value).toLocaleString();
+        }
+      } else { location.reload(); }
+    }).catch(() => location.reload());
+}
+
+// ── Inventory screenshot scan ──────────────────────────────────────────────
+const INV_CATEGORIES = ['Aid','Ammo','Junk','Food/Drink','Chem','Component','Apparel','Weapon','Armor','Mod','Plan','Misc'];
+
+function invScanUpload(input) {
+  if (!input.files || !input.files[0]) return;
+  const status = document.getElementById('invScanStatus');
+  status.textContent = '⏳ Scanning… this takes a few seconds';
+  const fd = new FormData();
+  fd.append('scan_image', input.files[0]);
+  fetch('/inventory/scan', {method:'POST', body: fd})
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { status.textContent = '✗ ' + data.error; return; }
+      status.textContent = `✓ Found ${data.items.length} item(s) — review below`;
+      invScanBuildTable(data.items);
+      document.getElementById('invScanPreview').style.display = 'block';
+      input.value = '';
+    })
+    .catch(e => { status.textContent = '✗ Request failed: ' + e; });
+}
+
+function invScanBuildTable(items) {
+  const tbody = document.getElementById('invScanBody');
+  tbody.innerHTML = '';
+  items.forEach((item, i) => {
+    const catOpts = INV_CATEGORIES.map(c =>
+      `<option value="${c}" ${c===item.category?'selected':''}>${c}</option>`).join('');
+    const tr = document.createElement('tr');
+    tr.dataset.idx = i;
+    tr.innerHTML = `
+      <td><input type="checkbox" class="inv-scan-cb" checked></td>
+      <td><input class="inline-input" style="width:140px" value="${escHtml(item.name)}" data-field="name"></td>
+      <td><select class="inline-input" data-field="category">${catOpts}</select></td>
+      <td><input class="inline-input" style="width:50px" type="number" min="1" value="${item.qty}" data-field="qty"></td>
+      <td><input class="inline-input" style="width:60px" type="number" min="0" step="0.001" value="${item.weight_each}" data-field="weight_each"></td>
+      <td><input class="inline-input" style="width:60px" type="number" min="0" value="${item.value_each}" data-field="value_each"></td>
+      <td><input class="inline-input" style="width:120px" value="${escHtml(item.notes)}" data-field="notes"></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function invScanSelectAll(checked) {
+  document.querySelectorAll('.inv-scan-cb').forEach(cb => cb.checked = checked);
+  const allCb = document.getElementById('invScanAllCb');
+  if (allCb) allCb.checked = checked;
+}
+
+function invScanImport() {
+  const rows = document.querySelectorAll('#invScanBody tr');
+  const items = [];
+  rows.forEach(row => {
+    const cb = row.querySelector('.inv-scan-cb');
+    if (!cb || !cb.checked) return;
+    const get = f => row.querySelector(`[data-field="${f}"]`)?.value ?? '';
+    items.push({
+      name:        get('name').trim(),
+      category:    get('category'),
+      qty:         parseInt(get('qty')) || 1,
+      weight_each: parseFloat(get('weight_each')) || 0,
+      value_each:  parseInt(get('value_each')) || 0,
+      notes:       get('notes').trim(),
+    });
+  });
+  if (!items.length) { alert('No items selected.'); return; }
+  const btn = document.getElementById('invScanImportBtn');
+  btn.disabled = true; btn.textContent = 'Importing…';
+  fetch('/inventory/scan/import', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({items})
+  }).then(r => r.json()).then(data => {
+    if (data.ok) {
+      showToast(`✓ Imported ${data.count} items!`, 'success');
+      document.getElementById('invScanPreview').style.display = 'none';
+      document.getElementById('invScanStatus').textContent = '';
+      location.reload();
+    } else {
+      btn.disabled = false; btn.textContent = 'Import Selected';
+      showToast('Import failed', 'error');
+    }
+  }).catch(() => { btn.disabled = false; btn.textContent = 'Import Selected'; });
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function toggleFo1st(id) {
   fetch(`/inventory/${id}/toggle-fo1st`, {method:'POST'})
     .then(r => r.json()).then(data => {

@@ -1,0 +1,474 @@
+{% extends 'base.html' %}
+{% block title %}World Finds{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🗺 WORLD FINDS</h1>
+  <span class="count-badge">{{ counts.all }} logged</span>
+</div>
+
+<p class="dim" style="font-size:11px;margin-bottom:14px">
+  Track where you find bobbleheads, magazines, and other world items. Add as many screenshots as you need.
+</p>
+
+<!-- Filter tabs -->
+<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap">
+  {% for key, label, icon in [('all','All','🗺'),('bobblehead','Bobbleheads','🧸'),('magazine','Magazines','📰'),('other','Other','📦')] %}
+  <a href="/world-finds/{{ key if key != 'all' else '' }}"
+     class="btn {{ 'btn-primary' if filter_type == key else 'btn-secondary' }}"
+     style="font-size:12px;padding:4px 12px">
+    {{ icon }} {{ label }}
+    <span style="opacity:0.7;margin-left:4px">({{ counts[key] }})</span>
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Add / Edit panel -->
+<section class="add-panel" id="addPanel" {% if edit_id %}style="display:block"{% endif %}>
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_id %}✎ Edit Find{% else %}+ Log a Find{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    {% if edit_item %}
+    <form method="POST" action="/world-finds/{{ edit_id }}/edit" enctype="multipart/form-data">
+    {% else %}
+    <form method="POST" action="/world-finds/add" enctype="multipart/form-data">
+    {% endif %}
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Type</label>
+          <select name="item_type" id="itemTypeSelect" onchange="updateNameList()">
+            {% for t in ['Bobblehead','Magazine','Other'] %}
+            <option value="{{ t }}"
+              {% if (edit_item and edit_item['item_type']==t) or (not edit_item and t=='Bobblehead') %}selected{% endif %}>
+              {{ t }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="item_name" id="itemNameInput"
+                 value="{{ edit_item['item_name'] if edit_item else '' }}"
+                 placeholder="e.g. Agility, Grognak #3..." required
+                 list="nameDatalist" autocomplete="off">
+          <datalist id="nameDatalist">
+            {% for n in bobblehead_names %}<option value="{{ n }}">{% endfor %}
+          </datalist>
+        </div>
+
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" name="location"
+                 value="{{ edit_item['location'] if edit_item else '' }}"
+                 placeholder="e.g. Flatwoods, Vault 76 Overseer's Office">
+        </div>
+
+        <div class="form-group">
+          <label>Region</label>
+          <select name="region">
+            <option value="">— Select region —</option>
+            {% for r in regions %}
+            <option value="{{ r }}" {% if edit_item and edit_item['region']==r %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Server Type</label>
+          <select name="server_type">
+            {% for s in ['Public','Private','Friends Only'] %}
+            <option value="{{ s }}"
+              {% if (edit_item and edit_item['server_type']==s) or (not edit_item and s=='Public') %}selected{% endif %}>
+              {{ s }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Date Found</label>
+          <input type="date" name="found_date"
+                 value="{{ edit_item['found_date'] if edit_item else '' }}">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:4px">
+        <label>Notes</label>
+        <input type="text" name="notes"
+               value="{{ edit_item['notes'] if edit_item else '' }}"
+               placeholder="e.g. On the desk, check the blue house, requires key...">
+      </div>
+
+      <!-- Screenshots upload -->
+      <div class="form-group" style="margin-top:10px">
+        <label>Screenshots
+          <span class="dim" style="font-weight:normal;font-size:10px;margin-left:6px">
+            Select multiple files at once — PNG, JPG, WEBP, GIF
+          </span>
+        </label>
+        <input type="file" name="screenshots" accept="image/*" multiple
+               style="color:var(--text);font-size:12px" id="screenshotInput"
+               onchange="previewScreenshots(this)">
+        <div id="screenshotPreviews" class="wf-preview-strip"></div>
+      </div>
+
+      <!-- Existing screenshots while editing -->
+      {% if edit_shots %}
+      <div style="margin-top:8px">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">
+          Current screenshots — click ✕ to remove individually:
+        </div>
+        <div class="wf-preview-strip">
+          {% for shot in edit_shots %}
+          <div class="wf-preview-item" style="position:relative">
+            <img src="/static/uploads/world_finds/{{ shot['filename'] }}"
+                 alt="screenshot"
+                 onclick="openLightbox('/static/uploads/world_finds/{{ shot['filename'] }}', {{ loop.index0 }}, {{ edit_shots|length }})"
+                 style="cursor:zoom-in">
+            <form method="POST"
+                  action="/world-finds/{{ edit_id }}/screenshot/{{ shot['id'] }}/delete"
+                  style="display:inline"
+                  onsubmit="return confirm('Remove this screenshot?')">
+              <button type="submit" class="wf-del-shot" title="Remove screenshot">✕</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">
+          {% if edit_id %}💾 Save Changes{% else %}📍 Log Find{% endif %}
+        </button>
+        {% if edit_id %}
+        <a href="/world-finds" class="btn btn-secondary">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Finds grid -->
+{% if rows %}
+<div class="wf-grid">
+  {% for row in rows %}
+  {% set shots = shots_map.get(row['id'], []) %}
+  <div class="wf-card">
+
+    <!-- Photo strip / placeholder -->
+    {% if shots %}
+    <div class="wf-photo-strip">
+      {% for shot in shots %}
+      <div class="wf-strip-thumb"
+           onclick="openLightbox('/static/uploads/world_finds/{{ shot['filename'] }}', {{ loop.index0 }}, {{ shots|length }}, {{ row['id'] }})">
+        <img src="/static/uploads/world_finds/{{ shot['filename'] }}"
+             alt="screenshot {{ loop.index }}" loading="lazy">
+        {% if loop.first and shots|length > 1 %}
+        <div class="wf-strip-count">+{{ shots|length - 1 }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="wf-no-screenshot">
+      <span>📷</span>
+      <div>No screenshots</div>
+    </div>
+    {% endif %}
+
+    <div class="wf-body">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+        <span class="wf-type-badge wf-{{ row['item_type']|lower|replace(' ','') }}">
+          {% if row['item_type'] == 'Bobblehead' %}🧸
+          {% elif row['item_type'] == 'Magazine' %}📰
+          {% else %}📦{% endif %}
+          {{ row['item_type'] }}
+        </span>
+        {% if row['server_type'] and row['server_type'] != 'Public' %}
+        <span class="wf-server-badge">{{ row['server_type'] }}</span>
+        {% endif %}
+        {% if shots %}
+        <span style="font-size:10px;color:var(--text-dim)">📷 {{ shots|length }}</span>
+        {% endif %}
+      </div>
+
+      <div class="wf-name">{{ row['item_name'] }}</div>
+
+      {% if row['location'] %}
+      <div class="wf-location">📍 {{ row['location'] }}{% if row['region'] %} · {{ row['region'] }}{% endif %}</div>
+      {% elif row['region'] %}
+      <div class="wf-location">📍 {{ row['region'] }}</div>
+      {% endif %}
+
+      {% if row['notes'] %}
+      <div class="wf-notes">{{ row['notes'] }}</div>
+      {% endif %}
+
+      <div class="wf-date">{{ row['found_date'] }}</div>
+    </div>
+
+    <div class="wf-actions">
+      <a href="/world-finds?edit_id={{ row['id'] }}#addPanel"
+         class="btn btn-secondary" style="font-size:11px;padding:3px 10px">✎ Edit</a>
+      <form method="POST" action="/world-finds/{{ row['id'] }}/delete" style="display:inline"
+            onsubmit="return confirm('Delete this find and all its screenshots?')">
+        <button class="btn btn-danger" style="font-size:11px;padding:3px 10px" type="submit">✕ Delete</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <div style="font-size:2.5rem">🗺</div>
+  <div>No finds logged yet{% if filter_type != 'all' %} for {{ filter_type }}s{% endif %}.</div>
+  <div class="dim" style="font-size:12px;margin-top:4px">Use the form above to log your first find.</div>
+</div>
+{% endif %}
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;
+            cursor:zoom-out;align-items:center;justify-content:center;flex-direction:column">
+  <div style="position:relative;display:flex;align-items:center;gap:12px" onclick="event.stopPropagation()">
+    <button id="lbPrev" onclick="lbNav(-1)"
+            style="background:rgba(255,255,255,0.12);border:none;color:#fff;font-size:22px;
+                   cursor:pointer;padding:8px 14px;border-radius:4px;display:none">‹</button>
+    <img id="lightboxImg" src="" alt="screenshot"
+         style="max-width:88vw;max-height:88vh;border-radius:6px;box-shadow:0 4px 32px rgba(0,0,0,0.7)">
+    <button id="lbNext" onclick="lbNav(1)"
+            style="background:rgba(255,255,255,0.12);border:none;color:#fff;font-size:22px;
+                   cursor:pointer;padding:8px 14px;border-radius:4px;display:none">›</button>
+  </div>
+  <div id="lbCounter" style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:10px"></div>
+  <div style="position:absolute;top:16px;right:20px;color:#fff;font-size:24px;cursor:pointer"
+       onclick="closeLightbox()">✕</div>
+</div>
+
+<style>
+.wf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.wf-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* Photo strip — horizontal scroll for multiple images */
+.wf-photo-strip {
+  display: flex;
+  height: 150px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 2px;
+  background: #000;
+  scrollbar-width: thin;
+}
+.wf-photo-strip::-webkit-scrollbar { height: 4px; }
+.wf-photo-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.wf-strip-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  height: 150px;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+.wf-strip-thumb img {
+  height: 150px;
+  width: auto;
+  display: block;
+  object-fit: cover;
+  transition: filter 0.15s;
+}
+.wf-strip-thumb:hover img { filter: brightness(0.75); }
+.wf-strip-count {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.wf-no-screenshot {
+  height: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.wf-no-screenshot span { font-size: 1.6rem; opacity: 0.35; }
+/* Preview strip in form */
+.wf-preview-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.wf-preview-item {
+  position: relative;
+}
+.wf-preview-item img {
+  height: 90px;
+  width: auto;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: block;
+}
+.wf-del-shot {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: #c0392b;
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+.wf-body { padding: 10px 12px; flex: 1; }
+.wf-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; color: var(--text); }
+.wf-location { font-size: 11px; color: var(--accent); margin-bottom: 3px; }
+.wf-notes { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; font-style: italic; }
+.wf-date { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+.wf-actions { padding: 8px 12px; display: flex; gap: 6px; border-top: 1px solid var(--border); }
+.wf-type-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.wf-bobblehead { background: rgba(255,200,50,0.15); color: #f0b030; border: 1px solid rgba(255,200,50,0.3); }
+.wf-magazine   { background: rgba(100,160,255,0.15); color: #6ab0ff; border: 1px solid rgba(100,160,255,0.3); }
+.wf-other      { background: rgba(180,180,180,0.12); color: #aaa;    border: 1px solid rgba(180,180,180,0.2); }
+.wf-server-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(120,80,200,0.15);
+  color: #b090ff;
+  border: 1px solid rgba(120,80,200,0.25);
+}
+</style>
+
+<script>
+const BOBBLEHEAD_NAMES = {{ bobblehead_names | tojson }};
+const MAGAZINE_NAMES   = {{ magazine_names   | tojson }};
+
+function updateNameList() {
+  const type = document.getElementById('itemTypeSelect').value;
+  const dl = document.getElementById('nameDatalist');
+  dl.innerHTML = '';
+  const names = type === 'Bobblehead' ? BOBBLEHEAD_NAMES :
+                type === 'Magazine'   ? MAGAZINE_NAMES   : [];
+  names.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n;
+    dl.appendChild(opt);
+  });
+}
+
+function previewScreenshots(input) {
+  const strip = document.getElementById('screenshotPreviews');
+  strip.innerHTML = '';
+  if (!input.files) return;
+  Array.from(input.files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const div = document.createElement('div');
+      div.className = 'wf-preview-item';
+      div.innerHTML = `<img src="${e.target.result}" alt="preview">`;
+      strip.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Lightbox ────────────────────────────────────────────────────────────────
+let _lbSrcs = [];
+let _lbIdx  = 0;
+
+function openLightbox(src, idx, total, findId) {
+  // Build src list from the card's strip thumbs if findId provided
+  if (findId !== undefined) {
+    const thumbs = document.querySelectorAll(
+      `.wf-strip-thumb[data-find="${findId}"] img, .wf-strip-thumb img`
+    );
+    // Fall back: collect all imgs in the same photo strip
+    const strip = document.querySelector(`.wf-strip-thumb img[src="${src}"]`)
+                           ?.closest('.wf-photo-strip');
+    if (strip) {
+      _lbSrcs = Array.from(strip.querySelectorAll('img')).map(i => i.src);
+      _lbIdx  = _lbSrcs.indexOf(src);
+      if (_lbIdx < 0) _lbIdx = 0;
+    } else {
+      _lbSrcs = [src];
+      _lbIdx  = 0;
+    }
+  } else {
+    _lbSrcs = [src];
+    _lbIdx  = idx || 0;
+  }
+  _lbRender();
+  document.getElementById('lightbox').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function _lbRender() {
+  document.getElementById('lightboxImg').src = _lbSrcs[_lbIdx];
+  const multi = _lbSrcs.length > 1;
+  document.getElementById('lbPrev').style.display  = multi ? 'block' : 'none';
+  document.getElementById('lbNext').style.display  = multi ? 'block' : 'none';
+  document.getElementById('lbCounter').textContent = multi
+    ? `${_lbIdx + 1} / ${_lbSrcs.length}` : '';
+}
+
+function lbNav(dir) {
+  _lbIdx = (_lbIdx + dir + _lbSrcs.length) % _lbSrcs.length;
+  _lbRender();
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+  const lb = document.getElementById('lightbox');
+  if (lb.style.display === 'none') return;
+  if (e.key === 'Escape')      closeLightbox();
+  if (e.key === 'ArrowRight')  lbNav(1);
+  if (e.key === 'ArrowLeft')   lbNav(-1);
+});
+
+{% if edit_id %}
+document.getElementById('addPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+{% endif %}
+</script>
+
+{% endblock %}
