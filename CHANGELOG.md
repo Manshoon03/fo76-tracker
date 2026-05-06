@@ -5,6 +5,35 @@ Format: Version | Date | What changed
 
 ---
 
+## [0.12.0] — 2026-05-05
+
+### Added
+- **Multi-character support** — full character management across PC, Xbox, PS5, PS4.
+  - New `characters` table with name, platform, type (Playable / Mule), level, notes
+  - Default "PC Main" character seeded on first run (id=1); all existing data migrated to it
+  - `character_id` column added to 19 tables via safe `ALTER TABLE` migrations (DEFAULT 1)
+  - `get_active_char_id()` helper reads `active_character_id` from settings
+  - `inject_characters()` context processor injects `active_char` + `all_chars` into every template
+  - Character switcher widget in header — shows platform badge + name, dropdown to switch instantly
+  - Characters page (`/characters`) — grouped by platform, add/edit inline, delete, Switch button
+  - Active character highlighted with green border + ACTIVE badge
+  - All list/add/edit routes now scope data by active character (vendor, inventory, weapons, armor, mods, plans, builds, perk cards, challenges, ammo, caps, mutations, power armor, legend runs, fishing, session journal)
+  - `_inv_sync()` helper updated with optional `cid` param; Quick Log tags all inserts with active character
+- **Mule character dashboard** — Mule-type characters get a stripped-down dashboard (vendor stock, caps, inventory count, recent prices). Full Playable view unchanged.
+- **Screenshot scan → import** for Inventory and Vendor.
+  - Upload a PNG/JPG/WEBP FO76 screenshot — Claude Haiku reads items via vision
+  - Returns editable preview table; every field (name, category, qty, weight/price, notes) is editable inline before importing
+  - Select All / None checkboxes + Import Selected button for bulk import
+  - Routes: `POST /inventory/scan`, `POST /inventory/scan/import`, `POST /vendor/scan`, `POST /vendor/scan/import`
+  - `_scan_image()` + `_extract_json_array()` helpers added
+  - Scan panel added to Inventory and Vendor pages (collapsible, above table)
+
+### Removed
+- **Session Journal** — removed all `/session-journal` routes, `session_journal.html` template, `_save_sj_files()` / `_sj_screenshots()` helpers, upload dir setup, and sidebar link.
+- **Spawn Notes** — removed all `/spawn-notes` routes, `spawn_notes.html` template, `_save_sn_files()` / `_sn_screenshots()` helpers, upload dir setup, and sidebar link. World Finds untouched.
+
+---
+
 ## [0.11.0] — 2026-05-01
 
 ### Removed
@@ -537,6 +566,8 @@ Format: Version | Date | What changed
 - [x] World Finds tracker with multi-screenshot support (v0.10.0)
 
 ### Removed features (no longer in app)
+- Session Journal — removed v0.12.0 (replaced by World Finds + character tracking)
+- Spawn Notes — removed v0.12.0 (not used)
 - Trade Partners / Trade History — removed v0.11.0 (low usage, clutter)
 - Notices system — removed v0.11.0 (never used)
 - Server Hops tracker — removed v0.11.0 (not needed)

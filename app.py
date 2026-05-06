@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response, send_file, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response, send_file, session, g
 from werkzeug.security import generate_password_hash, check_password_hash
 import quotes
 import reference
@@ -179,6 +179,14 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return render_template('500.html'), 500
+
+@app.teardown_appcontext
+def close_db_conn(error):
+    """Close the per-request DB connection after every request."""
+    conn = g.pop('db_conn', None)
+    if conn is not None:
+        db._managed_ids.discard(id(conn))
+        conn.close()
 
 @app.before_request
 def require_login():
@@ -514,21 +522,28 @@ def builds_delete(id):
 
 @app.route('/character', methods=['GET', 'POST'])
 def character():
-    from datetime import date as _date
-    char_keys = ['char_name','char_level','char_build_id','char_notes',
-                 'char_special_s','char_special_p','char_special_e','char_special_c',
-                 'char_special_i','char_special_a','char_special_l']
+    cid = get_active_char_id()
     if request.method == 'POST':
-        for k in char_keys:
-            db.set_setting(k, request.form.get(k, '').strip())
+        db.execute(
+            "UPDATE characters SET name=?, level=?, notes=?, active_build_id=?, "
+            "special_s=?, special_p=?, special_e=?, special_c=?, special_i=?, special_a=?, special_l=? "
+            "WHERE id=?",
+            (
+                fs('char_name'), fi('char_level', 1), fs('char_notes'),
+                fi('char_build_id') or None,
+                fi('char_special_s', 1), fi('char_special_p', 1), fi('char_special_e', 1),
+                fi('char_special_c', 1), fi('char_special_i', 1), fi('char_special_a', 1),
+                fi('char_special_l', 1), cid
+            )
+        )
         flash('Character saved!', 'success')
         return redirect(url_for('character'))
-    data = {k: db.get_setting(k) for k in char_keys}
-    builds = db.query("SELECT id, name, playstyle FROM builds ORDER BY name")
+    char = db.get_one("SELECT * FROM characters WHERE id=?", (cid,))
+    builds = db.query("SELECT id, name, playstyle FROM builds WHERE character_id=? ORDER BY name", (cid,))
     active_build = None
-    if data.get('char_build_id'):
-        active_build = db.get_one("SELECT * FROM builds WHERE id=?", (data['char_build_id'],))
-    return render_template('character.html', data=data, builds=builds, active_build=active_build)
+    if char and char['active_build_id']:
+        active_build = db.get_one("SELECT * FROM builds WHERE id=?", (char['active_build_id'],))
+    return render_template('character.html', char=char, builds=builds, active_build=active_build)
 
 # ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -2885,7 +2900,6 @@ def analytics_data():
         SELECT name, SUM(my_price * qty) as total_value
         FROM vendor_stock GROUP BY name ORDER BY total_value DESC LIMIT 10
     """).fetchall()
-    conn.close()
     price_list  = list(reversed([dict(r) for r in price_rows]))
     return jsonify({
         'caps':    {'labels': [r['session_date'] for r in caps_rows],  'values': [r['end_caps'] for r in caps_rows]},
@@ -2969,143 +2983,59 @@ def fishing_log_delete(lid):
 # ── Legendary Mods ─────────────────────────────────────────────────────────────
 @app.route('/legendary-mods')
 def legendary_mods():
-    craftable = [dict(r) for r in db.query(
-        "SELECT * FROM legendary_craftable ORDER BY star_level, name")]
+    import json as _json
+    effects = []
+    for r in db.query("SELECT * FROM legendary_effects ORDER BY star, name"):
+        e = dict(r)
+        try:
+            e['components'] = _json.loads(e.get('extra_components') or '[]')
+        except Exception:
+            e['components'] = []
+        try:
+            e['sources'] = _json.loads(e.get('acquisition_sources') or '[]')
+        except Exception:
+            e['sources'] = []
+        e['cats'] = [c.strip() for c in (e.get('categories') or '').split(',') if c.strip()]
+        effects.append(e)
+    # Completion stats
+    total   = len(effects)
+    unlocked = sum(1 for e in effects if e['status'] == 'unlocked')
+    seeking  = sum(1 for e in effects if e['status'] == 'seeking')
+    by_star  = {}
+    for s in [1,2,3,4]:
+        grp = [e for e in effects if e['star'] == s]
+        by_star[s] = {'total': len(grp), 'unlocked': sum(1 for e in grp if e['status'] == 'unlocked')}
     inventory = [dict(r) for r in db.query(
         "SELECT * FROM legendary_mods_inventory ORDER BY star_level, name")]
     bobbles   = [dict(r) for r in db.query(
         "SELECT * FROM bobbleheads ORDER BY name")]
-    last_import = db.get_setting('legendary_mods_last_import')
     return render_template('legendary_mods.html',
-                           craftable=craftable,
-                           inventory=inventory,
-                           bobbles=bobbles,
-                           last_import=last_import)
+                           effects=effects, total=total,
+                           unlocked=unlocked, seeking=seeking,
+                           by_star=by_star,
+                           inventory=inventory, bobbles=bobbles)
 
-@app.route('/legendary-mods/import', methods=['POST'])
-def legendary_mods_import():
-    if 'file' not in request.files:
-        flash('No file selected.', 'warning')
-        return redirect(url_for('legendary_mods'))
+@app.route('/legendary-mods/status', methods=['POST'])
+def legendary_mods_status():
+    """AJAX — cycle effect status: locked → seeking → unlocked → locked."""
+    eid    = request.form.get('id', type=int)
+    status = request.form.get('status', '')
+    if eid and status in ('locked', 'seeking', 'unlocked'):
+        db.execute("UPDATE legendary_effects SET status=? WHERE id=?", (status, eid))
+    return ('', 204)
 
-    f = request.files['file']
-    if not f.filename:
-        flash('No file selected.', 'warning')
-        return redirect(url_for('legendary_mods'))
-
-    ext = f.filename.rsplit('.', 1)[-1].lower()
-    if ext not in ('xlsx', 'xls'):
-        flash('Please upload an .xlsx file.', 'warning')
-        return redirect(url_for('legendary_mods'))
-
-    try:
-        import openpyxl, io as _io
-        wb = openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True)
-
-        def count_stars(s):
-            return s.count('\u2605')  # ★
-
-        def clean_name(s):
-            return s.replace('\u2605', '').strip(" '\u00a0")
-
-        def is_section_header(row_vals):
-            name = (row_vals[0] or '').strip()
-            rest = [str(v or '').strip() for v in row_vals[1:]]
-            return count_stars(name) > 0 and all(v == '' for v in rest)
-
-        # ── Craftable ──────────────────────────────────────────────
-        craftable_rows = []
-        if 'Craftable' in wb.sheetnames:
-            ws = wb['Craftable']
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                vals = [str(v) if v is not None else '' for v in row]
-                if len(vals) < 4:
-                    continue
-                name_raw = vals[0].strip()
-                if not name_raw or is_section_header(vals):
-                    continue
-                stars = count_stars(name_raw)
-                if stars == 0:
-                    continue
-                craftable_rows.append((
-                    clean_name(name_raw),
-                    stars,
-                    1 if vals[1].strip().lower() == 'true' else 0,
-                    1 if vals[2].strip().lower() == 'true' else 0,
-                    vals[3].strip(),
-                ))
-
-        # ── Mods in Inventory ──────────────────────────────────────
-        inventory_rows = []
-        if 'Mods in Inventory' in wb.sheetnames:
-            ws = wb['Mods in Inventory']
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                vals = [str(v) if v is not None else '' for v in row]
-                if len(vals) < 2:
-                    continue
-                name_raw = vals[0].strip()
-                if not name_raw or is_section_header(vals):
-                    continue
-                stars = count_stars(name_raw)
-                if stars == 0:
-                    continue
-                try:
-                    qty = int(float(vals[1])) if vals[1].strip() else 0
-                except ValueError:
-                    qty = 0
-                notes = vals[2].strip() if len(vals) > 2 else ''
-                inventory_rows.append((
-                    clean_name(name_raw),
-                    stars,
-                    qty,
-                    notes,
-                ))
-
-        # ── Bobbleheads ────────────────────────────────────────────
-        bobble_rows = []
-        if 'Bobbleheads' in wb.sheetnames:
-            ws = wb['Bobbleheads']
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                vals = [str(v) if v is not None else '' for v in row]
-                if len(vals) < 2:
-                    continue
-                name = vals[0].strip()
-                if not name:
-                    continue
-                try:
-                    qty = int(float(vals[1])) if vals[1].strip() else 0
-                except ValueError:
-                    qty = 0
-                bobble_rows.append((name, qty))
-
-        # ── Write to DB ────────────────────────────────────────────
-        conn = db.get_db()
-        conn.execute("DELETE FROM legendary_craftable")
-        conn.execute("DELETE FROM legendary_mods_inventory")
-        conn.execute("DELETE FROM bobbleheads")
-        conn.executemany(
-            "INSERT INTO legendary_craftable (name,star_level,have_materials,need_materials,requires_to_craft) VALUES (?,?,?,?,?)",
-            craftable_rows)
-        conn.executemany(
-            "INSERT INTO legendary_mods_inventory (name,star_level,qty,notes) VALUES (?,?,?,?)",
-            inventory_rows)
-        conn.executemany(
-            "INSERT INTO bobbleheads (name,qty) VALUES (?,?)",
-            bobble_rows)
-        conn.commit()
-        conn.close()
-
-        db.set_setting('legendary_mods_last_import', datetime.now().strftime('%Y-%m-%d %H:%M'))
-        flash(f'Imported: {len(craftable_rows)} craftable mods, {len(inventory_rows)} inventory mods, {len(bobble_rows)} bobbleheads.', 'success')
-
-    except Exception as e:
-        flash(f'Import failed: {e}', 'danger')
-
-    return redirect(url_for('legendary_mods'))
+@app.route('/legendary-mods/count', methods=['POST'])
+def legendary_mods_count():
+    """AJAX — update mod_count for an effect."""
+    eid   = request.form.get('id', type=int)
+    count = request.form.get('count', type=int)
+    if eid is not None and count is not None:
+        db.execute("UPDATE legendary_effects SET mod_count=? WHERE id=?", (max(0, count), eid))
+    return ('', 204)
 
 @app.route('/legendary-mods/qty', methods=['POST'])
 def legendary_mods_qty():
-    """Quick QTY update for inventory or bobbleheads."""
+    """AJAX — update qty for mods_inventory or bobbleheads."""
     table = request.form.get('table')
     rid   = request.form.get('id', type=int)
     qty   = request.form.get('qty', type=int)

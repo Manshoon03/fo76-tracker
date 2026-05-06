@@ -11,22 +11,25 @@
   <!-- Form -->
   <div>
     <div class="section-title" style="margin-bottom:10px">CHARACTER DATA</div>
+    {% if not char %}
+    <p class="no-data">No active character found.</p>
+    {% else %}
     <form method="POST" action="/character">
       <div class="form-grid" style="grid-template-columns:1fr 1fr">
         <div class="form-group span2">
           <label>Character Name</label>
-          <input type="text" name="char_name" value="{{ data['char_name'] }}" placeholder="Your vault dweller's name">
+          <input type="text" name="char_name" value="{{ char['name'] }}" placeholder="Your vault dweller's name">
         </div>
         <div class="form-group">
           <label>Level</label>
-          <input type="number" name="char_level" min="1" value="{{ data['char_level'] or '' }}" placeholder="1">
+          <input type="number" name="char_level" min="1" value="{{ char['level'] or '' }}" placeholder="1">
         </div>
         <div class="form-group">
           <label>Active Build</label>
           <select name="char_build_id">
             <option value="">— None —</option>
             {% for b in builds %}
-            <option value="{{ b['id'] }}" {{ 'selected' if data['char_build_id'] and data['char_build_id']|int == b['id'] else '' }}>{{ b['name'] }}</option>
+            <option value="{{ b['id'] }}" {{ 'selected' if char['active_build_id'] and char['active_build_id'] == b['id'] else '' }}>{{ b['name'] }}</option>
             {% endfor %}
           </select>
         </div>
@@ -38,36 +41,37 @@
         <div class="form-group">
           <label>{{ label }}</label>
           <input type="number" name="char_special_{{ stat }}" min="1" max="15"
-                 value="{{ data['char_special_' + stat] or 1 }}">
+                 value="{{ char['special_' + stat] or 1 }}">
         </div>
         {% endfor %}
 
         <div class="form-group span2">
           <label>Notes</label>
-          <input type="text" name="char_notes" value="{{ data['char_notes'] }}" placeholder="Any notes about your character">
+          <input type="text" name="char_notes" value="{{ char['notes'] }}" placeholder="Any notes about your character">
         </div>
       </div>
       <div class="form-actions">
         <button class="btn btn-primary" type="submit">Save Character</button>
       </div>
     </form>
+    {% endif %}
   </div>
 
   <!-- Character card -->
   <div>
     <div class="section-title" style="margin-bottom:10px">CHARACTER CARD</div>
-    {% if data['char_name'] %}
+    {% if char and char['name'] %}
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:16px;margin-bottom:16px">
-      <div style="font-size:22px;color:var(--accent);letter-spacing:.1em;margin-bottom:4px">{{ data['char_name'] }}</div>
-      {% if data['char_level'] %}
-      <div class="dim" style="font-size:13px;margin-bottom:12px">Level {{ data['char_level'] }}</div>
+      <div style="font-size:22px;color:var(--accent);letter-spacing:.1em;margin-bottom:4px">{{ char['name'] }}</div>
+      {% if char['level'] %}
+      <div class="dim" style="font-size:13px;margin-bottom:12px">Level {{ char['level'] }}</div>
       {% endif %}
 
       <!-- SPECIAL bars -->
       {% set special_total = namespace(v=0) %}
       <div style="margin-bottom:12px">
         {% for stat, label in [('s','STR'),('p','PER'),('e','END'),('c','CHA'),('i','INT'),('a','AGI'),('l','LCK')] %}
-        {% set val = data['char_special_' + stat]|int or 1 %}
+        {% set val = char['special_' + stat]|int or 1 %}
         {% set special_total.v = special_total.v + val %}
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
           <span style="width:30px;font-size:11px;color:var(--accent)">{{ label }}</span>
@@ -90,8 +94,8 @@
       </div>
       {% endif %}
 
-      {% if data['char_notes'] %}
-      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;font-size:11px;color:var(--text-dim)">{{ data['char_notes'] }}</div>
+      {% if char['notes'] %}
+      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;font-size:11px;color:var(--text-dim)">{{ char['notes'] }}</div>
       {% endif %}
     </div>
     {% else %}

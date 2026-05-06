@@ -6,16 +6,35 @@ from datetime import datetime, timedelta
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fo76.db')
 
-def get_db():
+_managed_ids = set()   # connection ids managed by Flask g teardown
+
+def _new_conn():
+    """Open a raw SQLite connection with performance pragmas."""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
     conn.row_factory = sqlite3.Row
-    # Performance pragmas — WAL mode allows reads while writing,
-    # larger cache reduces disk hits, NORMAL sync is safe and faster
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA cache_size=-8000")   # ~8 MB cache
+    conn.execute("PRAGMA cache_size=-8000")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA temp_store=MEMORY")
     return conn
+
+def get_db():
+    """Return a connection.
+    Inside a Flask request: returns the per-request connection stored in g
+    (opened once, closed by teardown — _release() will skip close).
+    Outside a request (background threads, init): returns a raw connection
+    that _release() will close normally.
+    """
+    try:
+        from flask import g
+        if not hasattr(g, 'db_conn'):
+            conn = _new_conn()
+            _managed_ids.add(id(conn))
+            g.db_conn = conn
+        return g.db_conn
+    except RuntimeError:
+        # No Flask app context — background thread or startup
+        return _new_conn()
 
 def init_db():
     conn = get_db()
@@ -274,8 +293,33 @@ def init_db():
             qty        INTEGER DEFAULT 0,
             updated_at TEXT DEFAULT (date('now'))
         );
+        CREATE TABLE IF NOT EXISTS legendary_effects (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                TEXT NOT NULL UNIQUE,
+            description         TEXT DEFAULT '',
+            star                INTEGER NOT NULL DEFAULT 1,
+            categories          TEXT DEFAULT '',
+            legendary_modules   INTEGER DEFAULT 15,
+            extra_components    TEXT DEFAULT '[]',
+            acquisition_sources TEXT DEFAULT '[]',
+            status              TEXT DEFAULT 'locked',
+            mod_count           INTEGER DEFAULT 0,
+            notes               TEXT DEFAULT ''
+        );
     """)
     conn.commit()
+    # Seed legendary effects (INSERT OR IGNORE preserves existing status/mod_count)
+    try:
+        from legendary_effects_data import as_insert_tuples
+        conn.executemany(
+            """INSERT OR IGNORE INTO legendary_effects
+               (name, description, star, categories, legendary_modules, extra_components, acquisition_sources)
+               VALUES (?,?,?,?,?,?,?)""",
+            as_insert_tuples()
+        )
+        conn.commit()
+    except Exception:
+        pass
     # Safe column migrations for existing databases
     for stmt in [
         "ALTER TABLE challenges ADD COLUMN score_reward INTEGER DEFAULT 0",
@@ -314,6 +358,14 @@ def init_db():
         "ALTER TABLE builds ADD COLUMN legendary_perks_json TEXT DEFAULT ''",
         "ALTER TABLE armor ADD COLUMN build_id INTEGER DEFAULT 0",
         "ALTER TABLE weapons ADD COLUMN build_id INTEGER DEFAULT 0",
+        "ALTER TABLE characters ADD COLUMN special_s INTEGER DEFAULT 1",
+        "ALTER TABLE characters ADD COLUMN special_p INTEGER DEFAULT 1",
+        "ALTER TABLE characters ADD COLUMN special_e INTEGER DEFAULT 1",
+        "ALTER TABLE characters ADD COLUMN special_c INTEGER DEFAULT 1",
+        "ALTER TABLE characters ADD COLUMN special_i INTEGER DEFAULT 1",
+        "ALTER TABLE characters ADD COLUMN special_a INTEGER DEFAULT 1",
+        "ALTER TABLE characters ADD COLUMN special_l INTEGER DEFAULT 1",
+        "ALTER TABLE characters ADD COLUMN active_build_id INTEGER DEFAULT NULL",
         """CREATE TABLE IF NOT EXISTS caps_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             session_date TEXT DEFAULT (date('now')),
@@ -606,10 +658,15 @@ def init_db():
 
     conn.close()
 
+def _release(conn):
+    """Close connection only if it's not managed by Flask g teardown."""
+    if id(conn) not in _managed_ids:
+        conn.close()
+
 def query(sql, params=()):
     conn = get_db()
     rows = conn.execute(sql, params).fetchall()
-    conn.close()
+    _release(conn)
     return rows
 
 def insert(sql, params=()):
@@ -617,19 +674,19 @@ def insert(sql, params=()):
     cur = conn.execute(sql, params)
     conn.commit()
     rid = cur.lastrowid
-    conn.close()
+    _release(conn)
     return rid
 
 def execute(sql, params=()):
     conn = get_db()
     conn.execute(sql, params)
     conn.commit()
-    conn.close()
+    _release(conn)
 
 def get_one(sql, params=()):
     conn = get_db()
     row = conn.execute(sql, params).fetchone()
-    conn.close()
+    _release(conn)
     return row
 
 def dashboard_stats(character_id=1):
@@ -775,7 +832,7 @@ def dashboard_stats(character_id=1):
         "SELECT COUNT(*) FROM challenges WHERE character_id=? AND completed=1 AND date(completed_at)=?",
         (cid, today_str)
     ).fetchone()[0]
-    conn.close()
+    _release(conn)
     return s
 
 
@@ -795,7 +852,7 @@ def ensure_nuke_silos():
             conn.execute("INSERT INTO nuke_codes (silo, code, week_of, notes) VALUES (?,?,?,?)",
                          (silo, '', '', ''))
     conn.commit()
-    conn.close()
+    _release(conn)
 
 def search_all(q):
     like = f'%{q}%'
@@ -820,7 +877,7 @@ def search_all(q):
         ).fetchall()
         for row in rows:
             results.append({'type': label, 'name': row['display'], 'url': url, 'id': row['id']})
-    conn.close()
+    _release(conn)
     return results
 
 def auto_backup(keep=7):

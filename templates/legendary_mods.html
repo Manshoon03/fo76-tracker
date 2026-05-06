@@ -1,278 +1,429 @@
 {% extends 'base.html' %}
-{% block title %}Legendary Mods{% endblock %}
+{% block title %}Legendary Effects{% endblock %}
 {% block content %}
 
 <style>
-  .lm-head   { display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
-  .lm-head h1{ font-size:20px; color:var(--accent); margin:0; }
-  .lm-meta   { font-size:11px; color:var(--text-dim); margin-left:auto; }
+/* ── Page header ────────────────────────────────────────────── */
+.le-header { margin-bottom:22px; }
+.le-header h1 { font-size:20px; color:var(--accent); margin:0 0 14px; }
 
-  /* Import bar */
-  .lm-import { background:var(--bg-card); border:1px solid var(--border);
-               border-radius:8px; padding:14px 18px; margin-bottom:22px;
-               display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-  .lm-import label { font-size:12px; color:var(--text-dim); flex-shrink:0; }
-  .lm-import input[type=file] { font-size:12px; color:var(--text); flex:1; min-width:200px; }
+/* ── Completion summary ─────────────────────────────────────── */
+.le-summary { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+.le-sum-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:6px; padding:12px 16px; min-width:140px; flex:1;
+}
+.le-sum-label { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); margin-bottom:4px; }
+.le-sum-val   { font-size:22px; font-weight:700; color:var(--accent); }
+.le-sum-sub   { font-size:11px; color:var(--text-dim); margin-top:2px; }
 
-  /* Tabs */
-  .lm-tabs  { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:20px; }
-  .lm-tab   { padding:8px 18px; font-size:13px; color:var(--text-dim); cursor:pointer;
-              border-bottom:2px solid transparent; margin-bottom:-1px; }
-  .lm-tab:hover { color:var(--text); }
-  .lm-tab.active{ color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
-  .lm-panel { display:none; }
-  .lm-panel.active { display:block; }
+/* ── Tier progress bars ─────────────────────────────────────── */
+.le-tier-bars { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:22px; }
+.le-tier-bar  {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:6px; padding:10px 14px; flex:1; min-width:120px;
+}
+.le-tier-bar-top  { display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px; }
+.le-tier-star     { color:var(--gold); font-weight:700; }
+.le-tier-count    { color:var(--text-dim); font-size:11px; }
+.le-progress      { height:5px; border-radius:3px; background:var(--border); overflow:hidden; }
+.le-progress-fill { height:100%; border-radius:3px; background:var(--accent); transition:width .3s; }
+.le-progress-fill.seeking { background:var(--gold); }
 
-  /* Filter */
-  .lm-filter { margin-bottom:14px; }
-  .lm-filter input { width:100%; max-width:340px; }
+/* ── Filter toolbar ─────────────────────────────────────────── */
+.le-toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
+.le-toolbar input[type=text] { flex:1; min-width:180px; max-width:280px; }
+.le-filter-group { display:flex; gap:4px; flex-wrap:wrap; }
+.le-filter-btn {
+  padding:5px 12px; font-size:11px; border:1px solid var(--border);
+  border-radius:4px; background:var(--bg-card); color:var(--text-dim);
+  cursor:pointer; font-family:inherit; transition:all .15s;
+}
+.le-filter-btn:hover { color:var(--text); border-color:var(--accent); }
+.le-filter-btn.active { background:var(--accent)22; border-color:var(--accent); color:var(--accent); font-weight:600; }
 
-  /* Star group header */
-  .lm-star-group { margin-bottom:24px; }
-  .lm-star-head  { font-size:13px; font-weight:700; color:var(--accent);
-                   margin:0 0 10px; display:flex; align-items:center; gap:8px; }
-  .lm-star-head .star-badge { background:var(--accent)22; border:1px solid var(--accent)44;
-                               border-radius:4px; padding:2px 8px; font-size:11px; }
+/* ── Effect cards grid ──────────────────────────────────────── */
+.le-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(270px,1fr));
+  gap:10px;
+  margin-bottom:30px;
+}
+.le-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:6px; padding:13px 15px;
+  display:flex; flex-direction:column; gap:7px;
+  transition:border-color .15s;
+}
+.le-card[data-status=unlocked] { border-color:#22c55e55; }
+.le-card[data-status=seeking]  { border-color:#eab30855; }
 
-  /* Craftable grid */
-  .lm-craft-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
-                   gap:10px; }
-  .lm-craft-card { background:var(--bg-card); border:1px solid var(--border);
-                   border-radius:6px; padding:12px 14px;
-                   display:flex; flex-direction:column; gap:6px; }
-  .lm-craft-name { font-size:13px; font-weight:600; color:var(--text); }
-  .lm-craft-req  { font-size:11px; color:var(--text-dim); line-height:1.5; }
-  .lm-craft-flags{ display:flex; gap:6px; margin-top:2px; }
-  .flag-have  { font-size:10px; background:#50c05022; border:1px solid #50c05044;
-                color:#50c050; border-radius:3px; padding:1px 7px; }
-  .flag-need  { font-size:10px; background:#e0c04022; border:1px solid #e0c04044;
-                color:#e0c040; border-radius:3px; padding:1px 7px; }
+.le-card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:6px; }
+.le-card-name { font-size:13px; font-weight:700; color:var(--text-hi); line-height:1.3; }
+.le-star-chip { font-size:11px; color:var(--gold); white-space:nowrap; flex-shrink:0; letter-spacing:1px; }
 
-  /* Inventory table */
-  .lm-inv-table { width:100%; border-collapse:collapse; font-size:13px; }
-  .lm-inv-table th { text-align:left; font-size:10px; text-transform:uppercase;
-                     letter-spacing:.05em; color:var(--text-dim);
-                     border-bottom:1px solid var(--border); padding:6px 10px; }
-  .lm-inv-table td { padding:7px 10px; border-bottom:1px solid var(--border)55; }
-  .lm-inv-table tr:hover td { background:var(--bg-card); }
-  .qty-cell   { display:flex; align-items:center; gap:8px; }
-  .qty-input  { width:56px; background:var(--bg-main,#111); border:1px solid var(--border);
-                border-radius:3px; color:var(--text); padding:3px 6px; font-size:13px;
-                text-align:center; font-family:inherit; }
-  .qty-high   { color:#50c050; font-weight:700; }
-  .qty-zero   { color:var(--text-dim); }
-  .notes-cell { font-size:11px; color:#e0c040; }
+.le-card-desc { font-size:11px; color:var(--text-dim); line-height:1.5; }
 
-  /* Bobblehead grid */
-  .lm-bob-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
-                 gap:10px; }
-  .lm-bob-card { background:var(--bg-card); border:1px solid var(--border);
-                 border-radius:6px; padding:12px 14px;
-                 display:flex; justify-content:space-between; align-items:center; }
-  .lm-bob-name { font-size:13px; color:var(--text); }
-  .lm-bob-qty  { display:flex; align-items:center; gap:6px; }
-  .lm-bob-num  { font-size:18px; font-weight:700; min-width:28px; text-align:right; }
+.le-cats { display:flex; flex-wrap:wrap; gap:4px; }
+.le-cat {
+  font-size:9px; text-transform:uppercase; letter-spacing:.06em;
+  border-radius:3px; padding:2px 6px; border:1px solid;
+}
+.le-cat-wr  { color:#60a5fa; border-color:#60a5fa44; background:#60a5fa11; }
+.le-cat-wm  { color:#f87171; border-color:#f8717144; background:#f8717111; }
+.le-cat-a   { color:#a78bfa; border-color:#a78bfa44; background:#a78bfa11; }
+.le-cat-pa  { color:#fb923c; border-color:#fb923c44; background:#fb923c11; }
 
-  /* Empty state */
-  .lm-empty { text-align:center; padding:50px 20px; color:var(--text-dim); font-size:13px; }
+.le-components { font-size:10px; color:var(--text-dim); }
+.le-components strong { color:var(--text); }
 
-  @media(max-width:640px){
-    .lm-craft-grid { grid-template-columns:1fr; }
-    .lm-bob-grid   { grid-template-columns:1fr 1fr; }
-  }
+.le-sources { display:flex; flex-wrap:wrap; gap:4px; }
+.le-source {
+  font-size:9px; border-radius:3px; padding:2px 6px;
+  background:var(--accent)11; border:1px solid var(--accent)33; color:var(--accent);
+}
+
+/* ── Status toggle + count row ─────────────────────────────── */
+.le-card-footer { display:flex; align-items:center; gap:8px; margin-top:3px; }
+.le-status-btn {
+  flex:1; padding:5px 8px; font-size:11px; border-radius:4px; cursor:pointer;
+  border:1px solid var(--border); font-family:inherit; font-weight:600;
+  transition:all .15s; text-align:center;
+}
+.le-status-btn.locked   { background:var(--bg-main); color:var(--text-dim); }
+.le-status-btn.seeking  { background:#eab30822; border-color:#eab308aa; color:#eab308; }
+.le-status-btn.unlocked { background:#22c55e22; border-color:#22c55eaa; color:#22c55e; }
+
+.le-count-wrap { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+.le-count-wrap label { font-size:10px; color:var(--text-dim); }
+.le-count-input {
+  width:44px; background:var(--bg-main); border:1px solid var(--border);
+  border-radius:3px; color:var(--text); padding:3px 5px;
+  font-size:12px; text-align:center; font-family:inherit;
+}
+
+/* ── Section headers ───────────────────────────────────────── */
+.le-section-head {
+  font-size:13px; font-weight:700; color:var(--accent);
+  margin:24px 0 10px; display:flex; align-items:center; gap:10px;
+  padding-bottom:6px; border-bottom:1px solid var(--border);
+}
+.le-section-head span { font-size:11px; color:var(--text-dim); font-weight:400; }
+
+/* ── Legacy inventory table ────────────────────────────────── */
+.lm-inv-table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:20px; }
+.lm-inv-table th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.05em;
+                   color:var(--text-dim); border-bottom:1px solid var(--border); padding:6px 10px; }
+.lm-inv-table td { padding:7px 10px; border-bottom:1px solid var(--border)55; }
+.lm-inv-table tr:hover td { background:var(--bg-panel); }
+.qty-input { width:56px; background:var(--bg-main); border:1px solid var(--border);
+             border-radius:3px; color:var(--text); padding:3px 6px;
+             font-size:13px; text-align:center; font-family:inherit; }
+.qty-high { color:#50c050; font-weight:700; }
+.qty-zero { color:var(--text-dim); }
+
+/* ── Bobblehead grid ───────────────────────────────────────── */
+.lm-bob-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; margin-bottom:20px; }
+.lm-bob-card { background:var(--bg-card); border:1px solid var(--border);
+               border-radius:6px; padding:12px 14px;
+               display:flex; justify-content:space-between; align-items:center; }
+
+@media(max-width:640px){
+  .le-grid { grid-template-columns:1fr; }
+  .le-tier-bars { flex-direction:column; }
+}
 </style>
 
-<div class="lm-head">
-  <h1>⭐ LEGENDARY MODS</h1>
-  {% if craftable %}
-    <span class="count-badge">{{ craftable|length }} craftable</span>
-    <span class="count-badge">{{ inventory|length }} in inventory</span>
-    <span class="count-badge">{{ bobbles|length }} bobblehead types</span>
-  {% endif %}
-  {% if last_import %}
-    <span class="lm-meta">Last import: {{ last_import }}</span>
-  {% endif %}
+<!-- ── Header ──────────────────────────────────────────────────────── -->
+<div class="le-header">
+  <h1>⭐ LEGENDARY EFFECTS — R.O.L.L.</h1>
 </div>
 
-<!-- Import bar -->
-<div class="lm-import">
-  <label>Import from .xlsx:</label>
-  <form method="POST" action="/legendary-mods/import" enctype="multipart/form-data"
-        style="display:flex;align-items:center;gap:10px;flex:1;flex-wrap:wrap">
-    <input type="file" name="file" accept=".xlsx,.xls" required>
-    <button class="btn btn-primary" type="submit" style="font-size:12px;padding:5px 14px">
-      📥 Import
-    </button>
-  </form>
-  <span style="font-size:11px;color:var(--text-dim)">
-    Export each tab from Google Sheets → File → Download → .xlsx
-  </span>
-</div>
-
-{% if not craftable and not inventory and not bobbles %}
-<div class="lm-empty">
-  No data yet. Upload your Fallout 76 Manny's spreadsheet (.xlsx) above.
-</div>
-{% else %}
-
-<!-- Tab bar -->
-<div class="lm-tabs">
-  <div class="lm-tab active" onclick="showTab('craftable',this)">
-    🔨 Craftable <span style="font-size:11px;color:var(--text-dim)">({{ craftable|length }})</span>
+<!-- ── Completion summary cards ────────────────────────────────────── -->
+<div class="le-summary">
+  <div class="le-sum-card">
+    <div class="le-sum-label">Unlocked</div>
+    <div class="le-sum-val" id="sumUnlocked">{{ unlocked }}</div>
+    <div class="le-sum-sub">of {{ total }} effects</div>
   </div>
-  <div class="lm-tab" onclick="showTab('inventory',this)">
-    📦 Inventory <span style="font-size:11px;color:var(--text-dim)">({{ inventory|length }})</span>
+  <div class="le-sum-card">
+    <div class="le-sum-label">Seeking</div>
+    <div class="le-sum-val" style="color:var(--gold)" id="sumSeeking">{{ seeking }}</div>
+    <div class="le-sum-sub">actively farming</div>
   </div>
-  <div class="lm-tab" onclick="showTab('bobbles',this)">
-    🎯 Bobbleheads <span style="font-size:11px;color:var(--text-dim)">({{ bobbles|length }})</span>
+  <div class="le-sum-card">
+    <div class="le-sum-label">Locked</div>
+    <div class="le-sum-val" style="color:var(--text-dim)" id="sumLocked">{{ total - unlocked - seeking }}</div>
+    <div class="le-sum-sub">not yet obtained</div>
   </div>
-</div>
-
-<!-- ── CRAFTABLE ── -->
-<div class="lm-panel active" id="panel-craftable">
-  <div class="lm-filter">
-    <input type="text" placeholder="Filter by name or material..."
-           oninput="filterCards('craftable',this.value)">
-  </div>
-  <div id="craftable-content">
-    {% set star_groups = {} %}
-    {% for item in craftable %}
-      {% set _ = star_groups.update({item.star_level: true}) %}
-    {% endfor %}
-    {% for stars in [1,2,3,4] %}
-      {% set group = craftable | selectattr('star_level','eq',stars) | list %}
-      {% if group %}
-      <div class="lm-star-group">
-        <div class="lm-star-head">
-          {{ '★' * stars }}
-          <span class="star-badge">{{ stars }}-Star — {{ group|length }} mods</span>
-          <span style="font-size:11px;color:var(--text-dim)">
-            {{ group | selectattr('have_materials','eq',1) | list | length }} have materials ·
-            {{ group | selectattr('need_materials','eq',1) | list | length }} need materials
-          </span>
-        </div>
-        <div class="lm-craft-grid">
-          {% for item in group %}
-          <div class="lm-craft-card"
-               data-name="{{ item.name | lower }}"
-               data-req="{{ item.requires_to_craft | lower }}">
-            <div class="lm-craft-name">{{ item.name }}</div>
-            <div class="lm-craft-req">{{ item.requires_to_craft or '—' }}</div>
-            <div class="lm-craft-flags">
-              {% if item.have_materials %}
-                <span class="flag-have">✓ Have Materials</span>
-              {% endif %}
-              {% if item.need_materials %}
-                <span class="flag-need">⚠ Need Materials</span>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-    {% endfor %}
-  </div>
-</div>
-
-<!-- ── INVENTORY ── -->
-<div class="lm-panel" id="panel-inventory">
-  <div class="lm-filter">
-    <input type="text" placeholder="Filter by mod name..."
-           oninput="filterRows('inv-table',this.value)">
-  </div>
-  {% for stars in [1,2,3,4] %}
-    {% set group = inventory | selectattr('star_level','eq',stars) | list %}
-    {% if group %}
-    <div class="lm-star-group">
-      <div class="lm-star-head">
-        {{ '★' * stars }}
-        <span class="star-badge">{{ stars }}-Star — {{ group|length }} types</span>
-        <span style="font-size:11px;color:var(--text-dim)">
-          {{ group | sum(attribute='qty') }} total
-        </span>
-      </div>
-      <table class="lm-inv-table" id="inv-table-{{ stars }}">
-        <thead>
-          <tr><th>Mod</th><th>QTY</th><th>Notes</th></tr>
-        </thead>
-        <tbody>
-          {% for item in group %}
-          <tr data-name="{{ item.name | lower }}">
-            <td>{{ item.name }}</td>
-            <td>
-              <div class="qty-cell">
-                <input type="number" class="qty-input
-                  {% if item.qty == 0 %}qty-zero{% elif item.qty >= 5 %}qty-high{% endif %}"
-                  value="{{ item.qty }}" min="0"
-                  onchange="updateQty('inventory',{{ item.id }},this.value,this)">
-              </div>
-            </td>
-            <td class="notes-cell">{{ item.notes or '' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <div class="le-sum-card" style="flex:2;min-width:200px">
+    <div class="le-sum-label">Overall completion</div>
+    <div class="le-progress" style="height:10px;margin-top:8px;margin-bottom:4px" id="globalBar">
+      <div class="le-progress-fill" style="width:{{ ((unlocked/total)*100)|round(1) if total else 0 }}%"></div>
     </div>
-    {% endif %}
+    <div class="le-sum-sub">{{ ((unlocked/total)*100)|round(1) if total else 0 }}% unlocked</div>
+  </div>
+</div>
+
+<!-- ── Per-tier progress bars ───────────────────────────────────────── -->
+<div class="le-tier-bars">
+  {% for s in [1,2,3,4] %}
+  {% set t = by_star[s].total %}
+  {% set u = by_star[s].unlocked %}
+  {% set pct = ((u/t)*100)|round(1) if t else 0 %}
+  <div class="le-tier-bar">
+    <div class="le-tier-bar-top">
+      <span class="le-star-tier">{{ '★' * s }}</span>
+      <span class="le-tier-count" id="tier{{ s }}Count">{{ u }}/{{ t }}</span>
+    </div>
+    <div class="le-progress" id="tier{{ s }}Bar">
+      <div class="le-progress-fill" style="width:{{ pct }}%"></div>
+    </div>
+  </div>
   {% endfor %}
 </div>
 
-<!-- ── BOBBLEHEADS ── -->
-<div class="lm-panel" id="panel-bobbles">
-  <div style="margin-bottom:14px;font-size:12px;color:var(--text-dim)">
-    Total bobbleheads: <strong style="color:var(--text)">{{ bobbles | sum(attribute='qty') }}</strong>
+<!-- ── Filter toolbar ───────────────────────────────────────────────── -->
+<div class="le-toolbar">
+  <input type="text" id="leSearch" placeholder="Search effects..." oninput="leFilter()">
+  <div class="le-filter-group" id="leStarFilter">
+    <button class="le-filter-btn active" data-star="all" onclick="leSetStar('all',this)">All tiers</button>
+    {% for s in [1,2,3,4] %}<button class="le-filter-btn" data-star="{{ s }}" onclick="leSetStar('{{ s }}',this)">{{ '★'*s }}</button>{% endfor %}
   </div>
-  <div class="lm-bob-grid">
-    {% for b in bobbles %}
-    <div class="lm-bob-card">
-      <span class="lm-bob-name">{{ b.name }}</span>
-      <div class="lm-bob-qty">
-        <input type="number" class="qty-input
-          {% if b.qty == 0 %}qty-zero{% elif b.qty >= 10 %}qty-high{% endif %}"
-          value="{{ b.qty }}" min="0"
-          onchange="updateQty('bobble',{{ b.id }},this.value,this)">
-      </div>
-    </div>
-    {% endfor %}
+  <div class="le-filter-group" id="leCatFilter">
+    <button class="le-filter-btn active" data-cat="all" onclick="leSetCat('all',this)">All types</button>
+    <button class="le-filter-btn" data-cat="Weapon Ranged" onclick="leSetCat('Weapon Ranged',this)">Ranged</button>
+    <button class="le-filter-btn" data-cat="Weapon Melee"  onclick="leSetCat('Weapon Melee',this)">Melee</button>
+    <button class="le-filter-btn" data-cat="Armor"         onclick="leSetCat('Armor',this)">Armor</button>
+    <button class="le-filter-btn" data-cat="Power Armor"   onclick="leSetCat('Power Armor',this)">Power Armor</button>
+  </div>
+  <div class="le-filter-group" id="leStatusFilter">
+    <button class="le-filter-btn active" data-s="all"      onclick="leSetStatus('all',this)">All</button>
+    <button class="le-filter-btn" data-s="unlocked"        onclick="leSetStatus('unlocked',this)">✓ Unlocked</button>
+    <button class="le-filter-btn" data-s="seeking"         onclick="leSetStatus('seeking',this)">👁 Seeking</button>
+    <button class="le-filter-btn" data-s="locked"          onclick="leSetStatus('locked',this)">🔒 Locked</button>
   </div>
 </div>
 
+<!-- ── Effects grid ─────────────────────────────────────────────────── -->
+<div class="le-grid" id="leGrid">
+{% for e in effects %}
+<div class="le-card"
+     id="ec{{ e.id }}"
+     data-status="{{ e.status }}"
+     data-star="{{ e.star }}"
+     data-cats="{{ e.categories }}"
+     data-name="{{ e.name|lower }}">
+
+  <div class="le-card-top">
+    <div class="le-card-name">{{ e.name }}</div>
+    <div class="le-star-chip">{{ '★' * e.star }}{% if e.star == 4 %} <span style="font-size:9px;color:var(--text-dim)">4★</span>{% endif %}</div>
+  </div>
+
+  <div class="le-card-desc">{{ e.description }}</div>
+
+  <div class="le-cats">
+    {% for cat in e.cats %}
+    {% if cat == 'Weapon Ranged' %}<span class="le-cat le-cat-wr">Ranged</span>
+    {% elif cat == 'Weapon Melee' %}<span class="le-cat le-cat-wm">Melee</span>
+    {% elif cat == 'Power Armor' %}<span class="le-cat le-cat-pa">PA</span>
+    {% else %}<span class="le-cat le-cat-a">Armor</span>
+    {% endif %}
+    {% endfor %}
+    <span style="font-size:10px;color:var(--text-dim);margin-left:auto">{{ e.legendary_modules }}⚙</span>
+  </div>
+
+  {% if e.components %}
+  <div class="le-components">
+    <strong>Needs:</strong>
+    {% for c in e.components %}{{ c.item }} ×{{ c.qty }}{% if not loop.last %}, {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if e.sources %}
+  <div class="le-sources">
+    {% for src in e.sources %}<span class="le-source">{{ src }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="le-card-footer">
+    <button class="le-status-btn {{ e.status }}"
+            id="sb{{ e.id }}"
+            onclick="leToggleStatus({{ e.id }}, this)">
+      {% if e.status == 'unlocked' %}✓ Unlocked
+      {% elif e.status == 'seeking' %}👁 Seeking
+      {% else %}🔒 Locked{% endif %}
+    </button>
+    <div class="le-count-wrap">
+      <label>×</label>
+      <input type="number" class="le-count-input" value="{{ e.mod_count }}" min="0"
+             onchange="leUpdateCount({{ e.id }}, this.value)"
+             title="Mods crafted">
+    </div>
+  </div>
+
+</div>
+{% endfor %}
+</div>
+
+<!-- ── Mod Inventory (legacy qty tracker) ──────────────────────────── -->
+{% if inventory %}
+<div class="le-section-head">📦 Mod Inventory <span>legacy qty tracking</span></div>
+{% for s in [1,2,3,4] %}
+  {% set grp = inventory|selectattr('star_level','eq',s)|list %}
+  {% if grp %}
+  <div style="margin-bottom:8px;font-size:12px;color:var(--gold);font-weight:700">{{ '★'*s }} — {{ grp|length }} types · {{ grp|sum(attribute='qty') }} total</div>
+  <table class="lm-inv-table">
+    <thead><tr><th>Mod</th><th>QTY</th><th>Notes</th></tr></thead>
+    <tbody>
+      {% for item in grp %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td><input type="number" class="qty-input {{ 'qty-zero' if item.qty==0 else ('qty-high' if item.qty>=5 else '') }}"
+             value="{{ item.qty }}" min="0"
+             onchange="updateInvQty({{ item.id }}, this.value, this)"></td>
+        <td style="font-size:11px;color:#e0c040">{{ item.notes or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+{% endfor %}
+{% endif %}
+
+<!-- ── Bobbleheads ──────────────────────────────────────────────────── -->
+{% if bobbles %}
+<div class="le-section-head">🎯 Bobbleheads <span>{{ bobbles|sum(attribute='qty') }} total</span></div>
+<div class="lm-bob-grid">
+  {% for b in bobbles %}
+  <div class="lm-bob-card">
+    <span style="font-size:13px;color:var(--text)">{{ b.name }}</span>
+    <input type="number" class="qty-input {{ 'qty-zero' if b.qty==0 else ('qty-high' if b.qty>=10 else '') }}"
+           value="{{ b.qty }}" min="0"
+           onchange="updateBobQty({{ b.id }}, this.value, this)">
+  </div>
+  {% endfor %}
+</div>
 {% endif %}
 
 <script>
-function showTab(name, el) {
-  document.querySelectorAll('.lm-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.lm-panel').forEach(p => p.classList.remove('active'));
+/* ── Filter state ─────────────────────────────────────── */
+let leStarF   = 'all';
+let leCatF    = 'all';
+let leStatusF = 'all';
+
+function leFilter() {
+  const q = document.getElementById('leSearch').value.toLowerCase().trim();
+  document.querySelectorAll('.le-card').forEach(card => {
+    const matchStar   = leStarF   === 'all' || card.dataset.star === leStarF;
+    const matchCat    = leCatF    === 'all' || card.dataset.cats.includes(leCatF);
+    const matchStatus = leStatusF === 'all' || card.dataset.status === leStatusF;
+    const matchQ      = !q || card.dataset.name.includes(q);
+    card.style.display = (matchStar && matchCat && matchStatus && matchQ) ? '' : 'none';
+  });
+}
+
+function leSetStar(val, el) {
+  leStarF = val;
+  document.querySelectorAll('#leStarFilter .le-filter-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('panel-' + name).classList.add('active');
+  leFilter();
+}
+function leSetCat(val, el) {
+  leCatF = val;
+  document.querySelectorAll('#leCatFilter .le-filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  leFilter();
+}
+function leSetStatus(val, el) {
+  leStatusF = val;
+  document.querySelectorAll('#leStatusFilter .le-filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  leFilter();
 }
 
-function filterCards(panel, q) {
-  q = q.toLowerCase().trim();
-  document.querySelectorAll('#panel-' + panel + ' .lm-craft-card').forEach(card => {
-    const match = !q
-      || card.dataset.name.includes(q)
-      || card.dataset.req.includes(q);
-    card.style.display = match ? '' : 'none';
+/* ── Status toggle ────────────────────────────────────── */
+const STATUS_CYCLE = { locked: 'seeking', seeking: 'unlocked', unlocked: 'locked' };
+const STATUS_LABEL = {
+  locked:   '🔒 Locked',
+  seeking:  '👁 Seeking',
+  unlocked: '✓ Unlocked'
+};
+
+function leToggleStatus(id, btn) {
+  const card    = document.getElementById('ec' + id);
+  const current = card.dataset.status;
+  const next    = STATUS_CYCLE[current] || 'locked';
+
+  card.dataset.status = next;
+  btn.className = 'le-status-btn ' + next;
+  btn.textContent = STATUS_LABEL[next];
+
+  // Update sidebar count display
+  updateSummaryCounts();
+
+  fetch('/legendary-mods/status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `id=${id}&status=${next}`
   });
 }
 
-function filterRows(tablePrefix, q) {
-  q = q.toLowerCase().trim();
-  document.querySelectorAll('[id^="inv-table-"] tbody tr').forEach(row => {
-    const match = !q || row.dataset.name.includes(q);
-    row.style.display = match ? '' : 'none';
+function leUpdateCount(id, val) {
+  const count = Math.max(0, parseInt(val) || 0);
+  fetch('/legendary-mods/count', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `id=${id}&count=${count}`
   });
 }
 
-function updateQty(table, id, val, input) {
+/* ── Live summary re-calc ─────────────────────────────── */
+function updateSummaryCounts() {
+  const cards = Array.from(document.querySelectorAll('.le-card'));
+  const total    = cards.length;
+  const unlocked = cards.filter(c => c.dataset.status === 'unlocked').length;
+  const seeking  = cards.filter(c => c.dataset.status === 'seeking').length;
+  const locked   = total - unlocked - seeking;
+
+  document.getElementById('sumUnlocked').textContent = unlocked;
+  document.getElementById('sumSeeking').textContent  = seeking;
+  document.getElementById('sumLocked').textContent   = locked;
+
+  // Global bar
+  const pct = total ? Math.round((unlocked / total) * 1000) / 10 : 0;
+  document.querySelector('#globalBar .le-progress-fill').style.width = pct + '%';
+
+  // Per-tier bars
+  [1,2,3,4].forEach(s => {
+    const g = cards.filter(c => parseInt(c.dataset.star) === s);
+    const u = g.filter(c => c.dataset.status === 'unlocked').length;
+    const t = g.length;
+    const p = t ? Math.round((u / t) * 1000) / 10 : 0;
+    const bar = document.querySelector(`#tier${s}Bar .le-progress-fill`);
+    if (bar) bar.style.width = p + '%';
+    const cnt = document.getElementById(`tier${s}Count`);
+    if (cnt) cnt.textContent = `${u}/${t}`;
+  });
+}
+
+/* ── Inventory / bobblehead qty ───────────────────────── */
+function updateInvQty(id, val, input) {
   const qty = parseInt(val) || 0;
   input.className = 'qty-input ' + (qty === 0 ? 'qty-zero' : qty >= 5 ? 'qty-high' : '');
   fetch('/legendary-mods/qty', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: `table=${table}&id=${id}&qty=${qty}`
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:`table=inventory&id=${id}&qty=${qty}`
+  });
+}
+function updateBobQty(id, val, input) {
+  const qty = parseInt(val) || 0;
+  input.className = 'qty-input ' + (qty === 0 ? 'qty-zero' : qty >= 10 ? 'qty-high' : '');
+  fetch('/legendary-mods/qty', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:`table=bobble&id=${id}&qty=${qty}`
   });
 }
 </script>
