@@ -3080,6 +3080,95 @@ def perk_cards_quick_add():
     return jsonify({'success': True, 'already_exists': False})
 
 
+# ── Plan Checklist ────────────────────────────────────────────────────────────
+
+@app.route('/plan-checklist')
+def plan_checklist():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    cid = get_active_char_id()
+
+    rows = db.query("""
+        SELECT pc.id, pc.name, pc.category, pc.subcategory, pc.source,
+               COALESCE(pl.learned, 0) AS learned,
+               COALESCE(pl.qty_dupes, 0) AS qty_dupes
+        FROM plan_catalog pc
+        LEFT JOIN plan_learned pl
+               ON pl.catalog_id = pc.id AND pl.character_id = :cid
+        ORDER BY pc.category, pc.name
+    """, {'cid': cid})
+
+    # Build per-category stats
+    from collections import defaultdict
+    cats = defaultdict(lambda: {'plans': [], 'total': 0, 'learned': 0})
+    for r in rows:
+        d = dict(r)
+        cat = d['category'] or 'Misc'
+        cats[cat]['plans'].append(d)
+        cats[cat]['total'] += 1
+        cats[cat]['learned'] += 1 if d['learned'] else 0
+
+    # Compute pct and sort categories
+    cat_order = ['Weapon', 'Melee', 'Armor', 'Power Armor', 'Power Armor Mod',
+                 'Weapon Mod', 'Armor Mod', 'CAMP',
+                 'Food', 'Drink', 'Chem', 'Serum', 'Alcohol', 'Ammo', 'Misc']
+    categories = []
+    for c in cat_order:
+        if c in cats:
+            info = cats[c]
+            info['name'] = c
+            info['pct'] = round(info['learned'] / info['total'] * 100) if info['total'] else 0
+            categories.append(info)
+    # Any remaining categories not in cat_order
+    for c, info in cats.items():
+        if c not in cat_order:
+            info['name'] = c
+            info['pct'] = round(info['learned'] / info['total'] * 100) if info['total'] else 0
+            categories.append(info)
+
+    total_plans   = sum(c['total']   for c in categories)
+    total_learned = sum(c['learned'] for c in categories)
+    overall_pct   = round(total_learned / total_plans * 100) if total_plans else 0
+
+    return render_template('plan_checklist.html',
+                           categories=categories,
+                           total_plans=total_plans,
+                           total_learned=total_learned,
+                           overall_pct=overall_pct)
+
+
+@app.route('/plan-checklist/toggle', methods=['POST'])
+def plan_checklist_toggle():
+    if not session.get('logged_in'):
+        return ('', 403)
+    cid        = get_active_char_id()
+    catalog_id = fi('catalog_id')
+    learned    = fi('learned')  # 0 or 1
+    db.execute("""
+        INSERT INTO plan_learned (catalog_id, character_id, learned)
+        VALUES (?, ?, ?)
+        ON CONFLICT(catalog_id, character_id)
+        DO UPDATE SET learned=excluded.learned
+    """, (catalog_id, cid, learned))
+    return ('', 204)
+
+
+@app.route('/plan-checklist/add', methods=['POST'])
+def plan_checklist_add():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    name     = fs('name')
+    category = fs('category', 'Misc')
+    source   = fs('source', '')
+    if name:
+        db.execute(
+            "INSERT OR IGNORE INTO plan_catalog (name, category, source) VALUES (?,?,?)",
+            (name, category, source)
+        )
+        flash(f'Plan "{name}" added to catalog.', 'success')
+    return redirect(url_for('plan_checklist'))
+
+
 @app.route('/plans/import-research', methods=['POST'])
 def plans_import_research():
     data  = request.get_json()

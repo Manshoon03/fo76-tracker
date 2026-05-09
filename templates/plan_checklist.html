@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+{% block title %}Plan Checklist{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📋 PLAN CHECKLIST</h1>
+  <span class="count-badge">{{ total_learned }}/{{ total_plans }}</span>
+</div>
+
+<!-- Overall progress bar -->
+<div class="pc-overall-bar" style="margin-bottom:1.2rem">
+  <div class="pc-bar-label">Overall Completion: <strong>{{ total_learned }}/{{ total_plans }}</strong> — <strong>{{ overall_pct }}%</strong></div>
+  <div class="pc-bar-track">
+    <div class="pc-bar-fill" style="width:{{ overall_pct }}%"></div>
+  </div>
+</div>
+
+<!-- Category summary cards -->
+<div class="pc-cat-cards">
+  {% for cat in categories %}
+  <button class="pc-cat-card" data-cat="{{ cat.name }}" onclick="filterCat('{{ cat.name }}')">
+    <div class="pc-cat-name">{{ cat.name }}</div>
+    <div class="pc-cat-nums">{{ cat.learned }}/{{ cat.total }}</div>
+    <div class="pc-bar-track" style="height:6px;margin-top:4px">
+      <div class="pc-bar-fill" style="width:{{ cat.pct }}%"></div>
+    </div>
+    <div class="pc-cat-pct">{{ cat.pct }}%</div>
+  </button>
+  {% endfor %}
+</div>
+
+<!-- Controls -->
+<div class="pc-controls">
+  <div class="tab-group">
+    <button class="tab-btn active" id="tab-all"      onclick="setTab('all')">All</button>
+    <button class="tab-btn"        id="tab-missing"  onclick="setTab('missing')">Missing</button>
+    <button class="tab-btn"        id="tab-learned"  onclick="setTab('learned')">Learned</button>
+  </div>
+  <input type="text" id="pc-search" placeholder="🔍 Search plans..." oninput="applyFilters()"
+         style="flex:1;min-width:160px;max-width:320px">
+</div>
+
+<!-- Plan lists by category -->
+<div id="pc-list">
+  {% for cat in categories %}
+  <div class="pc-section" data-cat="{{ cat.name }}">
+    <div class="pc-section-header">
+      <span class="pc-section-title">{{ cat.name }}</span>
+      <span class="pc-section-stats" id="stats-{{ cat.name | replace(' ', '-') }}">{{ cat.learned }}/{{ cat.total }} ({{ cat.pct }}%)</span>
+      <div class="pc-bar-track" style="flex:1;margin:0 0.7rem;height:6px">
+        <div class="pc-bar-fill" id="bar-{{ cat.name | replace(' ', '-') }}" style="width:{{ cat.pct }}%"></div>
+      </div>
+    </div>
+    <div class="pc-rows">
+      {% for plan in cat.plans %}
+      <div class="pc-row {{ 'pc-learned' if plan.learned else 'pc-missing' }}"
+           data-id="{{ plan.id }}"
+           data-name="{{ plan.name | lower }}"
+           data-cat="{{ cat.name }}">
+        <label class="pc-check-label">
+          <input type="checkbox"
+                 class="pc-cb"
+                 data-id="{{ plan.id }}"
+                 {{ 'checked' if plan.learned else '' }}
+                 onchange="togglePlan(this)">
+          <span class="pc-plan-name {{ 'pc-plan-learned-text' if plan.learned else '' }}">{{ plan.name }}</span>
+        </label>
+        {% if plan.subcategory %}
+        <span class="pc-sub badge-mini">{{ plan.subcategory }}</span>
+        {% endif %}
+        <span class="pc-source">{{ plan.source }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Add Custom Plan Panel -->
+<section class="add-panel" id="addPanel" style="margin-top:1.5rem">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>+ Add Custom Plan to Catalog</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/plan-checklist/add">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Plan Name *</label>
+          <input type="text" name="name" required placeholder="Plan: My Custom Plan">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category">
+            {% for c in ['Weapon','Melee','Armor','Power Armor','Power Armor Mod','Weapon Mod','Armor Mod','CAMP','Food','Drink','Chem','Serum','Alcohol','Ammo','Misc'] %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Source / How to Get</label>
+          <input type="text" name="source" placeholder="e.g. World drop, Vendor">
+        </div>
+        <div class="form-group">
+          <button type="submit" class="btn-primary">Add to Catalog</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<style>
+.pc-overall-bar { }
+.pc-bar-label { font-size:.85rem; color:var(--text-dim); margin-bottom:4px; }
+.pc-bar-track { background:var(--bg-panel); border-radius:4px; height:10px; overflow:hidden; width:100%; }
+.pc-bar-fill  { background:var(--accent); height:100%; border-radius:4px; transition:width .3s; }
+
+.pc-cat-cards {
+  display:flex; flex-wrap:wrap; gap:.6rem; margin-bottom:1.2rem;
+}
+.pc-cat-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:6px; padding:.6rem .9rem; min-width:120px; max-width:160px;
+  cursor:pointer; text-align:left; transition:border-color .15s, background .15s;
+}
+.pc-cat-card:hover { border-color:var(--accent); }
+.pc-cat-card.active-cat { border-color:var(--accent); background:var(--bg-panel); }
+.pc-cat-name { font-size:.75rem; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em; }
+.pc-cat-nums { font-size:1rem; font-weight:700; color:var(--text-hi); }
+.pc-cat-pct  { font-size:.75rem; color:var(--text); margin-top:2px; }
+
+.pc-controls {
+  display:flex; align-items:center; flex-wrap:wrap; gap:.7rem; margin-bottom:1rem;
+}
+.tab-group { display:flex; gap:.3rem; }
+.tab-btn {
+  padding:.35rem .85rem; border-radius:4px; border:1px solid var(--border);
+  background:var(--bg-card); color:var(--text); cursor:pointer; font-size:.82rem;
+  transition:background .15s, color .15s;
+}
+.tab-btn.active { background:var(--accent); color:#000; border-color:var(--accent); font-weight:600; }
+
+.pc-section { margin-bottom:1.2rem; }
+.pc-section-header {
+  display:flex; align-items:center; gap:.5rem;
+  background:var(--bg-panel); padding:.45rem .75rem;
+  border-radius:6px 6px 0 0; border-bottom:1px solid var(--border);
+}
+.pc-section-title { font-weight:700; font-size:.85rem; color:var(--accent); min-width:100px; }
+.pc-section-stats  { font-size:.78rem; color:var(--text-dim); white-space:nowrap; }
+
+.pc-rows { border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px; }
+.pc-row {
+  display:flex; align-items:center; gap:.6rem;
+  padding:.4rem .75rem; border-bottom:1px solid var(--border);
+  transition:background .1s;
+}
+.pc-row:last-child { border-bottom:none; }
+.pc-row:hover { background:var(--bg-input); }
+.pc-check-label { display:flex; align-items:center; gap:.5rem; cursor:pointer; flex:1; min-width:0; }
+.pc-check-label input[type=checkbox] { width:15px; height:15px; flex-shrink:0; cursor:pointer; }
+.pc-plan-name { font-size:.88rem; color:var(--text-hi); }
+.pc-plan-learned-text { color:var(--text-dim); text-decoration:line-through; opacity:.8; }
+.pc-sub   { background:var(--bg-panel); color:var(--text-dim); font-size:.72rem;
+             padding:1px 6px; border-radius:3px; white-space:nowrap; flex-shrink:0; }
+.pc-source { font-size:.75rem; color:var(--text-dim); text-align:right; margin-left:auto;
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px; flex-shrink:0; }
+.badge-mini { border:1px solid var(--border); }
+</style>
+
+<script>
+let activeTab = 'all';
+let activeCat = 'all';
+
+function setTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  applyFilters();
+}
+
+function filterCat(cat) {
+  if (activeCat === cat) {
+    activeCat = 'all';
+  } else {
+    activeCat = cat;
+  }
+  document.querySelectorAll('.pc-cat-card').forEach(c => {
+    c.classList.toggle('active-cat', c.dataset.cat === activeCat);
+  });
+  applyFilters();
+}
+
+function applyFilters() {
+  const q   = document.getElementById('pc-search').value.trim().toLowerCase();
+  const tab = activeTab;
+  const cat = activeCat;
+
+  document.querySelectorAll('.pc-section').forEach(sec => {
+    const secCat = sec.dataset.cat;
+    if (cat !== 'all' && secCat !== cat) {
+      sec.style.display = 'none';
+      return;
+    }
+    sec.style.display = '';
+    let anyVisible = false;
+    sec.querySelectorAll('.pc-row').forEach(row => {
+      const learned   = row.classList.contains('pc-learned');
+      const name      = row.dataset.name || '';
+      const tabOk     = tab === 'all'
+                     || (tab === 'learned' && learned)
+                     || (tab === 'missing' && !learned);
+      const searchOk  = !q || name.includes(q);
+      const visible   = tabOk && searchOk;
+      row.style.display = visible ? '' : 'none';
+      if (visible) anyVisible = true;
+    });
+    sec.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function togglePlan(cb) {
+  const catalogId = cb.dataset.id;
+  const learned   = cb.checked ? 1 : 0;
+  const row       = cb.closest('.pc-row');
+  const nameEl    = row.querySelector('.pc-plan-name');
+  const catName   = row.dataset.cat;
+
+  // Optimistic UI update
+  row.classList.toggle('pc-learned',  !!learned);
+  row.classList.toggle('pc-missing', !learned);
+  nameEl.classList.toggle('pc-plan-learned-text', !!learned);
+
+  // Update section counts
+  updateSectionCount(catName);
+  updateOverall();
+
+  fetch('/plan-checklist/toggle', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `catalog_id=${catalogId}&learned=${learned}`
+  }).then(r => {
+    if (!r.ok) { cb.checked = !cb.checked; /* revert */ }
+    // Re-apply filters so Missing/Learned tabs stay consistent
+    if (activeTab !== 'all') applyFilters();
+  });
+}
+
+function updateSectionCount(catName) {
+  const sec  = document.querySelector(`.pc-section[data-cat="${catName}"]`);
+  if (!sec) return;
+  const rows    = sec.querySelectorAll('.pc-row');
+  const total   = rows.length;
+  const learned = sec.querySelectorAll('.pc-row.pc-learned').length;
+  const pct     = total ? Math.round(learned / total * 100) : 0;
+  const slug    = catName.replace(/ /g, '-');
+  const statsEl = document.getElementById('stats-' + slug);
+  const barEl   = document.getElementById('bar-'   + slug);
+  if (statsEl) statsEl.textContent = `${learned}/${total} (${pct}%)`;
+  if (barEl)   barEl.style.width   = pct + '%';
+
+  // Also update the category card
+  const card = document.querySelector(`.pc-cat-card[data-cat="${catName}"]`);
+  if (card) {
+    card.querySelector('.pc-cat-nums').textContent = `${learned}/${total}`;
+    card.querySelector('.pc-cat-pct').textContent  = pct + '%';
+    const fillEl = card.querySelector('.pc-bar-fill');
+    if (fillEl) fillEl.style.width = pct + '%';
+  }
+}
+
+function updateOverall() {
+  const allRows    = document.querySelectorAll('.pc-row');
+  const total      = allRows.length;
+  const learned    = document.querySelectorAll('.pc-row.pc-learned').length;
+  const pct        = total ? Math.round(learned / total * 100) : 0;
+  document.querySelector('.pc-bar-label strong:first-child').textContent = `${learned}/${total}`;
+  document.querySelectorAll('.pc-bar-label strong')[1].textContent = pct + '%';
+  document.querySelector('.pc-overall-bar .pc-bar-fill').style.width = pct + '%';
+  document.querySelector('.count-badge').textContent = `${learned}/${total}`;
+}
+</script>
+{% endblock %}

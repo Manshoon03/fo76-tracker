@@ -5,6 +5,37 @@ Format: Version | Date | What changed
 
 ---
 
+## [0.13.0] — 2026-05-08
+
+### Added
+- **Plan Checklist** (`/plan-checklist`) — full game-wide plan/recipe tracker separate from the manual Plans page.
+  - `plan_catalog` table — master list of all known FO76 plans (name, category, subcategory, source)
+  - `plan_learned` table — per-character learned/not-learned state with dupe qty tracking
+  - Three indexes added for query performance (`category`, `character_id`, `catalog_id`)
+  - **1,869 plans pre-seeded** across 15 categories sourced from the Fallout Wiki and user tracker spreadsheet:
+    - Weapon (129), Melee (26), Armor (152), Power Armor (54), Power Armor Mod (217)
+    - Weapon Mod (364), Armor Mod (241), CAMP/Workshop (447)
+    - Food (103), Drink (22), Chem (50), Serum (19), Alcohol (14), Ammo (20), Misc (11)
+  - Source info per plan parsed from wiki columns (containers, vendors, enemy drops, world spawns, quests, seasonal)
+  - Cut/unused content excluded from catalog
+  - Overall progress bar showing total learned/total across all plans
+  - Per-category summary cards with mini progress bars (click to filter to that category)
+  - Plan rows grouped by category with section-level progress bars
+  - **Filter tabs** — All / Missing / Learned (client-side, no reload)
+  - **Category filter** — click any category card to show only that category
+  - **Text search** — filters plan names live as you type
+  - **Checkbox toggle** — AJAX POST to `/plan-checklist/toggle`; updates live counts + progress bars instantly without page reload
+  - **Add custom plan** form — insert any plan not in the catalog (name, category, source)
+  - `📋 Plan Checklist` sidebar link added below Plans
+  - Routes: `GET /plan-checklist`, `POST /plan-checklist/toggle`, `POST /plan-checklist/add`
+- **`plan_catalog_seed.json`** — committed seed file (324 KB, 1,869 entries) so the catalog auto-populates on a fresh clone with no DB. `init_db()` seeds from this file when `plan_catalog` is empty.
+- **New recipe categories** — Serum, Alcohol, Drink added as first-class categories (sourced from user's FO76 Learned Recipe Completion Tracker spreadsheet — 172 valid recipes imported, 16 cut-content entries excluded)
+
+### Fixed
+- **Plan Checklist CSS** — template was referencing non-existent CSS variables (`--text-muted`, `--bg-secondary`, `--border-color`, `--bg-hover`, `--text-primary`). Replaced with correct project variables (`--text-dim`, `--bg-panel`, `--border`, `--bg-input`, `--text-hi`) so all four themes render correctly.
+
+---
+
 ## [0.12.0] — 2026-05-05
 
 ### Added

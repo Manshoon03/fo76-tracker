@@ -358,6 +358,25 @@ def init_db():
         "ALTER TABLE builds ADD COLUMN legendary_perks_json TEXT DEFAULT ''",
         "ALTER TABLE armor ADD COLUMN build_id INTEGER DEFAULT 0",
         "ALTER TABLE weapons ADD COLUMN build_id INTEGER DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS plan_catalog (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            category    TEXT DEFAULT '',
+            subcategory TEXT DEFAULT '',
+            source      TEXT DEFAULT '',
+            created_at  TEXT DEFAULT (date('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS plan_learned (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            catalog_id   INTEGER NOT NULL,
+            character_id INTEGER NOT NULL,
+            learned      INTEGER DEFAULT 0,
+            qty_dupes    INTEGER DEFAULT 0,
+            UNIQUE(catalog_id, character_id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_plan_catalog_category ON plan_catalog(category)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_learned_char     ON plan_learned(character_id)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_learned_catalog  ON plan_learned(catalog_id)",
         "ALTER TABLE characters ADD COLUMN special_s INTEGER DEFAULT 1",
         "ALTER TABLE characters ADD COLUMN special_p INTEGER DEFAULT 1",
         "ALTER TABLE characters ADD COLUMN special_e INTEGER DEFAULT 1",
@@ -648,6 +667,21 @@ def init_db():
             "INSERT INTO fish_species (name, rarity, biome) VALUES (?,?,?)", fish
         )
         conn.commit()
+
+    # Seed plan catalog (only if table is empty)
+    if conn.execute("SELECT COUNT(*) FROM plan_catalog").fetchone()[0] == 0:
+        try:
+            import json as _json
+            _seed_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plan_catalog_seed.json')
+            with open(_seed_path, encoding='utf-8') as _f:
+                _plans = _json.load(_f)
+            conn.executemany(
+                "INSERT OR IGNORE INTO plan_catalog (name, category, subcategory, source) VALUES (?,?,?,?)",
+                [(_p['name'], _p['category'], _p['subcategory'], _p['source']) for _p in _plans]
+            )
+            conn.commit()
+        except Exception:
+            pass
 
     # Seed default character (PC Main) if no characters exist yet
     if conn.execute("SELECT COUNT(*) FROM characters").fetchone()[0] == 0:

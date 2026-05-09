@@ -108,7 +108,8 @@
     <a href="/vendor-advisor" class="sidebar-item {% if '/vendor-advisor' in ni %}active{% endif %}" title="Vendor Advisor"><span class="si-icon">💡</span><span class="si-label">Vend. Advisor</span></a>
     <a href="/prices"  class="sidebar-item {% if '/prices' in ni %}active{% endif %}"  title="Prices">   <span class="si-icon">💰</span><span class="si-label">Prices</span></a>
     <a href="/caps"    class="sidebar-item {% if '/caps' in ni %}active{% endif %}"    title="Caps Ledger"><span class="si-icon">💵</span><span class="si-label">Caps Ledger</span></a>
-    <a href="/plans"   class="sidebar-item {% if '/plans' in ni %}active{% endif %}"   title="Plans">    <span class="si-icon">📜</span><span class="si-label">Plans</span></a>
+    <a href="/plans"           class="sidebar-item {% if '/plans' in ni and '/plan-checklist' not in ni %}active{% endif %}"           title="Plans">    <span class="si-icon">📜</span><span class="si-label">Plans</span></a>
+    <a href="/plan-checklist" class="sidebar-item {% if '/plan-checklist' in ni %}active{% endif %}" title="Plan Checklist"><span class="si-icon">📋</span><span class="si-label">Plan Checklist</span></a>
   </div>
 
   <div class="sidebar-divider"></div>
