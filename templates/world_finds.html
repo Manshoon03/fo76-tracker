@@ -467,6 +467,7 @@ document.addEventListener('keydown', e => {
 });
 
 {% if edit_id %}
+document.getElementById('addPanel').classList.add('open');
 document.getElementById('addPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 {% endif %}
 </script>

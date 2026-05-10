@@ -27,6 +27,9 @@ def _get_anthropic():
 app = Flask(__name__)
 app.secret_key = 'fo76-vault-tec-2024'
 
+APP_VERSION = '0.13.0'
+APP_START   = datetime.now()
+
 # Init DB once at startup, not on every request
 db.init_db()
 db.ensure_nuke_silos()
@@ -156,6 +159,13 @@ def inject_reference():
     ))
     armor_names = [r['name'] for r in db.query("SELECT name FROM wiki_armor ORDER BY name")]
     return {'ref': reference, 'wiki_weapon_names': weapon_names, 'wiki_armor_names': armor_names}
+
+@app.context_processor
+def inject_app_info():
+    return {
+        'APP_VERSION': APP_VERSION,
+        'app_start_ms': int(APP_START.timestamp() * 1000)
+    }
 
 @app.context_processor
 def inject_characters():

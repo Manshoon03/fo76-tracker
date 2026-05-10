@@ -9,7 +9,7 @@
     (function(){
       var t = localStorage.getItem('fo76theme') || 'green';
       document.documentElement.setAttribute('data-theme', t);
-      if (localStorage.getItem('sidebarOpen') !== 'false') {
+      if (localStorage.getItem('sidebarOpen') !== 'false' && window.innerWidth > 768) {
         document.documentElement.classList.add('sidebar-open');
       }
     })();
@@ -58,6 +58,9 @@
     <a href="/logout" style="font-size:11px;color:var(--text-dim);text-decoration:none" title="Log out">⏻</a>
   </div>
 </header>
+
+<!-- ── Mobile sidebar backdrop ─────────────────────────────────────────── -->
+<div id="sidebarBackdrop" class="sidebar-backdrop" onclick="closeSidebarMobile()"></div>
 
 <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
 <nav class="app-sidebar" id="sidebar">
@@ -128,8 +131,48 @@
   </div>
 
 
+  <!-- ── Version / Uptime footer ──────────────────────────────────────── -->
+  <div class="sidebar-version">
+    <button onclick="openVersionNotes()" title="Release notes">v{{ APP_VERSION }}</button>
+    <span id="sidebarUptime" class="sidebar-uptime">--</span>
+  </div>
+
 </nav>
 
+<!-- ── Version Notes Modal ────────────────────────────────────────────── -->
+<div id="versionModal" onclick="closeVersionNotes()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;
+            align-items:center;justify-content:center">
+  <div onclick="event.stopPropagation()"
+       style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;
+              max-width:480px;width:90%;max-height:80vh;overflow-y:auto;padding:1.2rem 1.4rem;
+              position:relative">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem">
+      <span style="font-weight:700;color:var(--accent);font-size:1rem">☢ v{{ APP_VERSION }} — Release Notes</span>
+      <button onclick="closeVersionNotes()"
+              style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;line-height:1;padding:0 4px">✕</button>
+    </div>
+    <div style="font-size:.82rem;color:var(--text);line-height:1.6">
+      <strong style="color:var(--text-hi)">v0.13.0</strong> — Plan Checklist
+      <ul style="margin:.4rem 0 .9rem 1.1rem;padding:0;color:var(--text-dim)">
+        <li>Full 1,869-plan catalog from the Fallout Wiki</li>
+        <li>Per-character learned / missing tracking with live progress bars</li>
+        <li>Category cards, All / Missing / Learned tabs, text search</li>
+        <li>Seeded from plan_catalog_seed.json — auto-populates on fresh install</li>
+        <li>Fixed World Finds edit panel not opening</li>
+      </ul>
+      <strong style="color:var(--text-hi)">v0.12.0</strong> — Multi-character &amp; ROLL effects
+      <ul style="margin:.4rem 0 .9rem 1.1rem;padding:0;color:var(--text-dim)">
+        <li>Multi-character support (PC, Xbox, PS4, PS5)</li>
+        <li>ROLL legendary effects system</li>
+        <li>DB connection stability fix</li>
+      </ul>
+      <div style="font-size:.75rem;color:var(--text-dim);margin-top:.5rem">
+        Uptime: <span id="modalUptime">--</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ── Flash messages ─────────────────────────────────────────────────── -->
 {% with messages = get_flashed_messages(with_categories=True) %}
@@ -303,8 +346,82 @@
   </div>
 </div>
 
+<style>
+.sidebar-version {
+  padding: .55rem .75rem .65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+.sidebar-version button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: .72rem;
+  font-family: var(--font);
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: .04em;
+  transition: border-color .15s;
+  white-space: nowrap;
+}
+.sidebar-version button:hover { border-color: var(--accent); }
+.sidebar-uptime {
+  font-size: .68rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: .4rem;
+}
+/* Hide uptime + center button when sidebar is collapsed */
+html:not(.sidebar-open) .sidebar-uptime { display: none; }
+html:not(.sidebar-open) .sidebar-version { justify-content: center; }
+</style>
+
 <script src="/static/app.js"></script>
 <script>
+// ── Version notes modal ──────────────────────────────────────────────────
+function openVersionNotes() {
+  document.getElementById('versionModal').style.display = 'flex';
+  updateUptimeDisplay();
+}
+function closeVersionNotes() {
+  document.getElementById('versionModal').style.display = 'none';
+}
+
+// ── Uptime ───────────────────────────────────────────────────────────────
+const _appStartMs = {{ app_start_ms }};
+function _fmtUptime() {
+  const secs  = Math.floor((Date.now() - _appStartMs) / 1000);
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (d > 0) return `up ${d}d ${h}h`;
+  if (h > 0) return `up ${h}h ${m}m`;
+  return `up ${m}m`;
+}
+function updateUptimeDisplay() {
+  const s = _fmtUptime();
+  const el = document.getElementById('sidebarUptime');
+  const mel = document.getElementById('modalUptime');
+  if (el)  el.textContent  = s;
+  if (mel) mel.textContent = s;
+}
+updateUptimeDisplay();
+setInterval(updateUptimeDisplay, 60000);
+
+// ── Mobile sidebar ───────────────────────────────────────────────────────
+function closeSidebarMobile() {
+  if (window.innerWidth <= 768) {
+    document.documentElement.classList.remove('sidebar-open');
+    localStorage.setItem('sidebarOpen', 'false');
+  }
+}
+
 function toggleCharMenu(e) {
   e.stopPropagation();
   const m = document.getElementById('charMenu');
@@ -326,7 +443,7 @@ document.addEventListener('keydown', e => {
       !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {
     toggleSidebar();
   }
-  if (e.key === 'Escape') { closeQuickLog(); }
+  if (e.key === 'Escape') { closeQuickLog(); closeSidebarMobile(); }
 });
 </script>
 </body>
