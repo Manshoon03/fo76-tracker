@@ -1,0 +1,649 @@
+{% extends 'base.html' %}
+{% block title %}Community Board{% endblock %}
+{% block content %}
+
+{% set tab = request.args.get('tab','pool') %}
+{% set active_pool  = pool  | selectattr('status','ne','Gone')     | list %}
+{% set done_pool    = pool  | selectattr('status','eq','Gone')     | list %}
+{% set active_needs = needs | selectattr('status','ne','Received') | list %}
+{% set done_needs   = needs | selectattr('status','eq','Received') | list %}
+
+<!-- ── Header ── -->
+<div class="page-header">
+  <h1>🎁 COMMUNITY BOARD</h1>
+  <span class="count-badge">{{ pool_available }} in pool</span>
+  <span class="count-badge" style="margin-left:4px">{{ needs_active }} seeking</span>
+  {% if last_change %}
+  <span class="dim" style="font-size:11px;margin-left:10px">Updated: {{ last_change }}</span>
+  {% endif %}
+  <div style="margin-left:auto;display:flex;gap:6px">
+    <a href="/community-board/export/pool.csv"  class="btn btn-secondary btn-sm">📥 Pool CSV</a>
+    <a href="/community-board/export/needs.csv" class="btn btn-secondary btn-sm">📥 Needs CSV</a>
+  </div>
+</div>
+<p class="dim" style="font-size:11px;margin:-6px 0 16px">
+  Pool = items available to donate. Needs = players waiting for a specific mod or item.
+  Export both CSVs and upload to your Google Sheet to share with the community.
+</p>
+
+<!-- ── Tabs ── -->
+<div class="cb-tabs">
+  <button class="cb-tab {% if tab=='pool'  %}active{% endif %}" onclick="showTab('pool',this)">
+    📦 Pool <span class="cb-badge">{{ pool_available }}</span>
+  </button>
+  <button class="cb-tab {% if tab=='needs' %}active{% endif %}" onclick="showTab('needs',this)">
+    📋 Needs <span class="cb-badge">{{ needs_active }}</span>
+  </button>
+  <button class="cb-tab {% if tab=='score' %}active{% endif %}" onclick="showTab('score',this)">
+    ⚖ Scoreboard
+  </button>
+  <button class="cb-tab {% if tab=='log'   %}active{% endif %}" onclick="showTab('log',this)">
+    📜 Log
+  </button>
+</div>
+
+{# ═══════════════════════════════════════════════════════════
+   TAB: POOL
+═══════════════════════════════════════════════════════════ #}
+<div id="tab-pool" class="cb-tab-content {% if tab=='pool' %}active{% endif %}">
+
+  <section class="add-panel open" id="poolAddPanel">
+    <div class="panel-toggle" onclick="togglePanel('poolAddPanel')">
+      <span>+ Add Item to Pool</span>
+      <span class="toggle-icon">▼</span>
+    </div>
+    <div class="panel-body">
+      <form method="POST" action="/community-board/pool/add">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Donor Name *</label>
+            <input type="text" name="donor_name" required placeholder="e.g. xXNukaColaXx" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>Held On (Character) *</label>
+            <input type="text" name="held_on" required placeholder="e.g. Alt2, Main, Their char"
+                   list="dl-chars" autocomplete="off">
+            <datalist id="dl-chars">
+              {% for c in chars %}<option value="{{ c }}">{% endfor %}
+              <option value="Their character">
+              <option value="My Main">
+            </datalist>
+          </div>
+          <div class="form-group span2">
+            <label>Item Name *</label>
+            <input type="text" name="item_name" required
+                   placeholder="e.g. Hack: Bloodied, Thru-Hikers Mod Box, Bloodied Fixer"
+                   list="dl-items" autocomplete="off">
+            <datalist id="dl-items">
+              {% for x in ref.WEAPON_STAR1 + ref.WEAPON_STAR2 + ref.WEAPON_STAR3 %}
+              <option value="{{ x }}">
+              {% endfor %}
+              {% for t in ['Thru-Hikers Mod Box','Acrobat Mod Box','Unyielding Mod Box',
+                           'Serendipity Mod Box','Bolstering Mod Box','Hack: Bloodied',
+                           'Hack: Explosive','Hack: Quad','Hack: Anti-Armor'] %}
+              <option value="{{ t }}">
+              {% endfor %}
+            </datalist>
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select name="item_type">
+              {% for t in ['Mod Box','Weapon','Armor','Other'] %}
+              <option value="{{ t }}">{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Qty</label>
+            <input type="number" name="qty" value="1" min="1" style="width:80px">
+          </div>
+          <div class="form-group">
+            <label>Star 1</label>
+            <input type="text" name="star1" list="dl-s1" autocomplete="off" placeholder="e.g. Bloodied">
+            <datalist id="dl-s1">{% for x in ref.WEAPON_STAR1 %}<option value="{{ x }}">{% endfor %}</datalist>
+          </div>
+          <div class="form-group">
+            <label>Star 2</label>
+            <input type="text" name="star2" list="dl-s2" autocomplete="off">
+            <datalist id="dl-s2">{% for x in ref.WEAPON_STAR2 %}<option value="{{ x }}">{% endfor %}</datalist>
+          </div>
+          <div class="form-group">
+            <label>Star 3</label>
+            <input type="text" name="star3" list="dl-s3" autocomplete="off">
+            <datalist id="dl-s3">{% for x in ref.WEAPON_STAR3 %}<option value="{{ x }}">{% endfor %}</datalist>
+          </div>
+          <div class="form-group span2">
+            <label>Notes</label>
+            <input type="text" name="notes" placeholder="e.g. picked up from Eviction Notice, 3-star">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">+ Add to Pool</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  {% if active_pool %}
+  <div style="overflow-x:auto">
+    <table class="data-table" id="poolTable">
+      <thead>
+        <tr>
+          <th>Donor</th><th>Held On</th><th>Item</th><th>Type</th>
+          <th>Qty</th><th>Stars</th><th>Status</th><th>Reserved For</th>
+          <th style="min-width:170px">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in active_pool %}
+        <tr>
+          <td style="font-weight:600">{{ p['donor_name'] }}</td>
+          <td style="font-size:12px;color:var(--accent,#4caf72)">{{ p['held_on'] }}</td>
+          <td style="font-weight:600">{{ p['item_name'] }}</td>
+          <td><span class="cb-chip">{{ p['item_type'] }}</span></td>
+          <td style="text-align:center;font-weight:600">{{ p['qty'] }}</td>
+          <td style="font-size:11px;color:var(--text-dim)">
+            {% set stars = [p['star1'],p['star2'],p['star3']] | select | list %}
+            {{ stars|join(' / ') if stars else '—' }}
+          </td>
+          <td>
+            <span class="cb-status {{ p['status']|lower }}">{{ p['status'] }}</span>
+          </td>
+          <td style="font-size:12px">{{ p['reserved_for'] or '—' }}</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-secondary btn-sm" onclick="toggleSub('pr-{{ p['id'] }}')">🔗 Reserve</button>
+            <button class="btn btn-success btn-sm"   onclick="toggleSub('pg-{{ p['id'] }}')">✓ Gone</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleSub('pe-{{ p['id'] }}')">✎</button>
+            <button class="btn btn-danger btn-sm"    onclick="toggleSub('pd-{{ p['id'] }}')">🗑</button>
+          </td>
+        </tr>
+
+        <!-- Reserve sub-row -->
+        <tr id="pr-{{ p['id'] }}" class="cb-sub" style="display:none">
+          <td colspan="9" class="cb-sub-cell">
+            <form method="POST" action="/community-board/pool/{{ p['id'] }}/reserve" class="cb-sub-form">
+              <span>🔗 Reserve <strong>{{ p['item_name'] }}</strong> for:</span>
+              <input type="text" name="reserved_for" placeholder="Player name" autocomplete="off" required>
+              <button class="btn btn-primary btn-sm" type="submit">Save</button>
+              <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSub('pr-{{ p['id'] }}')">Cancel</button>
+            </form>
+          </td>
+        </tr>
+
+        <!-- Gone sub-row -->
+        <tr id="pg-{{ p['id'] }}" class="cb-sub" style="display:none">
+          <td colspan="9" class="cb-sub-cell">
+            <form method="POST" action="/community-board/pool/{{ p['id'] }}/gone" class="cb-sub-form">
+              <span style="color:var(--accent,#4caf72)">
+                ✓ Mark <strong>{{ p['donor_name'] }}'s {{ p['item_name'] }}</strong>
+                (x{{ p['qty'] }}) as handed off?
+                {% if p['reserved_for'] %} → <strong>{{ p['reserved_for'] }}</strong>{% endif %}
+              </span>
+              <button class="btn btn-success btn-sm" type="submit">Yes, Gone</button>
+              <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSub('pg-{{ p['id'] }}')">Cancel</button>
+            </form>
+          </td>
+        </tr>
+
+        <!-- Edit sub-row -->
+        <tr id="pe-{{ p['id'] }}" class="cb-sub" style="display:none">
+          <td colspan="9" class="cb-sub-cell">
+            <form method="POST" action="/community-board/pool/{{ p['id'] }}/edit" class="cb-edit-form">
+              <div class="cb-edit-grid">
+                <div><label>Donor</label><input type="text" name="donor_name" value="{{ p['donor_name'] }}" required></div>
+                <div><label>Held On</label><input type="text" name="held_on" value="{{ p['held_on'] }}" list="dl-chars" required></div>
+                <div class="span2"><label>Item Name</label><input type="text" name="item_name" value="{{ p['item_name'] }}" list="dl-items" required></div>
+                <div><label>Type</label>
+                  <select name="item_type">
+                    {% for t in ['Mod Box','Weapon','Armor','Other'] %}
+                    <option value="{{ t }}" {% if p['item_type']==t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div><label>Qty</label><input type="number" name="qty" value="{{ p['qty'] }}" min="1"></div>
+                <div><label>Star 1</label><input type="text" name="star1" value="{{ p['star1'] or '' }}" list="dl-s1"></div>
+                <div><label>Star 2</label><input type="text" name="star2" value="{{ p['star2'] or '' }}" list="dl-s2"></div>
+                <div><label>Star 3</label><input type="text" name="star3" value="{{ p['star3'] or '' }}" list="dl-s3"></div>
+                <div class="span2"><label>Notes</label><input type="text" name="notes" value="{{ p['notes'] or '' }}"></div>
+                <div><label>Date</label><input type="date" name="added_at" value="{{ p['added_at'] }}"></div>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:8px">
+                <button class="btn btn-primary btn-sm" type="submit">💾 Save</button>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSub('pe-{{ p['id'] }}')">Cancel</button>
+              </div>
+            </form>
+          </td>
+        </tr>
+
+        <!-- Delete sub-row -->
+        <tr id="pd-{{ p['id'] }}" class="cb-sub" style="display:none">
+          <td colspan="9" class="cb-sub-cell">
+            <form method="POST" action="/community-board/pool/{{ p['id'] }}/delete" class="cb-sub-form">
+              <span style="color:#e74c3c">Remove <strong>{{ p['item_name'] }}</strong> from pool?</span>
+              <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+              <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSub('pd-{{ p['id'] }}')">Cancel</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div style="font-size:2rem">📦</div><div>Pool is empty.</div></div>
+  {% endif %}
+
+  {% if done_pool %}
+  <details style="margin-top:20px">
+    <summary class="cb-archive-toggle">✓ Handed Off Archive ({{ done_pool|length }})</summary>
+    <div style="overflow-x:auto;margin-top:8px">
+      <table class="data-table" style="opacity:0.55">
+        <thead><tr><th>Donor</th><th>Held On</th><th>Item</th><th>Qty</th><th>Reserved For</th><th>Added</th></tr></thead>
+        <tbody>
+          {% for p in done_pool %}
+          <tr><td>{{ p['donor_name'] }}</td><td>{{ p['held_on'] }}</td><td>{{ p['item_name'] }}</td>
+              <td>{{ p['qty'] }}</td><td>{{ p['reserved_for'] or '—' }}</td><td style="font-size:11px">{{ p['added_at'] }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</div>
+
+{# ═══════════════════════════════════════════════════════════
+   TAB: NEEDS
+═══════════════════════════════════════════════════════════ #}
+<div id="tab-needs" class="cb-tab-content {% if tab=='needs' %}active{% endif %}">
+
+  <section class="add-panel open" id="needAddPanel">
+    <div class="panel-toggle" onclick="togglePanel('needAddPanel')">
+      <span>+ Add to Needs Board</span>
+      <span class="toggle-icon">▼</span>
+    </div>
+    <div class="panel-body">
+      <form method="POST" action="/community-board/need/add">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Player Name *</label>
+            <input type="text" name="player_name" required placeholder="e.g. NukaColaGal" autocomplete="off">
+          </div>
+          <div class="form-group span2">
+            <label>Item / Mod Needed *</label>
+            <input type="text" name="item_wanted" required list="dl-items"
+                   placeholder="e.g. Thru-Hikers Mod Box, Bloodied, Quad Fixer" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select name="item_type">
+              {% for t in ['Mod Box','Weapon','Armor','Other'] %}
+              <option value="{{ t }}">{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Platform</label>
+            <select name="platform">
+              {% for p in ['PC','PlayStation','Xbox'] %}
+              <option value="{{ p }}">{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group span2">
+            <label>Notes</label>
+            <input type="text" name="notes" placeholder="e.g. for bloodied build, already has 1-star">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">+ Add to Board</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Quick lookup hint -->
+  {% if active_pool %}
+  <div class="cb-pool-hint">
+    <strong>Currently in pool:</strong>
+    {% for p in active_pool %}
+    <span class="cb-pool-pill">{{ p['item_name'] }}{% if p['qty'] > 1 %} ×{{ p['qty'] }}{% endif %}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if active_needs %}
+  <div style="overflow-x:auto">
+    <table class="data-table" id="needsTable">
+      <thead>
+        <tr>
+          <th>Player</th><th>Needs</th><th>Type</th><th>Platform</th>
+          <th>Added</th><th>Status</th><th>Matched To</th>
+          <th style="min-width:190px">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n in active_needs %}
+        <tr>
+          <td style="font-weight:600">{{ n['player_name'] }}</td>
+          <td style="font-weight:600;color:var(--accent,#4caf72)">{{ n['item_wanted'] }}</td>
+          <td><span class="cb-chip">{{ n['item_type'] }}</span></td>
+          <td style="font-size:12px">{{ n['platform'] or '—' }}</td>
+          <td style="font-size:11px;color:var(--text-dim);white-space:nowrap">{{ n['added_at'] }}</td>
+          <td><span class="cb-status {{ n['status']|lower }}">{{ n['status'] }}</span></td>
+          <td style="font-size:12px">
+            {% if n['matched_item'] %}
+            <span>{{ n['matched_item'] }}</span>
+            {% if n['fulfilled_by'] %}<span class="dim"> from {{ n['fulfilled_by'] }}</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-secondary btn-sm" onclick="toggleSub('nm-{{ n['id'] }}')">🔗 Match</button>
+            <button class="btn btn-success btn-sm"   onclick="toggleSub('nr-{{ n['id'] }}')">✓ Received</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleSub('ne-{{ n['id'] }}')">✎</button>
+            <button class="btn btn-danger btn-sm"    onclick="toggleSub('nd-{{ n['id'] }}')">🗑</button>
+          </td>
+        </tr>
+
+        <!-- Match sub-row -->
+        <tr id="nm-{{ n['id'] }}" class="cb-sub" style="display:none">
+          <td colspan="8" class="cb-sub-cell">
+            <form method="POST" action="/community-board/need/{{ n['id'] }}/match" class="cb-sub-form cb-match-form">
+              <span>🔗 <strong>{{ n['player_name'] }}</strong> is getting:</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                <input type="text" name="matched_item" list="dl-items"
+                       value="{{ n['matched_item'] or '' }}"
+                       placeholder="Item name" autocomplete="off" required>
+                <span class="dim" style="font-size:12px">from</span>
+                <input type="text" name="matched_from"
+                       value="{{ n['fulfilled_by'] or '' }}"
+                       placeholder="Donor / character" autocomplete="off">
+                <button class="btn btn-primary btn-sm" type="submit">Save Match</button>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSub('nm-{{ n['id'] }}')">Cancel</button>
+              </div>
+            </form>
+          </td>
+        </tr>
+
+        <!-- Received sub-row -->
+        <tr id="nr-{{ n['id'] }}" class="cb-sub" style="display:none">
+          <td colspan="8" class="cb-sub-cell">
+            <form method="POST" action="/community-board/need/{{ n['id'] }}/received" class="cb-sub-form">
+              <span style="color:var(--accent,#4caf72)">
+                ✓ Mark <strong>{{ n['player_name'] }}</strong> as having received
+                <strong>{{ n['item_wanted'] }}</strong>?
+              </span>
+              <button class="btn btn-success btn-sm" type="submit">Yes, Received</button>
+              <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSub('nr-{{ n['id'] }}')">Cancel</button>
+            </form>
+          </td>
+        </tr>
+
+        <!-- Edit sub-row -->
+        <tr id="ne-{{ n['id'] }}" class="cb-sub" style="display:none">
+          <td colspan="8" class="cb-sub-cell">
+            <form method="POST" action="/community-board/need/{{ n['id'] }}/edit" class="cb-edit-form">
+              <div class="cb-edit-grid">
+                <div><label>Player</label><input type="text" name="player_name" value="{{ n['player_name'] }}" required></div>
+                <div class="span2"><label>Item Wanted</label><input type="text" name="item_wanted" value="{{ n['item_wanted'] }}" list="dl-items" required></div>
+                <div><label>Type</label>
+                  <select name="item_type">
+                    {% for t in ['Mod Box','Weapon','Armor','Other'] %}
+                    <option value="{{ t }}" {% if n['item_type']==t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div><label>Platform</label>
+                  <select name="platform">
+                    {% for pt in ['PC','PlayStation','Xbox'] %}
+                    <option value="{{ pt }}" {% if n['platform']==pt %}selected{% endif %}>{{ pt }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="span2"><label>Notes</label><input type="text" name="notes" value="{{ n['notes'] or '' }}"></div>
+                <div><label>Date Added</label><input type="date" name="added_at" value="{{ n['added_at'] }}"></div>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:8px">
+                <button class="btn btn-primary btn-sm" type="submit">💾 Save</button>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSub('ne-{{ n['id'] }}')">Cancel</button>
+              </div>
+            </form>
+          </td>
+        </tr>
+
+        <!-- Delete sub-row -->
+        <tr id="nd-{{ n['id'] }}" class="cb-sub" style="display:none">
+          <td colspan="8" class="cb-sub-cell">
+            <form method="POST" action="/community-board/need/{{ n['id'] }}/delete" class="cb-sub-form">
+              <span style="color:#e74c3c">Remove <strong>{{ n['player_name'] }}</strong> from the board?</span>
+              <input type="text" name="reason" placeholder="Reason (optional, goes to log)">
+              <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+              <button class="btn btn-secondary btn-sm" type="button" onclick="toggleSub('nd-{{ n['id'] }}')">Cancel</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div style="font-size:2rem">📋</div><div>No active needs.</div></div>
+  {% endif %}
+
+  {% if done_needs %}
+  <details style="margin-top:20px">
+    <summary class="cb-archive-toggle">✓ Received Archive ({{ done_needs|length }})</summary>
+    <div style="overflow-x:auto;margin-top:8px">
+      <table class="data-table" style="opacity:0.55">
+        <thead><tr><th>Player</th><th>Item</th><th>From</th><th>Received</th></tr></thead>
+        <tbody>
+          {% for n in done_needs %}
+          <tr><td>{{ n['player_name'] }}</td><td>{{ n['item_wanted'] }}</td>
+              <td>{{ n['fulfilled_by'] or '—' }}</td>
+              <td style="font-size:11px">{{ n['fulfilled_at'] or '—' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</div>
+
+{# ═══════════════════════════════════════════════════════════
+   TAB: SCOREBOARD
+═══════════════════════════════════════════════════════════ #}
+<div id="tab-score" class="cb-tab-content {% if tab=='score' %}active{% endif %}">
+  <p class="dim" style="font-size:12px;margin-bottom:14px">
+    Donated = items they've contributed to the pool that were handed off.
+    Received = items they've gotten from the board. Negative balance = taking more than giving.
+  </p>
+  {% if scoreboard %}
+  <div style="overflow-x:auto">
+    <table class="data-table">
+      <thead>
+        <tr><th>#</th><th>Player</th><th style="text-align:center">Donated</th>
+            <th style="text-align:center">Received</th><th style="text-align:center">Balance</th>
+            <th>Standing</th></tr>
+      </thead>
+      <tbody>
+        {% for row in scoreboard %}
+        <tr {% if row['score'] < 0 %}style="background:rgba(231,76,60,0.05)"{% endif %}>
+          <td class="dim" style="font-size:11px">{{ loop.index }}</td>
+          <td style="font-weight:600">{{ row['player'] }}</td>
+          <td style="text-align:center">{{ row['donated'] }}</td>
+          <td style="text-align:center">{{ row['received'] }}</td>
+          <td style="text-align:center;font-weight:700;
+               color:{% if row['score']>0 %}var(--accent,#4caf72){% elif row['score']<0 %}#e74c3c{% else %}var(--text-dim){% endif %}">
+            {% if row['score']>0 %}+{% endif %}{{ row['score'] }}
+          </td>
+          <td style="font-size:11px">
+            {% if row['donated']==0 and row['received']>0 %}
+              <span style="color:#e74c3c;font-weight:600">🚩 Never donated</span>
+            {% elif row['score']<=-3 %}
+              <span style="color:#e74c3c;font-weight:600">🔴 Heavy taker</span>
+            {% elif row['score']<0 %}
+              <span style="color:#e6b41e;font-weight:600">⚠ Watch</span>
+            {% elif row['score']>=3 %}
+              <span style="color:#e6b41e;font-weight:600">⭐ Top contributor</span>
+            {% else %}
+              <span class="dim">✅ OK</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div style="font-size:2rem">⚖</div>
+    <div>No data yet.</div>
+    <div class="dim" style="font-size:12px;margin-top:4px">Scoreboard populates as items are donated and received.</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ═══════════════════════════════════════════════════════════
+   TAB: LOG
+═══════════════════════════════════════════════════════════ #}
+<div id="tab-log" class="cb-tab-content {% if tab=='log' %}active{% endif %}">
+  <p class="dim" style="font-size:12px;margin-bottom:14px">Every change is recorded here automatically.</p>
+  {% if log %}
+  <div style="overflow-x:auto">
+    <table class="data-table">
+      <thead><tr><th>When</th><th>Action</th><th>Player</th><th>Item</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for entry in log %}
+        <tr>
+          <td style="font-size:11px;color:var(--text-dim);white-space:nowrap">{{ entry['logged_at'] }}</td>
+          <td>
+            {% set a = entry['action'] %}
+            {% if   a == 'Donated'   %}<span class="cb-log-chip donated">✅ Donated</span>
+            {% elif a == 'Received'  %}<span class="cb-log-chip received">🎁 Received</span>
+            {% elif a == 'Matched'   %}<span class="cb-log-chip matched">🔗 Matched</span>
+            {% elif a == 'Reserved'  %}<span class="cb-log-chip matched">📌 Reserved</span>
+            {% elif a == 'Removed'   %}<span class="cb-log-chip removed">🗑 Removed</span>
+            {% else                  %}<span class="cb-log-chip added">➕ {{ a }}</span>
+            {% endif %}
+          </td>
+          <td style="font-weight:600">{{ entry['player_name'] or '—' }}</td>
+          <td>{{ entry['item_name'] or '—' }}</td>
+          <td style="font-size:11px;color:var(--text-dim)">{{ entry['detail'] or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div style="font-size:2rem">📜</div><div>No activity yet.</div></div>
+  {% endif %}
+</div>
+
+<style>
+/* Tabs */
+.cb-tabs { display:flex; gap:2px; margin-bottom:16px; border-bottom:1px solid var(--border); }
+.cb-tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--text-dim);
+          cursor:pointer; font-size:13px; font-weight:600; padding:6px 14px 8px;
+          display:flex; align-items:center; gap:5px; transition:color 0.15s, border-color 0.15s; }
+.cb-tab:hover { color:var(--text); }
+.cb-tab.active { color:var(--accent,#4caf72); border-bottom-color:var(--accent,#4caf72); }
+.cb-badge { font-size:10px; background:var(--accent,#4caf72); color:#000; border-radius:8px;
+            padding:0 5px; font-weight:700; line-height:16px; }
+.cb-tab-content { display:none; }
+.cb-tab-content.active { display:block; }
+
+/* Status badges */
+.cb-status { display:inline-block; padding:2px 9px; border-radius:10px;
+             font-size:11px; font-weight:600; white-space:nowrap; }
+.cb-status.available { background:rgba(70,130,220,0.15); color:#6aaff5; border:1px solid rgba(70,130,220,0.3); }
+.cb-status.reserved  { background:rgba(230,180,30,0.15);  color:#e6b41e; border:1px solid rgba(230,180,30,0.3); }
+.cb-status.gone      { background:rgba(180,180,180,0.1);  color:#888;   border:1px solid var(--border); }
+.cb-status.waiting   { background:rgba(70,130,220,0.15);  color:#6aaff5; border:1px solid rgba(70,130,220,0.3); }
+.cb-status.matched   { background:rgba(230,180,30,0.15);  color:#e6b41e; border:1px solid rgba(230,180,30,0.3); }
+.cb-status.received  { background:rgba(180,180,180,0.1);  color:#888;   border:1px solid var(--border); }
+
+/* Type chip */
+.cb-chip { font-size:10px; padding:2px 7px; border-radius:10px;
+           background:rgba(180,180,180,0.1); color:var(--text-dim); border:1px solid var(--border); }
+
+/* Sub-rows */
+.cb-sub { background:var(--bg-elevated,var(--bg-panel)); }
+.cb-sub-cell { padding:10px 14px !important; }
+.cb-sub-form { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; }
+.cb-sub-form input[type=text] {
+  flex:1; min-width:150px; padding:5px 8px;
+  background:var(--bg-input,var(--bg-card));
+  border:1px solid var(--border); border-radius:4px;
+  color:var(--text); font-size:13px;
+}
+
+/* Edit grid */
+.cb-edit-form { padding:2px 0; }
+.cb-edit-grid { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+.cb-edit-grid > div { display:flex; flex-direction:column; gap:3px; flex:1; min-width:110px; }
+.cb-edit-grid > div.span2 { flex:2; min-width:200px; }
+.cb-edit-grid label { font-size:10px; color:var(--text-dim); }
+.cb-edit-grid input, .cb-edit-grid select {
+  padding:5px 8px;
+  background:var(--bg-input,var(--bg-card));
+  border:1px solid var(--border); border-radius:4px;
+  color:var(--text); font-size:12px;
+}
+
+/* Pool hint strip */
+.cb-pool-hint {
+  font-size:12px; color:var(--text-dim);
+  margin-bottom:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+}
+.cb-pool-pill {
+  background:rgba(50,180,100,0.1); color:var(--accent,#4caf72);
+  border:1px solid rgba(50,180,100,0.25); border-radius:10px;
+  padding:2px 8px; font-size:11px; font-weight:600;
+}
+
+/* Archive toggle */
+.cb-archive-toggle {
+  cursor:pointer; font-size:12px; color:var(--text-dim);
+  user-select:none; padding:6px 0; list-style:none;
+}
+
+/* Log chips */
+.cb-log-chip { font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+.cb-log-chip.donated  { background:rgba(50,180,100,0.12); color:#4caf72; border:1px solid rgba(50,180,100,0.25); }
+.cb-log-chip.received { background:rgba(50,180,100,0.12); color:#4caf72; border:1px solid rgba(50,180,100,0.25); }
+.cb-log-chip.matched  { background:rgba(230,180,30,0.12); color:#e6b41e; border:1px solid rgba(230,180,30,0.25); }
+.cb-log-chip.removed  { background:rgba(231,76,60,0.1);  color:#e74c3c; border:1px solid rgba(231,76,60,0.2); }
+.cb-log-chip.added    { background:rgba(70,130,220,0.12); color:#6aaff5; border:1px solid rgba(70,130,220,0.25); }
+
+/* btn-success */
+.btn-success { background:rgba(50,180,100,0.18); color:#4caf72; border:1px solid rgba(50,180,100,0.35); }
+.btn-success:hover { background:rgba(50,180,100,0.28); }
+
+@media (max-width:600px) {
+  .cb-edit-grid { flex-direction:column; }
+  .cb-sub-form  { flex-direction:column; align-items:flex-start; }
+}
+</style>
+
+<script>
+function showTab(name, btn) {
+  document.querySelectorAll('.cb-tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.cb-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function toggleSub(rowId) {
+  const row  = document.getElementById(rowId);
+  if (!row) return;
+  const open = row.style.display === 'table-row';
+  // close all sub-rows in this table
+  const tbl  = row.closest('table');
+  if (tbl) tbl.querySelectorAll('.cb-sub').forEach(r => r.style.display = 'none');
+  if (!open) {
+    row.style.display = 'table-row';
+    const inp = row.querySelector('input[type=text]');
+    if (inp) setTimeout(() => inp.focus(), 40);
+  }
+}
+</script>
+
+{% endblock %}

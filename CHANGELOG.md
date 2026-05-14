@@ -5,6 +5,29 @@ Format: Version | Date | What changed
 
 ---
 
+## [0.14.0] — 2026-05-12
+
+### Added
+- **Community Board** (`/community-board`) — streamer community mod-exchange tracker.
+  - **Pool tab** — log items available to donate: donor name, held-on character, item name, type, qty, stars (1–3), notes. Status cycles Available → Reserved → Gone.
+  - **Needs tab** — track players waiting for a specific mod or item: player name, item wanted, type, platform, notes. Status cycles Waiting → Matched → Received. Pool hint strip shows currently available items.
+  - **Scoreboard tab** — auto-calculated give vs. take balance per player computed from actual Pool (Gone = donation) and Needs (Received = take) actions. Abuse flags: 🚩 Never donated / 🔴 Heavy taker (ratio < 0.25) / ⚠ Watch (ratio < 0.5) / ⭐ Top contributor.
+  - **Log tab** — full audit trail of every action (Pool Add, Reserved, Donated, Need Added, Matched, Received, Removed) with timestamp and detail.
+  - **Inline sub-row actions** — Reserve, Gone, Edit, Delete for Pool; Match, Received, Edit, Delete for Needs. No separate edit page — all actions expand inline in the table row.
+  - **CSV exports** — `📥 Pool CSV` exports active pool; `📥 Needs CSV` exports open needs. Both designed for Google Sheets import (upload → replace sheet → share publicly with community).
+  - Three new tables: `comm_pool`, `comm_needs`, `comm_log`.
+  - Sidebar entry 🎁 Com. Board (after World Finds).
+  - Routes: `GET /community-board`, `POST /community-board/pool/add`, `POST /community-board/pool/<id>/edit`, `POST /community-board/pool/<id>/reserve`, `POST /community-board/pool/<id>/gone`, `POST /community-board/pool/<id>/delete`, `POST /community-board/need/add`, `POST /community-board/need/<id>/edit`, `POST /community-board/need/<id>/match`, `POST /community-board/need/<id>/received`, `POST /community-board/need/<id>/delete`, `GET /community-board/export/pool.csv`, `GET /community-board/export/needs.csv`.
+
+### Fixed
+- **Code review — `date` import scattered** — `date` was imported locally inside each community board route function (`from datetime import date as _d`). Moved to module-level `from datetime import datetime, timedelta, date`. All three local imports removed.
+- **Code review — redirect string concatenation** — needs routes were building tab URLs via `url_for('community_board') + '?tab=needs'`. Replaced with proper `url_for('community_board', tab='needs')` across all 5 affected routes.
+- **Code review — `needs_active` count missed legacy rows** — counter only checked `status IN ('Waiting','Matched')`. Added `'Seeking'` as fallback to correctly count any pre-migration rows.
+- **Code review — dead EXPORT_CONFIG entry** — `'community-needs'` entry in `EXPORT_CONFIG` was unused (community board uses its own dedicated export routes). Removed to avoid confusion.
+- **Code review — `debug=True` in production** — hardcoded `debug=True` in `app.run()` replaced with `debug=os.getenv('FLASK_DEBUG', '0') == '1'`. Debug mode is off by default; opt-in by setting `FLASK_DEBUG=1` in the environment.
+
+---
+
 ## [0.13.0] — 2026-05-08
 
 ### Added

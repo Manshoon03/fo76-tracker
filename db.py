@@ -4,7 +4,7 @@ import shutil
 import glob
 from datetime import datetime, timedelta
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fo76.db')
+DB_PATH = os.getenv('FO76_DB_PATH', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fo76.db'))
 
 _managed_ids = set()   # connection ids managed by Flask g teardown
 
@@ -16,6 +16,7 @@ def _new_conn():
     conn.execute("PRAGMA cache_size=-8000")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA mmap_size=134217728")   # 128 MB memory-mapped reads
     return conn
 
 def get_db():
@@ -550,12 +551,60 @@ def init_db():
             filename   TEXT NOT NULL,
             created_at TEXT DEFAULT (datetime('now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS comm_needs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_name  TEXT    NOT NULL,
+            item_wanted  TEXT    NOT NULL,
+            item_type    TEXT    DEFAULT 'Mod Box',
+            platform     TEXT    DEFAULT 'PC',
+            notes        TEXT,
+            status       TEXT    DEFAULT 'Seeking',
+            fulfilled_by TEXT,
+            added_at     TEXT    DEFAULT (date('now')),
+            fulfilled_at TEXT,
+            created_at   TEXT    DEFAULT (datetime('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS comm_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            action      TEXT NOT NULL,
+            player_name TEXT,
+            item_name   TEXT,
+            detail      TEXT,
+            logged_at   TEXT DEFAULT (datetime('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS comm_pool (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            donor_name   TEXT NOT NULL,
+            held_on      TEXT NOT NULL,
+            item_name    TEXT NOT NULL,
+            item_type    TEXT DEFAULT 'Mod Box',
+            qty          INTEGER DEFAULT 1,
+            star1        TEXT,
+            star2        TEXT,
+            star3        TEXT,
+            notes        TEXT,
+            status       TEXT DEFAULT 'Available',
+            reserved_for TEXT,
+            added_at     TEXT DEFAULT (date('now')),
+            created_at   TEXT DEFAULT (datetime('now'))
+        )""",
     ]:
         try:
             conn.execute(stmt)
             conn.commit()
         except Exception:
             pass  # Column already exists
+    # Community board migrations
+    for stmt in [
+        "ALTER TABLE comm_needs ADD COLUMN matched_item TEXT",
+        "UPDATE comm_needs SET status='Waiting'  WHERE status='Seeking'",
+        "UPDATE comm_needs SET status='Received' WHERE status='Fulfilled'",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
     # Remove Mothman Lair (limited-time event) and replace with Ultracite Titan
     for stmt in [
         "DELETE FROM daily_tasks WHERE name = 'Mothman Lair'",

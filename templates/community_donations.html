@@ -1,0 +1,269 @@
+{% extends 'base.html' %}
+{% block title %}Community Donations{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🎁 COMMUNITY DONATIONS</h1>
+  <span class="count-badge">{{ items|length }} donation{{ 's' if items|length != 1 else '' }}</span>
+  <a href="/export/community-donations.csv" class="btn btn-secondary btn-sm" style="margin-left:auto">
+    ⬇ Download CSV
+  </a>
+</div>
+<p class="dim" style="font-size:11px;margin:-6px 0 14px">
+  Upload this CSV to Google Sheets to share with your community.
+</p>
+
+<!-- Add / Edit panel -->
+<section class="add-panel" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span id="panelTitle">+ Log a Donation</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" id="donationForm" action="/community-donations/add">
+      <input type="hidden" name="_method" value="add">
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" name="donated_at" id="fDate">
+        </div>
+        <div class="form-group">
+          <label>Recipient *</label>
+          <input type="text" name="recipient" id="fRecipient" required
+                 placeholder="e.g. Vault_Tec_Sarah">
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Item Name *</label>
+          <input type="text" name="item_name" id="fItemName" required
+                 placeholder="e.g. Fixer, Hack: Bloodied">
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Item Type</label>
+          <select name="item_type" id="fItemType">
+            {% for t in ['Legendary Mod Box','Crafted Weapon','Armor','Other'] %}
+            <option value="{{ t }}">{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Star 1</label>
+          <input type="text" name="star1" id="fStar1" list="dl-star1" autocomplete="off"
+                 placeholder="e.g. Bloodied">
+          <datalist id="dl-star1">{% for x in ref.WEAPON_STAR1 %}<option value="{{ x }}">{% endfor %}</datalist>
+        </div>
+        <div class="form-group">
+          <label>Star 2</label>
+          <input type="text" name="star2" id="fStar2" list="dl-star2" autocomplete="off"
+                 placeholder="e.g. Explosive">
+          <datalist id="dl-star2">{% for x in ref.WEAPON_STAR2 %}<option value="{{ x }}">{% endfor %}</datalist>
+        </div>
+        <div class="form-group">
+          <label>Star 3</label>
+          <input type="text" name="star3" id="fStar3" list="dl-star3" autocomplete="off"
+                 placeholder="e.g. 25% Faster Fire Rate">
+          <datalist id="dl-star3">{% for x in ref.WEAPON_STAR3 %}<option value="{{ x }}">{% endfor %}</datalist>
+        </div>
+        <div class="form-group">
+          <label>Star 4</label>
+          <input type="text" name="star4" id="fStar4" list="dl-star4" autocomplete="off"
+                 placeholder="optional">
+          <datalist id="dl-star4">{% for x in ref.WEAPON_STAR4 %}<option value="{{ x }}">{% endfor %}</datalist>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status" id="fStatus">
+            {% for s in ['Pending','Delivered','Fulfilled'] %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" id="fNotes"
+                 placeholder="e.g. teaching explosive builds, giveaway winner">
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" id="submitBtn">🎁 Log Donation</button>
+        <button class="btn btn-secondary" type="button" id="cancelEdit"
+                style="display:none" onclick="cancelEdit()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Search -->
+<div style="margin-bottom:10px">
+  <input type="text" placeholder="Search donations..."
+         oninput="filterTable(this.value,'donationsTable')"
+         style="width:100%;max-width:360px;padding:6px 10px;
+                background:var(--bg-input,var(--bg-elevated));
+                border:1px solid var(--border);border-radius:4px;
+                color:var(--text);font-size:13px">
+</div>
+
+<!-- Table -->
+{% if items %}
+<div style="overflow-x:auto">
+  <table class="data-table" id="donationsTable">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Recipient</th>
+        <th>Item</th>
+        <th>Type</th>
+        <th>Stars</th>
+        <th>Status</th>
+        <th>Notes</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in items %}
+      <tr>
+        <td style="white-space:nowrap">{{ row['donated_at'] }}</td>
+        <td style="font-weight:600">{{ row['recipient'] }}</td>
+        <td>{{ row['item_name'] }}</td>
+        <td>
+          <span class="cd-type-badge">{{ row['item_type'] }}</span>
+        </td>
+        <td style="font-size:11px;color:var(--text-dim)">
+          {% set stars = [row['star1'], row['star2'], row['star3'], row['star4']] | select | list %}
+          {{ stars | join(' / ') if stars else '—' }}
+        </td>
+        <td>
+          <span class="cd-status-badge"
+                id="status-{{ row['id'] }}"
+                data-status="{{ row['status'] }}"
+                onclick="cycleStatus({{ row['id'] }}, this.dataset.status)"
+                title="Click to cycle status">
+            {{ row['status'] }}
+          </span>
+        </td>
+        <td style="font-size:11px;color:var(--text-dim);font-style:italic">
+          {{ row['notes'] or '' }}
+        </td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-secondary btn-sm"
+                  onclick="loadEdit({{ row['id'] }},
+                    {{ row['donated_at']|tojson }},
+                    {{ row['recipient']|tojson }},
+                    {{ row['item_name']|tojson }},
+                    {{ row['item_type']|tojson }},
+                    {{ (row['star1'] or '')|tojson }},
+                    {{ (row['star2'] or '')|tojson }},
+                    {{ (row['star3'] or '')|tojson }},
+                    {{ (row['star4'] or '')|tojson }},
+                    {{ row['status']|tojson }},
+                    {{ (row['notes'] or '')|tojson }})">
+            ✎ Edit
+          </button>
+          <form method="POST" action="/community-donations/{{ row['id'] }}/delete"
+                style="display:inline"
+                onsubmit="return confirm('Delete this donation?')">
+            <button class="btn btn-danger btn-sm" type="submit">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <div style="font-size:2.5rem">🎁</div>
+  <div>No donations logged yet.</div>
+  <div class="dim" style="font-size:12px;margin-top:4px">Use the form above to log your first donation.</div>
+</div>
+{% endif %}
+
+<style>
+.cd-status-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s;
+}
+.cd-status-badge:hover { opacity: 0.75; }
+.cd-status-badge[data-status="Pending"]   { background: rgba(230,180,30,0.15);  color: #e6b41e; border: 1px solid rgba(230,180,30,0.3); }
+.cd-status-badge[data-status="Delivered"] { background: rgba(70,130,220,0.15);  color: #6aaff5; border: 1px solid rgba(70,130,220,0.3); }
+.cd-status-badge[data-status="Fulfilled"] { background: rgba(50,180,100,0.15);  color: var(--accent,#4caf72); border: 1px solid rgba(50,180,100,0.3); }
+.cd-type-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(180,180,180,0.1);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+@media (max-width:600px) {
+  .form-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+
+<script>
+const STATUS_CYCLE = ['Pending', 'Delivered', 'Fulfilled'];
+
+function cycleStatus(id, current) {
+  const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(current) + 1) % STATUS_CYCLE.length];
+  fetch(`/community-donations/${id}/status`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: next})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      const badge = document.getElementById(`status-${id}`);
+      badge.textContent = d.status;
+      badge.dataset.status = d.status;
+    }
+  });
+}
+
+function loadEdit(id, date, recipient, itemName, itemType, star1, star2, star3, star4, status, notes) {
+  document.getElementById('donationForm').action = `/community-donations/${id}/update`;
+  document.getElementById('panelTitle').textContent = `✎ Edit: ${recipient} — ${itemName}`;
+  document.getElementById('fDate').value      = date;
+  document.getElementById('fRecipient').value = recipient;
+  document.getElementById('fItemName').value  = itemName;
+  document.getElementById('fItemType').value  = itemType;
+  document.getElementById('fStar1').value     = star1;
+  document.getElementById('fStar2').value     = star2;
+  document.getElementById('fStar3').value     = star3;
+  document.getElementById('fStar4').value     = star4;
+  document.getElementById('fStatus').value    = status;
+  document.getElementById('fNotes').value     = notes;
+  document.getElementById('submitBtn').textContent = '💾 Save Changes';
+  document.getElementById('cancelEdit').style.display = 'inline-block';
+  const panel = document.getElementById('addPanel');
+  panel.classList.add('open');
+  panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function cancelEdit() {
+  document.getElementById('donationForm').action = '/community-donations/add';
+  document.getElementById('panelTitle').textContent = '+ Log a Donation';
+  document.getElementById('donationForm').reset();
+  document.getElementById('submitBtn').textContent = '🎁 Log Donation';
+  document.getElementById('cancelEdit').style.display = 'none';
+}
+</script>
+
+{% endblock %}

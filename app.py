@@ -12,7 +12,7 @@ import zipfile
 import re
 import threading
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from dotenv import load_dotenv
 from anthropic import Anthropic
 
@@ -27,7 +27,7 @@ def _get_anthropic():
 app = Flask(__name__)
 app.secret_key = 'fo76-vault-tec-2024'
 
-APP_VERSION = '0.13.0'
+APP_VERSION = '0.14.0'
 APP_START   = datetime.now()
 
 # Init DB once at startup, not on every request
@@ -3748,5 +3748,209 @@ def world_finds_delete(id):
     return redirect(url_for('world_finds'))
 
 
+# ── Community Board ──────────────────────────────────────────────────────────
+@app.route('/community-board')
+def community_board():
+    from collections import defaultdict
+    pool  = [dict(r) for r in db.query("""
+        SELECT * FROM comm_pool
+        ORDER BY CASE status WHEN 'Available' THEN 0 WHEN 'Reserved' THEN 1 ELSE 2 END,
+                 added_at DESC, id DESC
+    """)]
+    needs = [dict(r) for r in db.query("""
+        SELECT * FROM comm_needs
+        ORDER BY CASE status WHEN 'Waiting' THEN 0 WHEN 'Matched' THEN 1 ELSE 2 END,
+                 added_at DESC, id DESC
+    """)]
+    log   = db.query("SELECT * FROM comm_log ORDER BY id DESC LIMIT 100")
+    chars = [r['name'] for r in db.query("SELECT name FROM characters ORDER BY name")]
+
+    # Scoreboard — donated = pool items gone, received = needs fulfilled
+    bal = defaultdict(lambda: {'donated': 0, 'received': 0})
+    for p in pool:
+        if p['status'] == 'Gone':
+            bal[p['donor_name']]['donated'] += 1
+    for n in needs:
+        if n['status'] == 'Received':
+            bal[n['player_name']]['received'] += 1
+    scoreboard = sorted(
+        [{'player': p, 'donated': v['donated'], 'received': v['received'],
+          'score': v['donated'] - v['received']} for p, v in bal.items()],
+        key=lambda x: x['score'], reverse=True
+    )
+
+    pool_available  = sum(1 for p in pool  if p['status'] in ('Available','Reserved'))
+    needs_active    = sum(1 for n in needs if n['status'] in ('Waiting','Matched','Seeking'))
+    last_change     = log[0]['logged_at'] if log else None
+    return render_template('community_board.html',
+                           pool=pool, needs=needs, log=log,
+                           scoreboard=scoreboard, chars=chars,
+                           pool_available=pool_available, needs_active=needs_active,
+                           last_change=last_change)
+
+# ── Pool routes ───────────────────────────────────────────────────────────────
+@app.route('/community-board/pool/add', methods=['POST'])
+def community_board_pool_add():
+    donor = fs('donor_name')
+    item  = fs('item_name')
+    db.insert("""
+        INSERT INTO comm_pool
+          (donor_name, held_on, item_name, item_type, qty, star1, star2, star3, notes, added_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (donor, fs('held_on'), item, fs('item_type','Mod Box'),
+          int(fs('qty') or 1), fs('star1'), fs('star2'), fs('star3'), fs('notes'),
+          fs('added_at') or str(date.today())))
+    db.insert("INSERT INTO comm_log (action, player_name, item_name, detail) VALUES (?,?,?,?)",
+              ('Pool Add', donor, item, f"x{fs('qty') or 1} on {fs('held_on')}"))
+    flash(f'Added {item} to the pool.', 'success')
+    return redirect(url_for('community_board'))
+
+@app.route('/community-board/pool/<int:id>/edit', methods=['POST'])
+def community_board_pool_edit(id):
+    db.execute("""
+        UPDATE comm_pool
+        SET donor_name=?, held_on=?, item_name=?, item_type=?, qty=?,
+            star1=?, star2=?, star3=?, notes=?, added_at=?
+        WHERE id=?
+    """, (fs('donor_name'), fs('held_on'), fs('item_name'), fs('item_type'),
+          int(fs('qty') or 1), fs('star1'), fs('star2'), fs('star3'),
+          fs('notes'), fs('added_at'), id))
+    flash('Updated.', 'success')
+    return redirect(url_for('community_board'))
+
+@app.route('/community-board/pool/<int:id>/reserve', methods=['POST'])
+def community_board_pool_reserve(id):
+    player = fs('reserved_for')
+    row    = db.get_one("SELECT * FROM comm_pool WHERE id=?", (id,))
+    db.execute("UPDATE comm_pool SET status='Reserved', reserved_for=? WHERE id=?", (player, id))
+    if row:
+        db.insert("INSERT INTO comm_log (action, player_name, item_name, detail) VALUES (?,?,?,?)",
+                  ('Reserved', player, row['item_name'], f"Held by {row['donor_name']} on {row['held_on']}"))
+    flash(f'Reserved for {player}.', 'success')
+    return redirect(url_for('community_board'))
+
+@app.route('/community-board/pool/<int:id>/gone', methods=['POST'])
+def community_board_pool_gone(id):
+    row = db.get_one("SELECT * FROM comm_pool WHERE id=?", (id,))
+    db.execute("UPDATE comm_pool SET status='Gone' WHERE id=?", (id,))
+    if row:
+        dest = f" → {row['reserved_for']}" if row['reserved_for'] else ''
+        db.insert("INSERT INTO comm_log (action, player_name, item_name, detail) VALUES (?,?,?,?)",
+                  ('Donated', row['donor_name'], row['item_name'],
+                   f"x{row['qty']} from {row['held_on']}{dest}"))
+    flash('Marked as handed off.', 'success')
+    return redirect(url_for('community_board'))
+
+@app.route('/community-board/pool/<int:id>/delete', methods=['POST'])
+def community_board_pool_delete(id):
+    db.execute("DELETE FROM comm_pool WHERE id=?", (id,))
+    flash('Removed from pool.', 'info')
+    return redirect(url_for('community_board'))
+
+# ── Needs routes ──────────────────────────────────────────────────────────────
+@app.route('/community-board/need/add', methods=['POST'])
+def community_board_need_add():
+    player = fs('player_name')
+    item   = fs('item_wanted')
+    db.insert("""
+        INSERT INTO comm_needs (player_name, item_wanted, item_type, platform, notes, status, added_at)
+        VALUES (?,?,?,?,?,'Waiting',?)
+    """, (player, item, fs('item_type','Mod Box'), fs('platform','PC'),
+          fs('notes'), fs('added_at') or str(date.today())))
+    db.insert("INSERT INTO comm_log (action, player_name, item_name, detail) VALUES (?,?,?,?)",
+              ('Need Added', player, item, fs('platform','PC')))
+    flash(f'{player} added to the needs board.', 'success')
+    return redirect(url_for('community_board', tab='needs'))
+
+@app.route('/community-board/need/<int:id>/edit', methods=['POST'])
+def community_board_need_edit(id):
+    db.execute("""
+        UPDATE comm_needs
+        SET player_name=?, item_wanted=?, item_type=?, platform=?, notes=?, added_at=?
+        WHERE id=?
+    """, (fs('player_name'), fs('item_wanted'), fs('item_type'),
+          fs('platform'), fs('notes'), fs('added_at'), id))
+    flash('Updated.', 'success')
+    return redirect(url_for('community_board', tab='needs'))
+
+@app.route('/community-board/need/<int:id>/match', methods=['POST'])
+def community_board_need_match(id):
+    row          = db.get_one("SELECT * FROM comm_needs WHERE id=?", (id,))
+    matched_item = fs('matched_item')
+    matched_from = fs('matched_from')
+    db.execute("""
+        UPDATE comm_needs SET status='Matched', matched_item=?, fulfilled_by=? WHERE id=?
+    """, (matched_item, matched_from, id))
+    if row:
+        db.insert("INSERT INTO comm_log (action, player_name, item_name, detail) VALUES (?,?,?,?)",
+                  ('Matched', row['player_name'], row['item_wanted'],
+                   f"Getting {matched_item} from {matched_from}"))
+    flash('Marked as matched.', 'success')
+    return redirect(url_for('community_board', tab='needs'))
+
+@app.route('/community-board/need/<int:id>/received', methods=['POST'])
+def community_board_need_received(id):
+    row = db.get_one("SELECT * FROM comm_needs WHERE id=?", (id,))
+    db.execute("""
+        UPDATE comm_needs SET status='Received', fulfilled_at=? WHERE id=?
+    """, (str(date.today()), id))
+    if row:
+        db.insert("INSERT INTO comm_log (action, player_name, item_name, detail) VALUES (?,?,?,?)",
+                  ('Received', row['player_name'], row['item_wanted'],
+                   f"From: {row['fulfilled_by'] or 'unknown'}"))
+    flash(f"{row['player_name'] if row else 'Player'} marked as received.", 'success')
+    return redirect(url_for('community_board', tab='needs'))
+
+@app.route('/community-board/need/<int:id>/delete', methods=['POST'])
+def community_board_need_delete(id):
+    row = db.get_one("SELECT * FROM comm_needs WHERE id=?", (id,))
+    if row:
+        db.insert("INSERT INTO comm_log (action, player_name, item_name, detail) VALUES (?,?,?,?)",
+                  ('Removed', row['player_name'], row['item_wanted'], fs('reason') or ''))
+    db.execute("DELETE FROM comm_needs WHERE id=?", (id,))
+    flash('Removed from board.', 'info')
+    return redirect(url_for('community_board', tab='needs'))
+
+# ── Exports ───────────────────────────────────────────────────────────────────
+@app.route('/community-board/export/pool.csv')
+def community_board_export_pool():
+    import csv, io
+    rows = db.query("""
+        SELECT * FROM comm_pool WHERE status != 'Gone' ORDER BY status, added_at DESC
+    """)
+    buf = io.StringIO()
+    w   = csv.writer(buf)
+    w.writerow(['Donor','Held On','Item','Type','Qty','Star 1','Star 2','Star 3',
+                'Status','Reserved For','Notes','Date Added'])
+    for r in rows:
+        w.writerow([r['donor_name'], r['held_on'], r['item_name'], r['item_type'],
+                    r['qty'], r['star1'] or '', r['star2'] or '', r['star3'] or '',
+                    r['status'], r['reserved_for'] or '', r['notes'] or '', r['added_at']])
+    resp = make_response(buf.getvalue())
+    resp.headers['Content-Disposition'] = 'attachment; filename=community_pool.csv'
+    resp.headers['Content-Type'] = 'text/csv'
+    return resp
+
+@app.route('/community-board/export/needs.csv')
+def community_board_export_needs():
+    import csv, io
+    rows = db.query("""
+        SELECT * FROM comm_needs WHERE status != 'Received' ORDER BY status, added_at DESC
+    """)
+    buf = io.StringIO()
+    w   = csv.writer(buf)
+    w.writerow(['Player','Item Wanted','Type','Platform','Status',
+                'Matched Item','From','Notes','Date Added'])
+    for r in rows:
+        w.writerow([r['player_name'], r['item_wanted'], r['item_type'],
+                    r['platform'] or '', r['status'],
+                    r['matched_item'] or '', r['fulfilled_by'] or '',
+                    r['notes'] or '', r['added_at']])
+    resp = make_response(buf.getvalue())
+    resp.headers['Content-Disposition'] = 'attachment; filename=community_needs.csv'
+    resp.headers['Content-Type'] = 'text/csv'
+    return resp
+
+
 if __name__ == '__main__':
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    app.run(debug=os.getenv('FLASK_DEBUG', '0') == '1', host='127.0.0.1', port=5000)
