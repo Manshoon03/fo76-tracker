@@ -250,3 +250,4 @@ Each item has:
 - [x] Analytics Page — 5 charts: caps over time, playtime/week, weapons/week, prices/week, top vendor
 - [x] Vendor Route Tracker — stop list, check-off, color coded freshness, reset all
 - [x] Fishing Tracker — 48 species checklist, 6 rarity tiers, catch log, progress bar, AJAX toggles
+- [x] Legendary Perks Tracker — 6 slots per character, 26 card reference, rank stars, AJAX slot editor
