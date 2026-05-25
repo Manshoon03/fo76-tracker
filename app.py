@@ -463,6 +463,55 @@ def perk_cards_delete(id):
     flash('Deleted.', 'info')
     return redirect(url_for('perk_cards'))
 
+
+# ── Legendary Perks ──────────────────────────────────────────────────────────
+
+@app.route('/legendary-perks')
+def legendary_perks():
+    from reference import LEGENDARY_PERK_CARDS, LEGENDARY_PERK_SLOT_UNLOCKS
+    cid   = get_active_char_id()
+    char  = db.get_one("SELECT * FROM characters WHERE id=?", (cid,))
+    slots = db.query("SELECT * FROM legendary_perk_slots WHERE character_id=? ORDER BY slot_num", (cid,))
+    slot_map = {r['slot_num']: dict(r) for r in slots}
+    return render_template('legendary_perks.html',
+                           slot_map=slot_map,
+                           legendary_cards=LEGENDARY_PERK_CARDS,
+                           slot_unlocks=LEGENDARY_PERK_SLOT_UNLOCKS,
+                           char=char)
+
+
+@app.route('/legendary-perks/set', methods=['POST'])
+def legendary_perks_set():
+    data      = request.get_json()
+    cid       = get_active_char_id()
+    slot_num  = int(data.get('slot_num', 1))
+    card_name = (data.get('card_name') or '').strip()
+    rank      = max(1, min(4, int(data.get('rank', 1))))
+    notes     = (data.get('notes') or '').strip()
+    existing  = db.get_one(
+        "SELECT id FROM legendary_perk_slots WHERE character_id=? AND slot_num=?",
+        (cid, slot_num)
+    )
+    if existing:
+        db.execute(
+            "UPDATE legendary_perk_slots SET card_name=?,rank=?,notes=?,updated_at=date('now') WHERE id=?",
+            (card_name, rank, notes, existing['id'])
+        )
+    else:
+        db.insert(
+            "INSERT INTO legendary_perk_slots (character_id,slot_num,card_name,rank,notes) VALUES (?,?,?,?,?)",
+            (cid, slot_num, card_name, rank, notes)
+        )
+    return jsonify({'success': True})
+
+
+@app.route('/legendary-perks/clear/<int:slot_num>', methods=['POST'])
+def legendary_perks_clear(slot_num):
+    cid = get_active_char_id()
+    db.execute("DELETE FROM legendary_perk_slots WHERE character_id=? AND slot_num=?", (cid, slot_num))
+    return jsonify({'success': True})
+
+
 # ── Builds ───────────────────────────────────────────────────────────────────
 
 @app.route('/builds')

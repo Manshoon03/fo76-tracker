@@ -84,7 +84,8 @@
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section">
-    <a href="/perk-cards" class="sidebar-item {% if '/perk-cards' in ni %}active{% endif %}" title="Perk Cards"><span class="si-icon">🃏</span><span class="si-label">Perk Cards</span></a>
+    <a href="/perk-cards"       class="sidebar-item {% if '/perk-cards' in ni and '/legendary' not in ni %}active{% endif %}" title="Perk Cards"><span class="si-icon">🃏</span><span class="si-label">Perk Cards</span></a>
+    <a href="/legendary-perks" class="sidebar-item {% if '/legendary-perks' in ni %}active{% endif %}" title="Legendary Perks"><span class="si-icon">⭐</span><span class="si-label">Leg. Perks</span></a>
     <a href="/builds"           class="sidebar-item {% if '/builds' in ni and '/compare' not in ni and '/build-generator' not in ni %}active{% endif %}" title="Builds"><span class="si-icon">🔨</span><span class="si-label">Builds</span></a>
     <a href="/build-generator"     class="sidebar-item {% if '/build-generator' in ni %}active{% endif %}"     title="Build Generator"><span class="si-icon">🤖</span><span class="si-label">Build Gen</span></a>
     <a href="/build-coach"         class="sidebar-item {% if '/build-coach' in ni %}active{% endif %}"         title="Build Coach"><span class="si-icon">🎯</span><span class="si-label">Build Coach</span></a>

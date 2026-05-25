@@ -1,0 +1,447 @@
+{% extends 'base.html' %}
+{% block title %}Legendary Perks{% endblock %}
+{% block content %}
+
+{% set cat_colors = {
+  'SPECIAL': '#b39ddb',
+  'Combat':  '#ef9a9a',
+  'Defense': '#80cbc4',
+  'Team':    '#ffe082',
+  'Utility': '#a5d6a7'
+} %}
+
+<div class="page-header">
+  <h1>⭐ LEGENDARY PERKS</h1>
+  {% set filled = slot_map.values()|selectattr('card_name')|list|length %}
+  <span class="count-badge">{{ filled }}/6 slots filled</span>
+  {% if char %}<span class="dim" style="font-size:.8rem;margin-left:.5rem;">— {{ char.name }}</span>{% endif %}
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     6 Slot Grid
+═════════════════════════════════════════════════════════ -->
+<div class="leg-slot-grid">
+  {% for slot_num in range(1, 7) %}
+  {% set s      = slot_map.get(slot_num, {}) %}
+  {% set filled = s.get('card_name', '') %}
+  {% set rank   = s.get('rank', 1) %}
+  {% set unlock = slot_unlocks[slot_num] %}
+  {% set card_cat = '' %}
+  {% for c in legendary_cards %}{% if c.name == filled %}{% set card_cat = c.category %}{% endif %}{% endfor %}
+
+  <div class="leg-slot {% if filled %}leg-slot-filled{% endif %}"
+       id="slot-card-{{ slot_num }}"
+       onclick="openSlotEditor({{ slot_num }})"
+       title="Click to edit slot {{ slot_num }}">
+
+    <div class="leg-slot-header">
+      <span class="leg-slot-num">SLOT {{ slot_num }}</span>
+      <span class="leg-unlock-lvl">Lv {{ unlock }}+</span>
+    </div>
+
+    {% if filled %}
+      <div class="leg-slot-name">{{ filled }}</div>
+      {% for c in legendary_cards %}{% if c.name == filled %}
+      <div class="leg-slot-cat" style="color:{{ cat_colors.get(c.category, '#aaa') }}">{{ c.category }}</div>
+      {% endif %}{% endfor %}
+      <div class="leg-stars">
+        {% for i in range(1, 5) %}<span class="leg-star {% if i <= rank %}filled{% endif %}">★</span>{% endfor %}
+        <span class="leg-rank-label">Rank {{ rank }}</span>
+      </div>
+      {% if s.get('notes') %}<div class="leg-slot-notes">{{ s.notes }}</div>{% endif %}
+    {% else %}
+      <div class="leg-slot-empty">— empty —</div>
+    {% endif %}
+
+    <div class="leg-slot-edit-hint">✎ edit</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Slot Editor Panel (shown below grid when a slot is selected)
+═════════════════════════════════════════════════════════ -->
+<div class="leg-editor" id="legEditor" style="display:none">
+  <div class="leg-editor-header">
+    <span id="legEditorTitle">Editing Slot 1</span>
+    <button class="btn-sm btn-secondary" onclick="closeSlotEditor()">✕ Close</button>
+  </div>
+  <div class="leg-editor-body">
+
+    <div class="form-grid">
+      <input type="hidden" id="editSlotNum" value="">
+
+      <div class="form-group span2">
+        <label>Card</label>
+        <select id="editCardName" onchange="onCardSelect(this.value)" style="width:100%">
+          <option value="">— empty slot —</option>
+          {% set categories = ['SPECIAL','Combat','Defense','Team','Utility'] %}
+          {% for cat in categories %}
+          <optgroup label="{{ cat }}">
+            {% for c in legendary_cards if c.category == cat %}
+            <option value="{{ c.name }}">{{ c.name }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Rank (1–4)</label>
+        <div class="rank-picker" id="rankPicker">
+          {% for r in range(1, 5) %}
+          <button type="button" class="rank-btn" data-rank="{{ r }}" onclick="setRank({{ r }})">{{ r }}★</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" id="editRank" value="1">
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" id="editNotes" placeholder="e.g. equipped on main build" maxlength="120">
+      </div>
+    </div>
+
+    <!-- Card effect preview -->
+    <div id="cardEffectPreview" class="leg-effect-preview" style="display:none"></div>
+
+    <div class="form-actions" style="gap:.5rem">
+      <button class="btn btn-primary" onclick="saveSlot()">💾 Save</button>
+      <button class="btn btn-secondary" onclick="clearSlot()" id="clearBtn" style="display:none">🗑 Clear Slot</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Reference Card Browser
+═════════════════════════════════════════════════════════ -->
+<section class="add-panel" id="refPanel" style="margin-top:1.5rem">
+  <div class="panel-toggle" onclick="togglePanel('refPanel')">
+    <span>📖 All Legendary Perks (26 cards) — click any to quick-assign to a slot</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+
+    <!-- Category tabs -->
+    <div class="leg-cat-tabs" id="legCatTabs">
+      {% for cat in ['All','SPECIAL','Combat','Defense','Team','Utility'] %}
+      <button class="leg-cat-tab {% if loop.first %}active{% endif %}"
+              onclick="filterRefCards('{{ cat }}')" id="reftab-{{ cat }}">
+        {{ cat }}
+        {% if cat != 'All' %}
+          <span class="leg-cat-count">{{ legendary_cards|selectattr('category','equalto',cat)|list|length }}</span>
+        {% else %}
+          <span class="leg-cat-count">26</span>
+        {% endif %}
+      </button>
+      {% endfor %}
+    </div>
+
+    <div class="leg-ref-grid" id="legRefGrid">
+      {% for c in legendary_cards %}
+      {% set is_equipped = c.name in slot_map.values()|map(attribute='card_name')|list %}
+      <div class="leg-ref-card" data-cat="{{ c.category }}"
+           onclick="assignFromRef('{{ c.name|e }}')">
+        <div class="leg-ref-head">
+          <span class="leg-ref-name">{{ c.name }}</span>
+          <span class="leg-ref-cat" style="color:{{ cat_colors.get(c.category,'#aaa') }}">{{ c.category }}</span>
+          {% if is_equipped %}<span class="badge" style="background:#1a3a1a;color:#4ade80;font-size:.65rem">✓ equipped</span>{% endif %}
+        </div>
+        <div class="leg-ref-effect">{{ c.effect }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     Styles
+═════════════════════════════════════════════════════════ -->
+<style>
+/* Slot grid */
+.leg-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .9rem;
+  margin-bottom: 1.2rem;
+}
+@media (max-width: 640px) { .leg-slot-grid { grid-template-columns: 1fr 1fr; } }
+
+.leg-slot {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .85rem 1rem;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  position: relative;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+}
+.leg-slot:hover { border-color: var(--accent); background: var(--bg-input); }
+.leg-slot-filled { border-color: #7c4dff55; }
+.leg-slot-filled:hover { border-color: #b39ddb; }
+
+.leg-slot-header { display:flex; justify-content:space-between; align-items:baseline; }
+.leg-slot-num    { font-size:.7rem; font-weight:800; letter-spacing:.08em; color:var(--text-dim); }
+.leg-unlock-lvl  { font-size:.65rem; color:var(--text-dim); }
+
+.leg-slot-name   { font-size:.9rem; font-weight:700; color:var(--accent2,#b39ddb); line-height:1.2; margin-top:.15rem; }
+.leg-slot-cat    { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
+.leg-slot-empty  { color:var(--text-dim); font-size:.8rem; flex:1; display:flex; align-items:center; }
+.leg-slot-notes  { font-size:.72rem; color:var(--text-dim); margin-top:.1rem; font-style:italic; }
+
+.leg-stars { display:flex; align-items:center; gap:.15rem; margin-top:.2rem; }
+.leg-star  { font-size:1rem; color:var(--border); transition:color .1s; }
+.leg-star.filled { color:#ffd700; }
+.leg-rank-label  { font-size:.65rem; color:var(--text-dim); margin-left:.3rem; }
+
+.leg-slot-edit-hint {
+  position:absolute; bottom:.4rem; right:.6rem;
+  font-size:.65rem; color:var(--text-dim); opacity:0;
+  transition:opacity .15s;
+}
+.leg-slot:hover .leg-slot-edit-hint { opacity:1; }
+
+/* Editor */
+.leg-editor {
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  margin-bottom: 1.2rem;
+  overflow: hidden;
+}
+.leg-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .6rem 1rem;
+  background: rgba(123,77,255,.12);
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  font-size: .85rem;
+}
+.leg-editor-body { padding: 1rem; }
+
+/* Rank picker */
+.rank-picker { display:flex; gap:.35rem; flex-wrap:wrap; }
+.rank-btn {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  padding: .25rem .6rem;
+  cursor: pointer;
+  font-size: .8rem;
+  transition: all .12s;
+}
+.rank-btn.active { background:#7c4dff; border-color:#7c4dff; color:#fff; font-weight:700; }
+.rank-btn:hover:not(.active) { border-color:var(--accent); color:var(--text-hi); }
+
+/* Effect preview */
+.leg-effect-preview {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .55rem .75rem;
+  font-size: .8rem;
+  color: var(--text-dim);
+  margin-bottom: .75rem;
+  line-height: 1.5;
+}
+
+/* Reference browser */
+.leg-cat-tabs {
+  display: flex;
+  gap: .35rem;
+  flex-wrap: wrap;
+  margin-bottom: .75rem;
+}
+.leg-cat-tab {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: .25rem .7rem;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.leg-cat-tab.active { background:var(--accent); color:#000; border-color:var(--accent); }
+.leg-cat-count {
+  background: rgba(0,0,0,.25);
+  border-radius: 3px;
+  padding: 0 .25rem;
+  font-size: .65rem;
+  margin-left: .2rem;
+}
+
+.leg-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: .6rem;
+}
+.leg-ref-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .6rem .75rem;
+  cursor: pointer;
+  transition: border-color .12s;
+}
+.leg-ref-card:hover { border-color: #b39ddb; }
+.leg-ref-head { display:flex; align-items:baseline; gap:.4rem; flex-wrap:wrap; margin-bottom:.25rem; }
+.leg-ref-name { font-weight:700; font-size:.85rem; flex:1; }
+.leg-ref-cat  { font-size:.65rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+.leg-ref-effect { font-size:.76rem; color:var(--text-dim); line-height:1.4; }
+</style>
+
+<!-- ══════════════════════════════════════════════════════
+     Script
+═════════════════════════════════════════════════════════ -->
+<script>
+const CARD_DATA = {};
+{% for c in legendary_cards %}
+CARD_DATA[{{ c.name|tojson }}] = { category: {{ c.category|tojson }}, effect: {{ c.effect|tojson }} };
+{% endfor %}
+
+const SLOT_DATA = {};
+{% for num, s in slot_map.items() %}
+SLOT_DATA[{{ num }}] = { card_name: {{ (s.card_name or '')|tojson }}, rank: {{ s.rank or 1 }}, notes: {{ (s.notes or '')|tojson }} };
+{% endfor %}
+
+let activeSlot = null;
+
+function openSlotEditor(slotNum) {
+  activeSlot = slotNum;
+  document.getElementById('legEditorTitle').textContent = 'Editing Slot ' + slotNum;
+  document.getElementById('editSlotNum').value = slotNum;
+
+  const s = SLOT_DATA[slotNum] || {};
+  document.getElementById('editCardName').value = s.card_name || '';
+  document.getElementById('editNotes').value    = s.notes || '';
+  setRank(s.rank || 1);
+  onCardSelect(s.card_name || '');
+
+  const clearBtn = document.getElementById('clearBtn');
+  clearBtn.style.display = s.card_name ? 'inline-flex' : 'none';
+
+  const editor = document.getElementById('legEditor');
+  editor.style.display = 'block';
+  editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeSlotEditor() {
+  document.getElementById('legEditor').style.display = 'none';
+  activeSlot = null;
+}
+
+function setRank(r) {
+  document.getElementById('editRank').value = r;
+  document.querySelectorAll('.rank-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.rank) === r);
+  });
+}
+
+function onCardSelect(name) {
+  const preview = document.getElementById('cardEffectPreview');
+  const data    = CARD_DATA[name];
+  if (data) {
+    preview.textContent = data.effect;
+    preview.style.display = 'block';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+async function saveSlot() {
+  const slotNum  = parseInt(document.getElementById('editSlotNum').value);
+  const cardName = document.getElementById('editCardName').value;
+  const rank     = parseInt(document.getElementById('editRank').value) || 1;
+  const notes    = document.getElementById('editNotes').value.trim();
+
+  const r = await fetch('/legendary-perks/set', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ slot_num: slotNum, card_name: cardName, rank, notes })
+  });
+  const d = await r.json();
+  if (d.success) {
+    SLOT_DATA[slotNum] = { card_name: cardName, rank, notes };
+    refreshSlotCard(slotNum, cardName, rank, notes);
+    closeSlotEditor();
+    showToast('Slot ' + slotNum + ' saved!', 'success');
+  }
+}
+
+async function clearSlot() {
+  const slotNum = parseInt(document.getElementById('editSlotNum').value);
+  const r = await fetch('/legendary-perks/clear/' + slotNum, { method: 'POST' });
+  const d = await r.json();
+  if (d.success) {
+    SLOT_DATA[slotNum] = {};
+    refreshSlotCard(slotNum, '', 0, '');
+    closeSlotEditor();
+    showToast('Slot ' + slotNum + ' cleared.', 'info');
+  }
+}
+
+function refreshSlotCard(slotNum, cardName, rank, notes) {
+  const card = document.getElementById('slot-card-' + slotNum);
+  if (!card) return;
+  const cat     = cardName ? (CARD_DATA[cardName]?.category || '') : '';
+  const catClrs = { SPECIAL:'#b39ddb', Combat:'#ef9a9a', Defense:'#80cbc4', Team:'#ffe082', Utility:'#a5d6a7' };
+  const starsHtml = cardName
+    ? [1,2,3,4].map(i => `<span class="leg-star ${i <= rank ? 'filled' : ''}">★</span>`).join('')
+      + `<span class="leg-rank-label">Rank ${rank}</span>`
+    : '';
+  const inner = cardName ? `
+    <div class="leg-slot-name">${cardName}</div>
+    <div class="leg-slot-cat" style="color:${catClrs[cat]||'#aaa'}">${cat}</div>
+    <div class="leg-stars">${starsHtml}</div>
+    ${notes ? `<div class="leg-slot-notes">${notes}</div>` : ''}
+  ` : `<div class="leg-slot-empty">— empty —</div>`;
+
+  // Preserve header and edit hint
+  const header   = card.querySelector('.leg-slot-header').outerHTML;
+  const editHint = card.querySelector('.leg-slot-edit-hint').outerHTML;
+  card.innerHTML = header + inner + editHint;
+
+  card.classList.toggle('leg-slot-filled', !!cardName);
+
+  // Update filled count badge
+  const filled = Object.values(SLOT_DATA).filter(s => s.card_name).length;
+  const badge = document.querySelector('.count-badge');
+  if (badge) badge.textContent = filled + '/6 slots filled';
+}
+
+function assignFromRef(cardName) {
+  if (!activeSlot) {
+    // No slot currently open — open slot 1 by default (or first empty slot)
+    let targetSlot = 1;
+    for (let s = 1; s <= 6; s++) {
+      if (!SLOT_DATA[s]?.card_name) { targetSlot = s; break; }
+    }
+    openSlotEditor(targetSlot);
+  }
+  document.getElementById('editCardName').value = cardName;
+  onCardSelect(cardName);
+  document.getElementById('clearBtn').style.display = 'inline-flex';
+  document.getElementById('legEditor').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  showToast('Card selected — set rank and save.', 'info');
+}
+
+/* Reference browser category filter */
+function filterRefCards(cat) {
+  document.querySelectorAll('.leg-cat-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('reftab-' + cat).classList.add('active');
+  document.querySelectorAll('.leg-ref-card').forEach(c => {
+    c.style.display = (cat === 'All' || c.dataset.cat === cat) ? '' : 'none';
+  });
+}
+</script>
+
+{% endblock %}

@@ -412,6 +412,47 @@ AMMO_NAMES = sorted([
     "Ultracite Shotgun Shell",
 ])
 
+# ── Legendary Perk Cards (26 total, unlocked at level 50+) ───────────────────
+# Source: fallout.fandom.com/wiki/Fallout_76_legendary_perks
+# 6 slots per character. Ranks 1-4, upgraded with Perk Coins (50/100/150 coins).
+# Slots unlock at: 50, 75, 100, 150, 200, 300
+
+LEGENDARY_PERK_CARDS = [
+    # ── SPECIAL Enhancement (boost your stat + perk points, capped at 15) ──────
+    {'name': 'Legendary Agility',       'category': 'SPECIAL',  'effect': '+1 AGI and perk points per rank. Boosts dodge and AP regen builds.'},
+    {'name': 'Legendary Charisma',      'category': 'SPECIAL',  'effect': '+1 CHA per rank. Teammates within 40m get the same bonus. Best team support card.'},
+    {'name': 'Legendary Endurance',     'category': 'SPECIAL',  'effect': '+1 END and +10 max HP per rank. Great for tankier builds.'},
+    {'name': 'Legendary Intelligence',  'category': 'SPECIAL',  'effect': '+1 INT and perk points per rank. Increases XP gain and crafting perks.'},
+    {'name': 'Legendary Luck',          'category': 'SPECIAL',  'effect': '+1 LCK and perk points per rank. Better CRIT builds and loot luck.'},
+    {'name': 'Legendary Perception',    'category': 'SPECIAL',  'effect': '+1 PER and perk points per rank. Ranged accuracy and VATS hit chance.'},
+    {'name': 'Legendary Strength',      'category': 'SPECIAL',  'effect': '+1 STR and perk points per rank. More carry weight and melee damage.'},
+    # ── Combat ──────────────────────────────────────────────────────────────────
+    {'name': 'Ammo Factory',            'category': 'Combat',   'effect': 'Craft 50–150% more ammunition at the tinker\'s workbench.'},
+    {'name': 'Collateral Damage',       'category': 'Combat',   'effect': 'Melee kills have a 10–20% chance to trigger an explosion.'},
+    {'name': 'Detonation Contagion',    'category': 'Combat',   'effect': 'Explosive kills have a 20–50% chance to chain-explode nearby enemies.'},
+    {'name': 'Exploding Palm',          'category': 'Combat',   'effect': 'Unarmed hits have a 5–20% chance to cause an explosion on the target.'},
+    {'name': 'Far-Flung Fireworks',     'category': 'Combat',   'effect': 'Ranged kills have a 10–20% chance to trigger explosions on the target.'},
+    {'name': 'Follow Through',          'category': 'Combat',   'effect': 'Ranged sneak attacks cause target to take 10–40% more damage for 30–60s.'},
+    {'name': 'Hack and Slash',          'category': 'Combat',   'effect': 'Melee VATS attacks have a 20–50% chance to deal area damage.'},
+    # ── Defense ─────────────────────────────────────────────────────────────────
+    {'name': 'Electric Absorption',     'category': 'Defense',  'effect': '10–20% chance energy attacks recharge your Power Armor fusion core.'},
+    {'name': 'Funky Duds',              'category': 'Defense',  'effect': '+50–200 poison resistance when wearing a matching armor set.'},
+    {'name': 'Retribution',             'category': 'Defense',  'effect': 'Blocking melee attacks restores 1–4 HP and AP for 15 seconds.'},
+    {'name': 'Sizzling Style',          'category': 'Defense',  'effect': '+50–200 fire resistance when wearing a matching armor set.'},
+    # ── Team ────────────────────────────────────────────────────────────────────
+    {'name': 'Blood Sacrifice!',        'category': 'Team',     'effect': 'When you die, nearby teammates gain +25–40 DR and heal 40–70 HP.'},
+    {'name': 'Taking One For The Team', 'category': 'Team',     'effect': 'Enemies take 10–40% more damage when attacking you (requires teammates nearby).'},
+    # ── Utility ─────────────────────────────────────────────────────────────────
+    {'name': 'Brawling Chemist',        'category': 'Utility',  'effect': 'Automatically generates combat chems every hour (holds up to 3–5).'},
+    {'name': 'Master Infiltrator',      'category': 'Utility',  'effect': 'Auto-unlocks level 3 terminals and locks, no AP cost. +3 Lockpick/Hacking per rank.'},
+    {'name': 'Power Armor Reboot',      'category': 'Utility',  'effect': '15–40% chance to auto-revive at full health when you would die in Power Armor.'},
+    {'name': 'Power Sprinter',          'category': 'Utility',  'effect': 'Sprinting in Power Armor consumes 20–50% fewer Action Points.'},
+    {'name': 'Survival Shortcut',       'category': 'Utility',  'effect': 'Generates survival chems every 20–30 min. Carry up to 5–10 at a time.'},
+    {'name': 'What Rads?',              'category': 'Utility',  'effect': '+50–300 radiation resistance. Passively restores 1–6 rads per second.'},
+]
+
+LEGENDARY_PERK_SLOT_UNLOCKS = {1: 50, 2: 75, 3: 100, 4: 150, 5: 200, 6: 300}
+
 # ── Mod names (all legendary effects combined for mod tracker autocomplete) ───
 
 # ── Enemy Types (Spawn Notes) ─────────────────────────────────────────────────

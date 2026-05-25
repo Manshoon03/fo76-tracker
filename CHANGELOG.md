@@ -5,6 +5,23 @@ Format: Version | Date | What changed
 
 ---
 
+## [0.15.0] — 2026-05-25
+
+### Added
+- **Legendary Perks** (`/legendary-perks`) — track all 6 legendary perk slots per character.
+  - Visual 6-slot grid showing equipped card, category color, and rank as gold stars (★★★☆)
+  - Click any slot to open the inline editor — choose card, set rank (1–4), add notes, save via AJAX
+  - "Clear Slot" button removes the equipped card without a page reload
+  - Reference browser at bottom: all 26 legendary perk cards organized by category tabs (SPECIAL / Combat / Defense / Team / Utility). Click any card to quick-assign it to the active slot.
+  - Effect description auto-previews when selecting a card in the editor
+  - Slot unlock levels displayed (50 / 75 / 100 / 150 / 200 / 300)
+  - New table `legendary_perk_slots` with UNIQUE(character_id, slot_num) constraint
+  - `LEGENDARY_PERK_CARDS` + `LEGENDARY_PERK_SLOT_UNLOCKS` added to `reference.py`
+  - Sidebar entry ⭐ Leg. Perks (after Perk Cards)
+  - Routes: `GET /legendary-perks`, `POST /legendary-perks/set`, `POST /legendary-perks/clear/<slot_num>`
+
+---
+
 ## [0.14.0] — 2026-05-12
 
 ### Added

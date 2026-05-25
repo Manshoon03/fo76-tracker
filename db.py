@@ -572,6 +572,16 @@ def init_db():
             detail      TEXT,
             logged_at   TEXT DEFAULT (datetime('now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS legendary_perk_slots (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER NOT NULL DEFAULT 1,
+            slot_num     INTEGER NOT NULL,
+            card_name    TEXT    DEFAULT '',
+            rank         INTEGER DEFAULT 1,
+            notes        TEXT    DEFAULT '',
+            updated_at   TEXT    DEFAULT (date('now')),
+            UNIQUE(character_id, slot_num)
+        )""",
         """CREATE TABLE IF NOT EXISTS comm_pool (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             donor_name   TEXT NOT NULL,
