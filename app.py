@@ -13,6 +13,7 @@ import re
 import threading
 import requests
 from datetime import datetime, timedelta, date
+from pathlib import Path
 from dotenv import load_dotenv
 from anthropic import Anthropic
 
@@ -473,10 +474,13 @@ def legendary_perks():
     char  = db.get_one("SELECT * FROM characters WHERE id=?", (cid,))
     slots = db.query("SELECT * FROM legendary_perk_slots WHERE character_id=? ORDER BY slot_num", (cid,))
     slot_map = {r['slot_num']: dict(r) for r in slots}
+    manifest_path = Path('static/img/perks/legend_manifest.json')
+    legend_images = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     return render_template('legendary_perks.html',
                            slot_map=slot_map,
                            legendary_cards=LEGENDARY_PERK_CARDS,
                            slot_unlocks=LEGENDARY_PERK_SLOT_UNLOCKS,
+                           legend_images=legend_images,
                            char=char)
 
 
