@@ -1,5 +1,7 @@
 import sqlite3
-conn = sqlite3.connect('/home/manny/fo76-tracker/fo76.db')
+import os
+db_path = os.getenv('FO76_DB_PATH', '/home/manny/fo76-tracker/fo76.db')
+conn = sqlite3.connect(db_path)
 stmts = [
     "ALTER TABLE fish_log ADD COLUMN caught_time TEXT DEFAULT ''",
     "ALTER TABLE fish_log ADD COLUMN logged_at TEXT DEFAULT (datetime('now'))",
