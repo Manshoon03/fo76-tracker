@@ -56,6 +56,68 @@
   </div>
 </div>
 
+{# ── Session widget ───────────────────────────────────────────────────── #}
+<div style="margin-bottom:16px">
+{% if active_session %}
+  <div style="background:var(--bg-card);border:1px solid var(--accent);border-radius:4px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <span class="accent" style="font-size:11px;font-weight:bold;letter-spacing:1px">🎣 SESSION IN PROGRESS</span>
+      <div style="margin-top:4px;font-size:12px">
+        Started <span class="hi">{{ active_session['started_at']|replace('T',' ')|truncate(16,true,'') }}</span>
+        &nbsp;·&nbsp; <span id="session-elapsed" class="gold">–</span> elapsed
+        &nbsp;·&nbsp; <span class="accent">{{ session_catches }}</span> catch{{ 'es' if session_catches != 1 else '' }} logged
+      </div>
+    </div>
+    <form method="POST" action="/fishing/session/end" style="display:inline">
+      <button class="btn btn-secondary" type="submit">⏹ End Session</button>
+    </form>
+  </div>
+{% else %}
+  <form method="POST" action="/fishing/session/start" style="display:inline">
+    <button class="btn btn-secondary" type="submit">▶ Start Fishing Session</button>
+  </form>
+{% endif %}
+</div>
+
+{# ── Recent sessions panel ─────────────────────────────────────────────── #}
+{% if recent_sessions %}
+<section class="add-panel" id="sessionsPanel" style="margin-bottom:16px">
+  <div class="panel-toggle" onclick="togglePanel('sessionsPanel')">
+    <span>⏱ Session History <span class="dim" style="font-size:11px;font-weight:normal">({{ recent_sessions|length }})</span></span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <div class="table-wrap">
+    <table class="data-table" style="font-size:11px">
+      <thead>
+        <tr><th>Date</th><th>Start</th><th>End</th><th>Duration</th><th>Catches</th><th>Rate/hr</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for s in recent_sessions %}
+        {% set dur_h = (s['duration_min'] // 60) %}
+        {% set dur_m = (s['duration_min'] % 60) %}
+        {% set rate  = ((s['catch_count'] / (s['duration_min'] / 60))|round(1)) if s['duration_min'] > 0 else 0 %}
+        <tr>
+          <td class="dim">{{ s['started_at'][:10] }}</td>
+          <td class="dim">{{ s['started_at'][11:16] }}</td>
+          <td class="dim">{{ s['ended_at'][11:16] if s['ended_at'] else '—' }}</td>
+          <td class="hi">{{ dur_h }}h {{ dur_m }}m</td>
+          <td class="accent">{{ s['catch_count'] }}</td>
+          <td class="gold">{{ rate }}/hr</td>
+          <td>
+            <form method="POST" action="/fishing/session/{{ s['id'] }}/delete" class="inline-form">
+              <button class="btn-sm btn-delete" onclick="return confirmDelete()" title="Delete">🗑</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 {# ── Fishing Statistics ───────────────────────────────────────────────── #}
 <section class="add-panel" id="fishStatsPanel" style="margin-bottom:16px">
   <div class="panel-toggle" onclick="togglePanel('fishStatsPanel')">
@@ -118,88 +180,213 @@
   </div>
 </section>
 
-{# ── Log a Catch panel ────────────────────────────────────────────────── #}
-<section class="add-panel" id="logPanel">
-  <div class="panel-toggle" onclick="togglePanel('logPanel')">
-    <span>+ Log a Catch</span>
+{# ── Catch Analysis ───────────────────────────────────────────────────── #}
+<section class="add-panel" id="catchAnalysisPanel" style="margin-bottom:16px">
+  <div class="panel-toggle" onclick="togglePanel('catchAnalysisPanel')">
+    <span>🔬 Catch Analysis</span>
     <span class="toggle-icon">▼</span>
   </div>
   <div class="panel-body">
-    <form method="POST" action="/fishing/log">
+
+  {% if log_total < 10 %}
+    <p class="dim" style="font-size:12px">Log at least 10 catches to see analysis. Currently: {{ log_total }} entries.</p>
+  {% else %}
+
+  {# ── Macro: renders one analysis table ── #}
+  {% macro analysis_table(rows, heading) %}
+    <div>
+      <div class="section-title" style="margin-bottom:8px;font-size:11px">{{ heading }}</div>
+      {% if rows %}
+      <div class="table-wrap">
+      <table class="data-table" style="font-size:11px">
+        <thead>
+          <tr>
+            <th>{{ heading.split(' ')[0] }}</th>
+            <th>Catches</th>
+            <th style="color:#4fc3f7">Uncommon</th>
+            <th style="color:var(--gold)">Glowing</th>
+            <th style="color:#ff5555">Legend</th>
+            <th style="color:#e040fb">Axolotl</th>
+            <th class="accent">Rare+%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          {% set rare_pct = ((r['rare_plus'] / r['total'] * 100)|int) if r['total'] > 0 else 0 %}
+          <tr>
+            <td class="hi">{{ r['label'] }}</td>
+            <td class="dim">{{ r['total'] }}</td>
+            <td style="color:#4fc3f7">{{ r['uncommon_cnt'] }}{% if r['uncommon_cnt'] > 0 %}<span class="dim" style="font-size:10px"> ({{ ((r['uncommon_cnt']/r['total']*100)|int) }}%)</span>{% endif %}</td>
+            <td style="color:var(--gold)">{{ r['glowing_cnt'] }}{% if r['glowing_cnt'] > 0 %}<span class="dim" style="font-size:10px"> ({{ ((r['glowing_cnt']/r['total']*100)|int) }}%)</span>{% endif %}</td>
+            <td style="color:#ff5555">{{ r['legend_cnt'] }}{% if r['legend_cnt'] > 0 %}<span class="dim" style="font-size:10px"> ({{ ((r['legend_cnt']/r['total']*100)|int) }}%)</span>{% endif %}</td>
+            <td style="color:#e040fb">{{ r['axolotl_cnt'] }}{% if r['axolotl_cnt'] > 0 %}<span class="dim" style="font-size:10px"> ({{ ((r['axolotl_cnt']/r['total']*100)|int) }}%)</span>{% endif %}</td>
+            <td>
+              <span class="{{ 'accent' if rare_pct >= 30 else 'gold' if rare_pct >= 15 else 'dim' }}"
+                    style="font-weight:bold">{{ rare_pct }}%</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="dim" style="font-size:11px">Need at least 3 catches per entry to show data.</p>
+      {% endif %}
+    </div>
+  {% endmacro %}
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    {{ analysis_table(bait_analysis,    'Bait Effectiveness') }}
+    {{ analysis_table(weather_analysis, 'Weather Conditions') }}
+    {{ analysis_table(time_analysis,    'Time of Day') }}
+    {% if spot_analysis %}
+    {{ analysis_table(spot_analysis,    'Top Spots') }}
+    {% endif %}
+
+    {% if combo_analysis %}
+    <div>
+      <div class="section-title" style="margin-bottom:8px;font-size:11px">TOP COMBOS <span class="dim" style="font-size:10px;font-weight:normal;text-transform:none">(bait + weather, min 5 catches, sorted by rare+)</span></div>
+      <div class="table-wrap">
+      <table class="data-table" style="font-size:11px">
+        <thead>
+          <tr>
+            <th>Combo</th>
+            <th>Catches</th>
+            <th style="color:#4fc3f7">Uncommon</th>
+            <th style="color:var(--gold)">Glowing</th>
+            <th style="color:#ff5555">Legend</th>
+            <th style="color:#e040fb">Axolotl</th>
+            <th class="accent">Rare+%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in combo_analysis %}
+          {% set rare_pct = ((r['rare_plus'] / r['total'] * 100)|int) if r['total'] > 0 else 0 %}
+          <tr>
+            <td class="hi" style="white-space:nowrap">{{ r['label'] }}</td>
+            <td class="dim">{{ r['total'] }}</td>
+            <td style="color:#4fc3f7">{{ r['uncommon_cnt'] }}{% if r['uncommon_cnt'] > 0 %}<span class="dim" style="font-size:10px"> ({{ ((r['uncommon_cnt']/r['total']*100)|int) }}%)</span>{% endif %}</td>
+            <td style="color:var(--gold)">{{ r['glowing_cnt'] }}{% if r['glowing_cnt'] > 0 %}<span class="dim" style="font-size:10px"> ({{ ((r['glowing_cnt']/r['total']*100)|int) }}%)</span>{% endif %}</td>
+            <td style="color:#ff5555">{{ r['legend_cnt'] }}{% if r['legend_cnt'] > 0 %}<span class="dim" style="font-size:10px"> ({{ ((r['legend_cnt']/r['total']*100)|int) }}%)</span>{% endif %}</td>
+            <td style="color:#e040fb">{{ r['axolotl_cnt'] }}{% if r['axolotl_cnt'] > 0 %}<span class="dim" style="font-size:10px"> ({{ ((r['axolotl_cnt']/r['total']*100)|int) }}%)</span>{% endif %}</td>
+            <td>
+              <span class="{{ 'accent' if rare_pct >= 30 else 'gold' if rare_pct >= 15 else 'dim' }}"
+                    style="font-weight:bold">{{ rare_pct }}%</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% endif %}{# end log_total >= 10 #}
+  </div>
+</section>
+
+{# ── Log a Catch panel ────────────────────────────────────────────────── #}
+<section class="add-panel {% if edit_log %}open{% endif %}" id="logPanel">
+  <div class="panel-toggle" onclick="togglePanel('logPanel')">
+    <span>{% if edit_log %}✏️ Edit Catch Entry{% else %}+ Log a Catch{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_log %}/fishing/log/{{ edit_log['id'] }}/update{% else %}/fishing/log{% endif %}">
       <div class="form-grid">
 
         <div class="form-group span2">
           <label>Fish Name *</label>
           <input type="text" name="fish_name" id="fishNameInput" required autocomplete="off"
-                 list="fishNames" placeholder="Start typing or select a species...">
+                 list="fishNames" placeholder="Start typing or select a species..."
+                 value="{{ edit_log['fish_name'] if edit_log else '' }}">
         </div>
 
         <div class="form-group">
           <label>Rarity <span class="dim" style="font-size:10px">(auto-fills)</span></label>
           <select name="rarity" id="fishRaritySelect">
-            <option value="Generic">Generic</option>
-            <option value="Common">Common</option>
-            <option value="Uncommon">Uncommon</option>
-            <option value="Glowing">Glowing</option>
-            <option value="Local Legend">Local Legend</option>
-            <option value="Axolotl">Axolotl</option>
+            {% set er = edit_log['rarity'] if edit_log else '' %}
+            <option value="Generic"      {% if er=='Generic'      %}selected{% endif %}>Generic</option>
+            <option value="Common"       {% if er=='Common'       %}selected{% endif %}>Common</option>
+            <option value="Uncommon"     {% if er=='Uncommon'     %}selected{% endif %}>Uncommon</option>
+            <option value="Glowing"      {% if er=='Glowing'      %}selected{% endif %}>Glowing</option>
+            <option value="Local Legend" {% if er=='Local Legend' %}selected{% endif %}>Local Legend</option>
+            <option value="Axolotl"      {% if er=='Axolotl'      %}selected{% endif %}>Axolotl</option>
           </select>
         </div>
 
         <div class="form-group">
           <label>Biome / Region <span class="dim" style="font-size:10px">(auto-fills)</span></label>
           <select name="biome" id="fishBiomeSelect">
-            <option value="">All Regions</option>
-            <option value="The Forest">The Forest</option>
-            <option value="Toxic Valley">Toxic Valley</option>
-            <option value="Savage Divide">Savage Divide</option>
-            <option value="Cranberry Bog">Cranberry Bog</option>
-            <option value="The Mire">The Mire</option>
-            <option value="Ash Heap">Ash Heap</option>
-            <option value="Burning Springs">Burning Springs</option>
-            <option value="Skyline Valley">Skyline Valley</option>
-            <option value="Any Nuke Zone">Any Nuke Zone</option>
-            <option value="Varies (Monthly)">Varies (Monthly)</option>
+            {% set eb = edit_log['biome'] if edit_log else '' %}
+            <option value=""                  {% if eb==''                  %}selected{% endif %}>All Regions</option>
+            <option value="The Forest"        {% if eb=='The Forest'        %}selected{% endif %}>The Forest</option>
+            <option value="Toxic Valley"      {% if eb=='Toxic Valley'      %}selected{% endif %}>Toxic Valley</option>
+            <option value="Savage Divide"     {% if eb=='Savage Divide'     %}selected{% endif %}>Savage Divide</option>
+            <option value="Cranberry Bog"     {% if eb=='Cranberry Bog'     %}selected{% endif %}>Cranberry Bog</option>
+            <option value="The Mire"          {% if eb=='The Mire'          %}selected{% endif %}>The Mire</option>
+            <option value="Ash Heap"          {% if eb=='Ash Heap'          %}selected{% endif %}>Ash Heap</option>
+            <option value="Burning Springs"   {% if eb=='Burning Springs'   %}selected{% endif %}>Burning Springs</option>
+            <option value="Skyline Valley"    {% if eb=='Skyline Valley'    %}selected{% endif %}>Skyline Valley</option>
+            <option value="Any Nuke Zone"     {% if eb=='Any Nuke Zone'     %}selected{% endif %}>Any Nuke Zone</option>
+            <option value="Varies (Monthly)"  {% if eb=='Varies (Monthly)'  %}selected{% endif %}>Varies (Monthly)</option>
           </select>
         </div>
 
         <div class="form-group">
           <label>Location</label>
-          <input type="text" name="location" placeholder="Specific fishing spot">
+          <input type="text" name="location" placeholder="Specific fishing spot"
+                 value="{{ edit_log['location'] if edit_log else '' }}">
         </div>
 
         <div class="form-group">
           <label>Bait Used</label>
           <select name="bait_used">
-            <option value="Common Bait">Common Bait</option>
-            <option value="Improved Bait">Improved Bait</option>
-            <option value="Superb Bait">Superb Bait</option>
+            {% set ebt = edit_log['bait_used'] if edit_log else 'Improved Bait' %}
+            <option value="Common Bait"   {% if ebt=='Common Bait'   %}selected{% endif %}>Common Bait</option>
+            <option value="Improved Bait" {% if ebt=='Improved Bait' %}selected{% endif %}>Improved Bait</option>
+            <option value="Superb Bait"   {% if ebt=='Superb Bait'   %}selected{% endif %}>Superb Bait</option>
           </select>
         </div>
 
         <div class="form-group">
           <label>Weather</label>
           <select name="weather">
-            <option value="Clear Sky">Clear Sky</option>
-            <option value="Rain">Rain</option>
-            <option value="Nuke Zone">Nuke Zone</option>
-            <option value="Rad Storm">Rad Storm</option>
+            {% set ew = edit_log['weather'] if edit_log else '' %}
+            <option value="Clear Sky"  {% if ew=='Clear Sky'  %}selected{% endif %}>Clear Sky</option>
+            <option value="Rain"       {% if ew=='Rain'       %}selected{% endif %}>Rain</option>
+            <option value="Nuke Zone"  {% if ew=='Nuke Zone'  %}selected{% endif %}>Nuke Zone</option>
+            <option value="Rad Storm"  {% if ew=='Rad Storm'  %}selected{% endif %}>Rad Storm</option>
           </select>
         </div>
 
         <div class="form-group">
           <label>Date Caught</label>
-          <input type="date" name="caught_at">
+          <input type="date" name="caught_at"
+                 value="{{ edit_log['caught_at'] if edit_log else '' }}">
+        </div>
+
+        <div class="form-group">
+          <label>Time Caught <span class="dim" style="font-size:10px">(auto-fills)</span></label>
+          <input type="time" name="caught_time" id="caughtTimeInput"
+                 value="{{ edit_log['caught_time'] if edit_log else '' }}">
         </div>
 
         <div class="form-group span2">
           <label>Notes</label>
-          <input type="text" name="notes" placeholder="Any extra info...">
+          <input type="text" name="notes" placeholder="Any extra info..."
+                 value="{{ edit_log['notes'] if edit_log else '' }}">
         </div>
 
       </div>
       <div class="form-actions">
+        {% if edit_log %}
+        <button class="btn btn-primary" type="submit">💾 Save Changes</button>
+        <a href="/fishing" class="btn btn-secondary" style="margin-left:8px">Cancel</a>
+        {% else %}
         <button class="btn btn-primary" type="submit">🎣 Log Catch</button>
+        {% endif %}
       </div>
     </form>
   </div>
@@ -248,6 +435,11 @@
           <div style="flex:1;min-width:0">
             <span class="{{ 'dim' if s['caught'] else 'hi' }}"
                   style="font-size:12px;{{ 'text-decoration:line-through' if s['caught'] else '' }}">{{ s['name'] }}</span>
+            {% if s['catch_count'] > 0 %}
+            <span class="dim" style="font-size:10px;margin-left:4px" id="cc-{{ s['id'] }}">(×{{ s['catch_count'] }})</span>
+            {% else %}
+            <span class="dim" style="font-size:10px;margin-left:4px" id="cc-{{ s['id'] }}"></span>
+            {% endif %}
             {% if s['biome'] %}
             <span class="dim" style="font-size:10px;margin-left:6px">{{ s['biome'] }}</span>
             {% endif %}
@@ -270,8 +462,11 @@
     <span class="toggle-icon">▼</span>
   </div>
   <div class="panel-body">
+    <div class="table-controls" style="margin-bottom:8px">
+      <input type="text" placeholder="Filter catches..." oninput="filterTable(this.value,'catchLogTable')" style="max-width:260px">
+    </div>
     <div class="table-wrap">
-      <table class="data-table">
+      <table class="data-table" id="catchLogTable">
         <thead>
           <tr>
             <th>Date</th>
@@ -309,7 +504,8 @@
             <td class="dim" style="font-size:11px">{{ entry['bait_used'] or '—' }}</td>
             <td class="dim" style="font-size:11px">{{ entry['weather'] or '—' }}</td>
             <td class="dim" style="font-size:11px;max-width:160px;white-space:normal">{{ entry['notes'] or '' }}</td>
-            <td>
+            <td style="white-space:nowrap">
+              <a href="/fishing?edit_log_id={{ entry['id'] }}" class="btn-sm btn-edit" title="Edit entry">✏</a>
               <form method="POST" action="/fishing/log/{{ entry['id'] }}/delete" class="inline-form">
                 <button class="btn-sm btn-delete" onclick="return confirmDelete()" title="Delete entry">🗑</button>
               </form>
@@ -410,20 +606,43 @@ function autoFillFish(name) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  // Auto-fill today's date
+  // Auto-fill today's date and current time
   const dateField = document.querySelector('input[name="caught_at"]');
   if (dateField && !dateField.value) {
     dateField.value = new Date().toISOString().split('T')[0];
+  }
+  const timeField = document.getElementById('caughtTimeInput');
+  if (timeField && !timeField.value) {
+    const now = new Date();
+    timeField.value = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
   }
 
   // Auto-fill rarity + biome when a fish name is entered
   const nameInput = document.getElementById('fishNameInput');
   if (nameInput) {
     nameInput.addEventListener('input', function () { autoFillFish(this.value); });
-    // Also fire on change (catches datalist selection on some browsers)
     nameInput.addEventListener('change', function () { autoFillFish(this.value); });
   }
 });
+
+// Session elapsed timer
+const _sessionStart = {{ active_session['started_at']|tojson if active_session else 'null' }};
+if (_sessionStart) {
+  function _updateElapsed() {
+    const diff = Math.floor((Date.now() - new Date(_sessionStart)) / 1000);
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    const s = diff % 60;
+    const parts = [];
+    if (h > 0) parts.push(h + 'h');
+    parts.push(m + 'm');
+    parts.push(s + 's');
+    const el = document.getElementById('session-elapsed');
+    if (el) el.textContent = parts.join(' ');
+  }
+  _updateElapsed();
+  setInterval(_updateElapsed, 1000);
+}
 </script>
 
 {% endblock %}

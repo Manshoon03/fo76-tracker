@@ -2997,9 +2997,106 @@ def fishing():
         GROUP BY biome ORDER BY biome
     """)
     log_total = db.get_one("SELECT COUNT(*) as n FROM fish_log WHERE character_id=?", (cid,))['n']
+    edit_log_id = request.args.get('edit_log_id', type=int)
+    edit_log = db.get_one("SELECT * FROM fish_log WHERE id=? AND character_id=?", (edit_log_id, cid)) if edit_log_id else None
+
+    # ── Catch analysis (bait / weather / combo / spots / time of day) ───
+    _rare_case = """SUM(CASE WHEN rarity IN ('Uncommon','Glowing','Local Legend','Axolotl')
+                             THEN 1 ELSE 0 END)"""
+    _cols = """COUNT(*) as total,
+               {rare} as rare_plus,
+               SUM(CASE WHEN rarity='Generic'      THEN 1 ELSE 0 END) as generic_cnt,
+               SUM(CASE WHEN rarity='Common'       THEN 1 ELSE 0 END) as common_cnt,
+               SUM(CASE WHEN rarity='Uncommon'     THEN 1 ELSE 0 END) as uncommon_cnt,
+               SUM(CASE WHEN rarity='Glowing'      THEN 1 ELSE 0 END) as glowing_cnt,
+               SUM(CASE WHEN rarity='Local Legend' THEN 1 ELSE 0 END) as legend_cnt,
+               SUM(CASE WHEN rarity='Axolotl'      THEN 1 ELSE 0 END) as axolotl_cnt""".format(rare=_rare_case)
+
+    bait_analysis = db.query(f"""
+        SELECT bait_used as label, {_cols}
+        FROM fish_log WHERE character_id=?
+          AND bait_used IS NOT NULL AND bait_used != ''
+        GROUP BY bait_used HAVING total >= 3
+        ORDER BY rare_plus * 100.0 / total DESC
+    """, (cid,))
+
+    weather_analysis = db.query(f"""
+        SELECT weather as label, {_cols}
+        FROM fish_log WHERE character_id=?
+          AND weather IS NOT NULL AND weather != ''
+        GROUP BY weather HAVING total >= 3
+        ORDER BY rare_plus * 100.0 / total DESC
+    """, (cid,))
+
+    combo_analysis = db.query(f"""
+        SELECT bait_used || ' + ' || weather as label, {_cols}
+        FROM fish_log WHERE character_id=?
+          AND bait_used IS NOT NULL AND bait_used != ''
+          AND weather   IS NOT NULL AND weather   != ''
+        GROUP BY bait_used, weather HAVING total >= 5
+        ORDER BY rare_plus * 100.0 / total DESC
+        LIMIT 10
+    """, (cid,))
+
+    spot_analysis = db.query(f"""
+        SELECT location as label, {_cols}
+        FROM fish_log WHERE character_id=?
+          AND location IS NOT NULL AND location != ''
+        GROUP BY location HAVING total >= 3
+        ORDER BY rare_plus * 100.0 / total DESC
+        LIMIT 10
+    """, (cid,))
+
+    time_analysis = db.query(f"""
+        SELECT
+            CASE
+                WHEN CAST(substr(caught_time,1,2) AS INTEGER) BETWEEN 5  AND 11 THEN '🌅 Morning (5am–noon)'
+                WHEN CAST(substr(caught_time,1,2) AS INTEGER) BETWEEN 12 AND 17 THEN '☀️ Afternoon (noon–6pm)'
+                WHEN CAST(substr(caught_time,1,2) AS INTEGER) BETWEEN 18 AND 21 THEN '🌆 Evening (6–10pm)'
+                ELSE '🌙 Night (10pm–5am)'
+            END as label, {_cols}
+        FROM fish_log WHERE character_id=?
+          AND caught_time IS NOT NULL AND caught_time != ''
+        GROUP BY label HAVING total >= 3
+        ORDER BY rare_plus * 100.0 / total DESC
+    """, (cid,))
+
+    # ── Session data ──────────────────────────────────────────────────────
+    active_session_id = db.get_setting('fish_session_active_id', '')
+    active_session    = None
+    session_catches   = 0
+    if active_session_id:
+        active_session = db.get_one("SELECT * FROM fish_sessions WHERE id=?", (int(active_session_id),))
+        if active_session:
+            session_catches = db.get_one(
+                "SELECT COUNT(*) as n FROM fish_log WHERE character_id=? AND logged_at >= ?",
+                (cid, active_session['started_at'])
+            )['n']
+
+    recent_sessions = db.query("""
+        SELECT s.*,
+            CAST(ROUND((julianday(s.ended_at) - julianday(s.started_at)) * 1440) AS INTEGER) as duration_min,
+            (SELECT COUNT(*) FROM fish_log fl
+             WHERE fl.character_id = s.character_id
+               AND fl.logged_at >= s.started_at
+               AND fl.logged_at <= s.ended_at) as catch_count
+        FROM fish_sessions s
+        WHERE s.character_id=? AND s.ended_at IS NOT NULL
+        ORDER BY s.started_at DESC LIMIT 10
+    """, (cid,))
+
     return render_template('fishing.html', species=species, log=log,
                            total_caught=total_caught, total_species=len(species),
-                           biome_stats=biome_stats, log_total=log_total)
+                           biome_stats=biome_stats, log_total=log_total,
+                           bait_analysis=bait_analysis,
+                           weather_analysis=weather_analysis,
+                           combo_analysis=combo_analysis,
+                           spot_analysis=spot_analysis,
+                           time_analysis=time_analysis,
+                           active_session=active_session,
+                           session_catches=session_catches,
+                           recent_sessions=recent_sessions,
+                           edit_log=edit_log)
 
 @app.route('/fishing/toggle/<int:sid>', methods=['POST'])
 def fishing_toggle(sid):
@@ -3013,7 +3110,10 @@ def fishing_toggle(sid):
         "UPDATE fish_species SET caught=?, first_caught=? WHERE id=?",
         (new_val, first, sid)
     )
-    return jsonify({'ok': True, 'caught': new_val})
+    if new_val:
+        db.execute("UPDATE fish_species SET catch_count = catch_count + 1 WHERE id=?", (sid,))
+    row2 = db.get_one("SELECT catch_count FROM fish_species WHERE id=?", (sid,))
+    return jsonify({'ok': True, 'caught': new_val, 'catch_count': row2['catch_count'] if row2 else 0})
 
 @app.route('/fishing/log', methods=['POST'])
 def fishing_log_add():
@@ -3023,24 +3123,66 @@ def fishing_log_add():
         flash('Fish name required.', 'error')
         return redirect(url_for('fishing'))
     db.execute(
-        "INSERT INTO fish_log (fish_name, rarity, biome, location, bait_used, weather, notes, caught_at, character_id) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO fish_log (fish_name, rarity, biome, location, bait_used, weather, notes, caught_at, caught_time, character_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (fish_name, fs('rarity'), fs('biome'), fs('location'),
          fs('bait_used'), fs('weather'), fs('notes'),
-         fs('caught_at') or str(_date.today()), get_active_char_id())
+         fs('caught_at') or str(_date.today()), fs('caught_time'), get_active_char_id())
     )
-    # Auto-mark species as caught if it matches
+    # Auto-mark species as caught and increment catch_count
     db.execute(
-        "UPDATE fish_species SET caught=1, first_caught=COALESCE(NULLIF(first_caught,''), date('now')) "
-        "WHERE name=? AND caught=0", (fish_name,)
+        "UPDATE fish_species SET caught=1, first_caught=COALESCE(NULLIF(first_caught,''), date('now')), "
+        "catch_count = catch_count + 1 WHERE name=?", (fish_name,)
     )
     flash(f'Logged: {fish_name}!', 'success')
+    return redirect(url_for('fishing'))
+
+@app.route('/fishing/log/<int:lid>/update', methods=['POST'])
+def fishing_log_update(lid):
+    from datetime import date as _date
+    db.execute(
+        "UPDATE fish_log SET fish_name=?, rarity=?, biome=?, location=?, "
+        "bait_used=?, weather=?, notes=?, caught_at=?, caught_time=? WHERE id=?",
+        (fs('fish_name'), fs('rarity'), fs('biome'), fs('location'),
+         fs('bait_used'), fs('weather'), fs('notes'),
+         fs('caught_at') or str(_date.today()), fs('caught_time'), lid)
+    )
+    flash('Catch updated.', 'success')
     return redirect(url_for('fishing'))
 
 @app.route('/fishing/log/<int:lid>/delete', methods=['POST'])
 def fishing_log_delete(lid):
     db.execute("DELETE FROM fish_log WHERE id=?", (lid,))
     flash('Entry removed.', 'info')
+    return redirect(url_for('fishing'))
+
+@app.route('/fishing/session/start', methods=['POST'])
+def fishing_session_start():
+    cid = get_active_char_id()
+    sid = db.insert(
+        "INSERT INTO fish_sessions (character_id, started_at) VALUES (?, datetime('now'))", (cid,)
+    )
+    db.set_setting('fish_session_active_id', str(sid))
+    flash('Fishing session started!', 'success')
+    return redirect(url_for('fishing'))
+
+@app.route('/fishing/session/end', methods=['POST'])
+def fishing_session_end():
+    sid_str = db.get_setting('fish_session_active_id', '')
+    if not sid_str:
+        flash('No active session.', 'warning')
+        return redirect(url_for('fishing'))
+    db.execute("UPDATE fish_sessions SET ended_at=datetime('now') WHERE id=?", (int(sid_str),))
+    db.set_setting('fish_session_active_id', '')
+    flash('Session saved.', 'success')
+    return redirect(url_for('fishing'))
+
+@app.route('/fishing/session/<int:sid>/delete', methods=['POST'])
+def fishing_session_delete(sid):
+    if db.get_setting('fish_session_active_id', '') == str(sid):
+        db.set_setting('fish_session_active_id', '')
+    db.execute("DELETE FROM fish_sessions WHERE id=?", (sid,))
+    flash('Session deleted.', 'info')
     return redirect(url_for('fishing'))
 
 # ── Legendary Mods ─────────────────────────────────────────────────────────────

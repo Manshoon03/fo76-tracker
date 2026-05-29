@@ -628,6 +628,26 @@ def init_db():
         except Exception:
             pass
 
+    # Fishing enhancements
+    for stmt in [
+        "ALTER TABLE fish_species ADD COLUMN catch_count INTEGER DEFAULT 0",
+        "ALTER TABLE fish_log ADD COLUMN caught_time TEXT DEFAULT ''",
+        "ALTER TABLE fish_log ADD COLUMN logged_at TEXT DEFAULT (datetime('now'))",
+        """CREATE TABLE IF NOT EXISTS fish_sessions (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER DEFAULT 1,
+            started_at   TEXT NOT NULL,
+            ended_at     TEXT,
+            notes        TEXT DEFAULT '',
+            created_at   TEXT DEFAULT (datetime('now'))
+        )""",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
     # Seed default daily tasks (only if table is empty)
     if conn.execute("SELECT COUNT(*) FROM daily_tasks").fetchone()[0] == 0:
         defaults = [
@@ -689,6 +709,7 @@ def init_db():
             ('Bloodwhisker',             'Uncommon',      'The Forest'),
             ('Kanawha Piranha',          'Uncommon',      'The Forest'),
             ('Bluefin Zapper',           'Uncommon',      'Skyline Valley'),
+            ('Stormswimmer',             'Uncommon',      'Skyline Valley'),
             ('Brahfin',                  'Uncommon',      'Burning Springs'),
             ('Gulpy',                    'Uncommon',      'The Mire'),
             ('Spikesnapper',             'Uncommon',      'The Mire'),
@@ -726,6 +747,14 @@ def init_db():
             "INSERT INTO fish_species (name, rarity, biome) VALUES (?,?,?)", fish
         )
         conn.commit()
+
+    # Add missing fish species (safe to run on existing DBs)
+    conn.execute(
+        "INSERT OR IGNORE INTO fish_species (name, rarity, biome) "
+        "SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM fish_species WHERE name=?)",
+        ('Stormswimmer', 'Uncommon', 'Skyline Valley', 'Stormswimmer')
+    )
+    conn.commit()
 
     # Seed plan catalog (only if table is empty)
     if conn.execute("SELECT COUNT(*) FROM plan_catalog").fetchone()[0] == 0:
