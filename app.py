@@ -3123,8 +3123,8 @@ def fishing_log_add():
         flash('Fish name required.', 'error')
         return redirect(url_for('fishing'))
     db.execute(
-        "INSERT INTO fish_log (fish_name, rarity, biome, location, bait_used, weather, notes, caught_at, caught_time, character_id) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO fish_log (fish_name, rarity, biome, location, bait_used, weather, notes, caught_at, caught_time, logged_at, character_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),?)",
         (fish_name, fs('rarity'), fs('biome'), fs('location'),
          fs('bait_used'), fs('weather'), fs('notes'),
          fs('caught_at') or str(_date.today()), fs('caught_time'), get_active_char_id())
