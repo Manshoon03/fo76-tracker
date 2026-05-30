@@ -3250,6 +3250,48 @@ def legendary_mods_qty():
         db.execute("UPDATE bobbleheads SET qty=? WHERE id=?", (qty, rid))
     return ('', 204)
 
+@app.route('/legendary-mods/add-effect', methods=['POST'])
+def legendary_mods_add_effect():
+    name = fs('name')
+    if not name:
+        flash('Name required.', 'error')
+        return redirect(url_for('legendary_mods'))
+    cats = ','.join(request.form.getlist('categories'))
+    db.execute(
+        "INSERT OR IGNORE INTO legendary_effects "
+        "(name, description, star, categories, legendary_modules, status, custom) "
+        "VALUES (?,?,?,?,?,?,1)",
+        (name, fs('description'), fi('star', 1), cats,
+         fi('legendary_modules', 15), fs('status') or 'locked')
+    )
+    flash(f'Added effect: {name}', 'success')
+    return redirect(url_for('legendary_mods'))
+
+@app.route('/legendary-mods/delete-effect/<int:eid>', methods=['POST'])
+def legendary_mods_delete_effect(eid):
+    db.execute("DELETE FROM legendary_effects WHERE id=? AND custom=1", (eid,))
+    flash('Effect removed.', 'info')
+    return redirect(url_for('legendary_mods'))
+
+@app.route('/legendary-mods/add-inventory', methods=['POST'])
+def legendary_mods_add_inventory():
+    name = fs('name')
+    if not name:
+        flash('Name required.', 'error')
+        return redirect(url_for('legendary_mods'))
+    db.execute(
+        "INSERT INTO legendary_mods_inventory (name, star_level, qty, notes, custom) VALUES (?,?,?,?,1)",
+        (name, fi('star_level', 1), fi('qty', 0), fs('notes'))
+    )
+    flash(f'Added to inventory: {name}', 'success')
+    return redirect(url_for('legendary_mods'))
+
+@app.route('/legendary-mods/delete-inventory/<int:iid>', methods=['POST'])
+def legendary_mods_delete_inventory(iid):
+    db.execute("DELETE FROM legendary_mods_inventory WHERE id=?", (iid,))
+    flash('Removed from inventory.', 'info')
+    return redirect(url_for('legendary_mods'))
+
 # ── Quick-add JSON endpoints (one-click from wiki references) ──────────────────
 @app.route('/mutations/quick-add', methods=['POST'])
 def mutations_quick_add():

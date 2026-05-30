@@ -633,6 +633,8 @@ def init_db():
         "ALTER TABLE fish_species ADD COLUMN catch_count INTEGER DEFAULT 0",
         "ALTER TABLE fish_log ADD COLUMN caught_time TEXT DEFAULT ''",
         "ALTER TABLE fish_log ADD COLUMN logged_at TEXT DEFAULT ''",
+        "ALTER TABLE legendary_effects ADD COLUMN custom INTEGER DEFAULT 0",
+        "ALTER TABLE legendary_mods_inventory ADD COLUMN custom INTEGER DEFAULT 0",
         """CREATE TABLE IF NOT EXISTS fish_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             character_id INTEGER DEFAULT 1,

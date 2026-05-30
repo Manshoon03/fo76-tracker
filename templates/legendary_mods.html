@@ -205,6 +205,61 @@
   </div>
 </div>
 
+<!-- ── Add New Effect panel ─────────────────────────────────────────── -->
+<section class="add-panel" id="addEffectPanel" style="margin-bottom:16px">
+  <div class="panel-toggle" onclick="togglePanel('addEffectPanel')">
+    <span>+ Add New Legendary Effect</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/legendary-mods/add-effect">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Effect Name *</label>
+          <input type="text" name="name" required placeholder="e.g. Explosive">
+        </div>
+        <div class="form-group">
+          <label>Star</label>
+          <select name="star">
+            <option value="1">★ 1-Star</option>
+            <option value="2">★★ 2-Star</option>
+            <option value="3">★★★ 3-Star</option>
+            <option value="4">★★★★ 4-Star</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            <option value="locked">🔒 Locked</option>
+            <option value="seeking">👁 Seeking</option>
+            <option value="unlocked">✓ Unlocked</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Module Cost</label>
+          <input type="number" name="legendary_modules" value="15" min="0">
+        </div>
+        <div class="form-group">
+          <label>Categories</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;padding-top:4px">
+            <label style="font-size:12px;font-weight:normal;display:flex;align-items:center;gap:4px"><input type="checkbox" name="categories" value="Weapon Ranged"> Ranged</label>
+            <label style="font-size:12px;font-weight:normal;display:flex;align-items:center;gap:4px"><input type="checkbox" name="categories" value="Weapon Melee"> Melee</label>
+            <label style="font-size:12px;font-weight:normal;display:flex;align-items:center;gap:4px"><input type="checkbox" name="categories" value="Armor"> Armor</label>
+            <label style="font-size:12px;font-weight:normal;display:flex;align-items:center;gap:4px"><input type="checkbox" name="categories" value="Power Armor"> Power Armor</label>
+          </div>
+        </div>
+        <div class="form-group span2">
+          <label>Description</label>
+          <input type="text" name="description" placeholder="What does it do?">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">+ Add Effect</button>
+      </div>
+    </form>
+  </div>
+</section>
+
 <!-- ── Effects grid ─────────────────────────────────────────────────── -->
 <div class="le-grid" id="leGrid">
 {% for e in effects %}
@@ -254,6 +309,11 @@
       {% elif e.status == 'seeking' %}👁 Seeking
       {% else %}🔒 Locked{% endif %}
     </button>
+    {% if e.custom %}
+    <form method="POST" action="/legendary-mods/delete-effect/{{ e.id }}" style="margin:0">
+      <button class="btn-sm btn-delete" onclick="return confirmDelete()" title="Remove custom effect">🗑</button>
+    </form>
+    {% endif %}
     <div class="le-count-wrap">
       <label>×</label>
       <input type="number" class="le-count-input" value="{{ e.mod_count }}" min="0"
@@ -267,14 +327,52 @@
 </div>
 
 <!-- ── Mod Inventory (legacy qty tracker) ──────────────────────────── -->
+<div class="le-section-head">📦 Mod Inventory <span>{% if inventory %}{{ inventory|sum(attribute='qty') }} total{% endif %}</span></div>
+
+<section class="add-panel" id="addInvPanel" style="margin-bottom:12px">
+  <div class="panel-toggle" onclick="togglePanel('addInvPanel')">
+    <span>+ Add Inventory Item</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/legendary-mods/add-inventory">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Mod Name *</label>
+          <input type="text" name="name" required placeholder="e.g. Explosive Mod">
+        </div>
+        <div class="form-group">
+          <label>Star</label>
+          <select name="star_level">
+            <option value="1">★ 1-Star</option>
+            <option value="2">★★ 2-Star</option>
+            <option value="3">★★★ 3-Star</option>
+            <option value="4">★★★★ 4-Star</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Qty</label>
+          <input type="number" name="qty" value="1" min="0">
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="Optional notes">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">+ Add Item</button>
+      </div>
+    </form>
+  </div>
+</section>
+
 {% if inventory %}
-<div class="le-section-head">📦 Mod Inventory <span>legacy qty tracking</span></div>
 {% for s in [1,2,3,4] %}
   {% set grp = inventory|selectattr('star_level','eq',s)|list %}
   {% if grp %}
   <div style="margin-bottom:8px;font-size:12px;color:var(--gold);font-weight:700">{{ '★'*s }} — {{ grp|length }} types · {{ grp|sum(attribute='qty') }} total</div>
   <table class="lm-inv-table">
-    <thead><tr><th>Mod</th><th>QTY</th><th>Notes</th></tr></thead>
+    <thead><tr><th>Mod</th><th>QTY</th><th>Notes</th><th></th></tr></thead>
     <tbody>
       {% for item in grp %}
       <tr>
@@ -283,6 +381,11 @@
              value="{{ item.qty }}" min="0"
              onchange="updateInvQty({{ item.id }}, this.value, this)"></td>
         <td style="font-size:11px;color:#e0c040">{{ item.notes or '' }}</td>
+        <td>
+          <form method="POST" action="/legendary-mods/delete-inventory/{{ item.id }}" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()" title="Remove">🗑</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
