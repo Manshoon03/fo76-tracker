@@ -45,9 +45,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!inp.value) inp.value = today;
   });
 
-  // Auto-focus first text input in open panel
-  const openPanel = document.querySelector('.add-panel.open input[type=text]');
-  if (openPanel) openPanel.focus();
+  // Auto-focus first text input in open add/edit panel (not display panels like catchLogPanel)
+  const openPanel = document.querySelector('.add-panel.open:not(#catchLogPanel) input[type=text]');
+  if (openPanel) {
+    openPanel.focus({ preventScroll: true });
+    openPanel.closest('.add-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   // Restore collapsible panel states from localStorage
   document.querySelectorAll('.add-panel[id]').forEach(function(panel) {
