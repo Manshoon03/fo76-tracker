@@ -1616,6 +1616,71 @@ def api_challenges_repeatables():
     """)
     return jsonify([dict(r) for r in rows])
 
+# ── Companion App APIs ────────────────────────────────────────────────────────
+
+@app.route('/api/fish/species')
+def api_fish_species():
+    rows = db.query("SELECT name, rarity, biome FROM fish_species ORDER BY biome, name")
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/fish/log', methods=['POST'])
+def api_fish_log():
+    from datetime import date as _date
+    data = request.get_json(silent=True) or {}
+    fish_name = (data.get('fish_name') or '').strip()
+    if not fish_name:
+        return jsonify({'ok': False, 'error': 'fish_name required'}), 400
+    db.execute(
+        "INSERT INTO fish_log (fish_name, rarity, biome, location, bait_used, weather, notes, caught_at, caught_time, logged_at, character_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),?)",
+        (fish_name, data.get('rarity', ''), data.get('biome', ''), data.get('location', ''),
+         data.get('bait_used', ''), data.get('weather', ''), data.get('notes', ''),
+         data.get('caught_at') or str(_date.today()), data.get('caught_time', ''),
+         get_active_char_id())
+    )
+    db.execute(
+        "UPDATE fish_species SET caught=1, first_caught=COALESCE(NULLIF(first_caught,''), date('now')), "
+        "catch_count = catch_count + 1 WHERE name=?", (fish_name,)
+    )
+    return jsonify({'ok': True, 'message': f'Logged: {fish_name}!'})
+
+@app.route('/api/legend-runs/bosses')
+def api_legend_runs_bosses():
+    rows = db.query(
+        "SELECT id, boss_name, run_count, last_run FROM legend_runs WHERE character_id=? ORDER BY boss_name",
+        (get_active_char_id(),)
+    )
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/legend-run/log', methods=['POST'])
+def api_legend_run_log():
+    from datetime import date as _date
+    data = request.get_json(silent=True) or {}
+    boss_id = data.get('boss_id')
+    if not boss_id:
+        return jsonify({'ok': False, 'error': 'boss_id required'}), 400
+    run_date = data.get('run_date') or str(_date.today())
+    db.execute(
+        "UPDATE legend_runs SET last_run=?, run_count=run_count+1, updated_at=date('now') WHERE id=?",
+        (run_date, boss_id)
+    )
+    return jsonify({'ok': True, 'message': 'Run logged!'})
+
+@app.route('/api/caps/log', methods=['POST'])
+def api_caps_log():
+    from datetime import date as _date
+    data = request.get_json(silent=True) or {}
+    amount = data.get('amount')
+    txn_type = data.get('txn_type', 'income')
+    if not amount:
+        return jsonify({'ok': False, 'error': 'amount required'}), 400
+    db.execute(
+        "INSERT INTO caps_ledger (txn_type, amount, category, description, txn_date, character_id) VALUES (?,?,?,?,?,?)",
+        (txn_type, int(amount), data.get('category', 'misc'), data.get('description', ''),
+         data.get('txn_date') or str(_date.today()), get_active_char_id())
+    )
+    return jsonify({'ok': True, 'message': f'{txn_type.title()} of {amount:,} caps logged!'})
+
 # ── Export CSV ───────────────────────────────────────────────────────────────
 
 EXPORT_CONFIG = {
