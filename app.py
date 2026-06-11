@@ -199,11 +199,17 @@ def close_db_conn(error):
         db._managed_ids.discard(id(conn))
         conn.close()
 
+COMPANION_API_KEY = os.environ.get('FO76_COMPANION_KEY', 'fo76companion')
+
 @app.before_request
 def require_login():
     if request.path.startswith('/static'):
         return
     if request.path in ('/login', '/logout'):
+        return
+    # Companion app API key bypass
+    if request.path.startswith('/api/') and \
+            request.headers.get('X-Companion-Key') == COMPANION_API_KEY:
         return
     if not session.get('logged_in'):
         return redirect(url_for('login', next=request.path))
