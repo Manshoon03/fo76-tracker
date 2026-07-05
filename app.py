@@ -2485,20 +2485,30 @@ def inventory_scan_import():
     items = data.get('items', [])
     cid   = get_active_char_id()
     count = 0
+    updated = 0
     for item in items:
         name = (item.get('name') or '').strip()
         if not name:
             continue
-        db.execute(
-            "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,notes,fo1st_stored,character_id) "
-            "VALUES (?,?,?,?,?,?,?,?,0,?)",
-            (name, item.get('category','Misc'), '', max(1, int(item.get('qty') or 1)),
-             round(float(item.get('weight_each') or 0), 3),
-             max(0, int(item.get('value_each') or 0)),
-             'Keep', item.get('notes',''), cid)
-        )
-        count += 1
-    return jsonify(ok=True, count=count)
+        category = item.get('category', 'Misc')
+        qty = max(1, int(item.get('qty') or 1))
+        weight_each = round(float(item.get('weight_each') or 0), 3)
+        value_each = max(0, int(item.get('value_each') or 0))
+        # Check if item already exists for this character
+        existing = db.get_one(
+            "SELECT id FROM inventory WHERE name=? AND category=? AND character_id=?",
+            (name, category, cid))
+        if existing:
+            db.execute("UPDATE inventory SET qty=?, weight_each=?, value_each=? WHERE id=?",
+                       (qty, weight_each, value_each, existing['id']))
+            updated += 1
+        else:
+            db.execute(
+                "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,notes,fo1st_stored,character_id) "
+                "VALUES (?,?,?,?,?,?,?,?,0,?)",
+                (name, category, '', qty, weight_each, value_each, 'Keep', item.get('notes',''), cid))
+            count += 1
+    return jsonify(ok=True, count=count, updated=updated)
 
 
 # ── Vendor Screenshot Scan ────────────────────────────────────────────────────
