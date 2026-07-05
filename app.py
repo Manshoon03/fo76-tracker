@@ -4265,53 +4265,60 @@ def community_board_export_needs():
 @app.route('/stash-overview')
 def stash_overview():
     chars = db.query("SELECT * FROM characters ORDER BY char_type, name")
-    tab = request.args.get('tab', 'weapons')
+    cat_filter = request.args.get('cat', '')
 
-    def group_by_char(rows):
-        groups = []
-        seen = {}
-        for r in rows:
-            cid = r['character_id']
-            if cid not in seen:
-                g = {'char_name': r['char_name'], 'char_type': r['char_type'],
-                     'platform': r['platform'], 'cid': cid, 'rows': []}
-                seen[cid] = g
-                groups.append(g)
-            seen[cid]['rows'].append(r)
-        return groups
+    # Pull everything into a unified list
+    items = []
 
-    weapons = group_by_char(db.query("""
-        SELECT w.*, c.name as char_name, c.char_type, c.platform
-        FROM weapons w JOIN characters c ON w.character_id = c.id
-        ORDER BY c.char_type, c.name, w.name
-    """))
+    for w in db.query("""SELECT w.*, c.name as char_name, c.char_type
+        FROM weapons w JOIN characters c ON w.character_id=c.id ORDER BY c.name, w.name"""):
+        items.append({'id': w['id'], 'name': w['name'], 'category': 'Weapons',
+            'detail': w['wtype'] or '', 'qty': 1, 'weight': w['weight'] or 0,
+            'status': w['status'], 'char_name': w['char_name'], 'char_type': w['char_type'],
+            'character_id': w['character_id'], 'table': 'weapons',
+            'stars': ' '.join(filter(None, [w['star1'], w['star2'], w['star3']]))})
 
-    modules = group_by_char(db.query("""
-        SELECT m.*, c.name as char_name, c.char_type, c.platform
-        FROM mods m JOIN characters c ON m.character_id = c.id
-        ORDER BY c.char_type, c.name, m.name
-    """))
+    for a in db.query("""SELECT a.*, c.name as char_name, c.char_type
+        FROM armor a JOIN characters c ON a.character_id=c.id ORDER BY c.name, a.name"""):
+        items.append({'id': a['id'], 'name': a['name'], 'category': 'Armor',
+            'detail': a['slot'] or '', 'qty': 1, 'weight': a['weight'] or 0,
+            'status': a['status'], 'char_name': a['char_name'], 'char_type': a['char_type'],
+            'character_id': a['character_id'], 'table': 'armor',
+            'stars': ' '.join(filter(None, [a['star1'], a['star2'], a['star3']]))})
 
-    plans = group_by_char(db.query("""
-        SELECT p.*, c.name as char_name, c.char_type, c.platform
-        FROM plans p JOIN characters c ON p.character_id = c.id
-        ORDER BY c.char_type, c.name, p.name
-    """))
+    for m in db.query("""SELECT m.*, c.name as char_name, c.char_type
+        FROM mods m JOIN characters c ON m.character_id=c.id ORDER BY c.name, m.name"""):
+        items.append({'id': m['id'], 'name': m['name'], 'category': 'Mods',
+            'detail': m['mod_type'] or '', 'qty': m['qty'], 'weight': 0,
+            'status': m['status'], 'char_name': m['char_name'], 'char_type': m['char_type'],
+            'character_id': m['character_id'], 'table': 'mods', 'stars': ''})
 
-    food = group_by_char(db.query("""
-        SELECT i.*, c.name as char_name, c.char_type, c.platform
-        FROM inventory i JOIN characters c ON i.character_id = c.id
-        WHERE i.category = 'Food/Drink'
-        ORDER BY c.char_type, c.name, i.perishable DESC, i.name
-    """))
+    for p in db.query("""SELECT p.*, c.name as char_name, c.char_type
+        FROM plans p JOIN characters c ON p.character_id=c.id ORDER BY c.name, p.name"""):
+        items.append({'id': p['id'], 'name': p['name'], 'category': 'Plans',
+            'detail': p['category'] or '', 'qty': p['qty_unlearned'] or 1, 'weight': 0,
+            'status': p['status'], 'char_name': p['char_name'], 'char_type': p['char_type'],
+            'character_id': p['character_id'], 'table': 'plans', 'stars': ''})
 
-    # Total item count across all tabs
-    total = sum(len(g['rows']) for g in weapons) + sum(len(g['rows']) for g in modules) + \
-            sum(len(g['rows']) for g in plans) + sum(len(g['rows']) for g in food)
+    for i in db.query("""SELECT i.*, c.name as char_name, c.char_type
+        FROM inventory i JOIN characters c ON i.character_id=c.id ORDER BY c.name, i.name"""):
+        items.append({'id': i['id'], 'name': i['name'], 'category': i['category'] or 'Misc',
+            'detail': i['sub_type'] or '', 'qty': i['qty'], 'weight': (i['weight_each'] or 0) * (i['qty'] or 1),
+            'status': i['status'], 'char_name': i['char_name'], 'char_type': i['char_type'],
+            'character_id': i['character_id'], 'table': 'inventory', 'stars': ''})
+
+    # Build category counts for tabs
+    cat_counts = {}
+    for it in items:
+        cat_counts[it['category']] = cat_counts.get(it['category'], 0) + 1
+
+    # Filter if category selected
+    if cat_filter:
+        items = [it for it in items if it['category'] == cat_filter]
 
     return render_template('stash_overview.html',
-        chars=chars, tab=tab, total=total,
-        weapons=weapons, modules=modules, plans=plans, food=food)
+        chars=chars, items=items, cat_filter=cat_filter,
+        cat_counts=cat_counts, total=len(items))
 
 
 @app.route('/stash-overview/transfer', methods=['POST'])
@@ -4321,7 +4328,7 @@ def stash_overview_transfer():
     item_id = int(data.get('id', 0))
     target_cid = int(data.get('target_cid', 0))
 
-    if table not in ('weapons', 'mods', 'plans', 'inventory'):
+    if table not in ('weapons', 'armor', 'mods', 'plans', 'inventory'):
         return jsonify(error='invalid table'), 400
     if not item_id or not target_cid:
         return jsonify(error='missing fields'), 400
@@ -4332,7 +4339,7 @@ def stash_overview_transfer():
 
     db.execute(f"UPDATE {table} SET character_id=? WHERE id=?", (target_cid, item_id))
 
-    if table in ('weapons', 'mods'):
+    if table in ('weapons', 'armor', 'mods'):
         db.execute("UPDATE inventory SET character_id=? WHERE source_table=? AND source_id=?",
                    (target_cid, table, item_id))
 
