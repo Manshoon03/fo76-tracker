@@ -4267,33 +4267,50 @@ def stash_overview():
     chars = db.query("SELECT * FROM characters ORDER BY char_type, name")
     tab = request.args.get('tab', 'weapons')
 
-    weapons = db.query("""
+    def group_by_char(rows):
+        groups = []
+        seen = {}
+        for r in rows:
+            cid = r['character_id']
+            if cid not in seen:
+                g = {'char_name': r['char_name'], 'char_type': r['char_type'],
+                     'platform': r['platform'], 'cid': cid, 'rows': []}
+                seen[cid] = g
+                groups.append(g)
+            seen[cid]['rows'].append(r)
+        return groups
+
+    weapons = group_by_char(db.query("""
         SELECT w.*, c.name as char_name, c.char_type, c.platform
         FROM weapons w JOIN characters c ON w.character_id = c.id
         ORDER BY c.char_type, c.name, w.name
-    """)
+    """))
 
-    modules = db.query("""
+    modules = group_by_char(db.query("""
         SELECT m.*, c.name as char_name, c.char_type, c.platform
         FROM mods m JOIN characters c ON m.character_id = c.id
         ORDER BY c.char_type, c.name, m.name
-    """)
+    """))
 
-    plans = db.query("""
+    plans = group_by_char(db.query("""
         SELECT p.*, c.name as char_name, c.char_type, c.platform
         FROM plans p JOIN characters c ON p.character_id = c.id
         ORDER BY c.char_type, c.name, p.name
-    """)
+    """))
 
-    food = db.query("""
+    food = group_by_char(db.query("""
         SELECT i.*, c.name as char_name, c.char_type, c.platform
         FROM inventory i JOIN characters c ON i.character_id = c.id
         WHERE i.category = 'Food/Drink'
         ORDER BY c.char_type, c.name, i.perishable DESC, i.name
-    """)
+    """))
+
+    # Total item count across all tabs
+    total = sum(len(g['rows']) for g in weapons) + sum(len(g['rows']) for g in modules) + \
+            sum(len(g['rows']) for g in plans) + sum(len(g['rows']) for g in food)
 
     return render_template('stash_overview.html',
-        chars=chars, tab=tab,
+        chars=chars, tab=tab, total=total,
         weapons=weapons, modules=modules, plans=plans, food=food)
 
 

@@ -2,258 +2,179 @@
 {% block title %}Stash Overview{% endblock %}
 {% block content %}
 
-{% set total_items = weapons|length + modules|length + plans|length + food|length %}
+{# ── Reusable macro for character group wrapper ── #}
+{% macro char_group_card(group) %}
+<div class="char-group">
+  <div class="char-group-header">
+    <span>{{ group.char_name }} <span class="dim">({{ group.platform }})</span>{% if group.char_type == 'Mule' %} <span class="badge badge-sell">mule</span>{% endif %}</span>
+    <span class="count-badge">{{ group.rows|length }}</span>
+  </div>
+  <div class="table-wrap">{{ caller() }}</div>
+</div>
+{% endmacro %}
+
+{# ── Transfer dropdown macro ── #}
+{% macro move_select(table, item) %}
+<select class="transfer-select" onchange="transferItem('{{ table }}', {{ item.id }}, this.value, this)">
+  <option value="">Move to…</option>
+  {% for c in chars if c.id != item.character_id %}
+  <option value="{{ c.id }}">{{ c.name }}</option>
+  {% endfor %}
+</select>
+{% endmacro %}
+
 <div class="page-header">
-  <h1>📦 Stash Overview <span class="count-badge">{{ total_items }} items across {{ chars|length }} chars</span></h1>
+  <h1>Stash Overview <span class="count-badge">{{ total }} items / {{ chars|length }} chars</span></h1>
 </div>
 
 <div class="stash-tabs">
-  <a href="?tab=weapons" class="stash-tab {% if tab == 'weapons' %}active{% endif %}">⚔ Weapons <span class="count-badge">{{ weapons|length }}</span></a>
-  <a href="?tab=modules" class="stash-tab {% if tab == 'modules' %}active{% endif %}">🔩 Modules <span class="count-badge">{{ modules|length }}</span></a>
-  <a href="?tab=plans" class="stash-tab {% if tab == 'plans' %}active{% endif %}">📜 Plans <span class="count-badge">{{ plans|length }}</span></a>
-  <a href="?tab=food" class="stash-tab {% if tab == 'food' %}active{% endif %}">🍖 Food <span class="count-badge">{{ food|length }}</span></a>
+  <a href="?tab=weapons" class="stash-tab {% if tab == 'weapons' %}active{% endif %}">Weapons</a>
+  <a href="?tab=modules" class="stash-tab {% if tab == 'modules' %}active{% endif %}">Modules</a>
+  <a href="?tab=plans" class="stash-tab {% if tab == 'plans' %}active{% endif %}">Plans</a>
+  <a href="?tab=food" class="stash-tab {% if tab == 'food' %}active{% endif %}">Food</a>
 </div>
 
-<div class="table-controls" style="margin-bottom:14px">
+<div class="table-controls">
   <input type="text" class="filter-input" placeholder="Filter items…" oninput="filterStash(this.value)" id="stashFilter">
 </div>
 
 {# ── WEAPONS TAB ── #}
 {% if tab == 'weapons' %}
-  {% set grouped = {} %}
-  {% for w in weapons %}
-    {% if w.character_id not in grouped %}{% if grouped.update({w.character_id: {'char_name': w.char_name, 'char_type': w.char_type, 'platform': w.platform, 'items': []}}) %}{% endif %}{% endif %}
-    {% if grouped[w.character_id].items.append(w) %}{% endif %}
-  {% endfor %}
-  {% if not grouped %}
-    <p class="no-data">No weapons found across any character.</p>
-  {% endif %}
-  {% for cid, group in grouped.items() %}
-  <div class="char-group">
-    <div class="char-group-header">
-      <span>{{ group.char_name }} <span class="dim">({{ group.platform }})</span>{% if group.char_type == 'Mule' %} <span class="badge badge-sell">mule</span>{% endif %}</span>
-      <span class="count-badge">{{ group.items|length }} items</span>
-    </div>
-    <div class="table-wrap">
-      <table class="data-table stash-table">
-        <thead><tr>
-          <th>Name</th><th>Type</th><th>★1</th><th>★2</th><th>★3</th><th>Status</th><th>Weight</th><th>→ Move</th>
-        </tr></thead>
-        <tbody>
-        {% for item in group.items %}
-          <tr class="stash-row">
-            <td>{{ item.name }}</td>
-            <td class="dim">{{ item.wtype }}</td>
-            <td>{{ item.star1 or '—' }}</td>
-            <td>{{ item.star2 or '—' }}</td>
-            <td>{{ item.star3 or '—' }}</td>
-            <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
-            <td>{{ item.weight }}</td>
-            <td>
-              <select class="transfer-select" onchange="transferItem('weapons', {{ item.id }}, this.value, this)">
-                <option value="">→ Move to…</option>
-                {% for c in chars if c.id != item.character_id %}
-                <option value="{{ c.id }}">{{ c.name }}</option>
-                {% endfor %}
-              </select>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+  {% if not weapons %}<p class="no-data">No weapons across any character.</p>{% endif %}
+  {% for group in weapons %}
+    {% call char_group_card(group) %}
+    <table class="data-table stash-table">
+      <thead><tr><th>Name</th><th>Type</th><th>★1</th><th>★2</th><th>★3</th><th>Status</th><th>Wt</th><th>Move</th></tr></thead>
+      <tbody>
+      {% for item in group.rows %}
+        <tr class="stash-row">
+          <td>{{ item.name }}</td>
+          <td class="dim">{{ item.wtype }}</td>
+          <td>{{ item.star1 or '—' }}</td>
+          <td>{{ item.star2 or '—' }}</td>
+          <td>{{ item.star3 or '—' }}</td>
+          <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
+          <td>{{ item.weight }}</td>
+          <td>{{ move_select('weapons', item) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endcall %}
   {% endfor %}
 {% endif %}
 
 {# ── MODULES TAB ── #}
 {% if tab == 'modules' %}
-  {% set grouped = {} %}
-  {% for m in modules %}
-    {% if m.character_id not in grouped %}{% if grouped.update({m.character_id: {'char_name': m.char_name, 'char_type': m.char_type, 'platform': m.platform, 'items': []}}) %}{% endif %}{% endif %}
-    {% if grouped[m.character_id].items.append(m) %}{% endif %}
-  {% endfor %}
-  {% if not grouped %}
-    <p class="no-data">No modules/mods found across any character.</p>
-  {% endif %}
-  {% for cid, group in grouped.items() %}
-  <div class="char-group">
-    <div class="char-group-header">
-      <span>{{ group.char_name }} <span class="dim">({{ group.platform }})</span>{% if group.char_type == 'Mule' %} <span class="badge badge-sell">mule</span>{% endif %}</span>
-      <span class="count-badge">{{ group.items|length }} items</span>
-    </div>
-    <div class="table-wrap">
-      <table class="data-table stash-table">
-        <thead><tr>
-          <th>Name</th><th>Type</th><th>Qty</th><th>Effect</th><th>Status</th><th>→ Move</th>
-        </tr></thead>
-        <tbody>
-        {% for item in group.items %}
-          <tr class="stash-row">
-            <td>{{ item.name }}</td>
-            <td class="dim">{{ item.mod_type }}</td>
-            <td>{{ item.qty }}</td>
-            <td class="dim">{{ item.effect or '—' }}</td>
-            <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
-            <td>
-              <select class="transfer-select" onchange="transferItem('mods', {{ item.id }}, this.value, this)">
-                <option value="">→ Move to…</option>
-                {% for c in chars if c.id != item.character_id %}
-                <option value="{{ c.id }}">{{ c.name }}</option>
-                {% endfor %}
-              </select>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+  {% if not modules %}<p class="no-data">No mods across any character.</p>{% endif %}
+  {% for group in modules %}
+    {% call char_group_card(group) %}
+    <table class="data-table stash-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Qty</th><th>Effect</th><th>Status</th><th>Move</th></tr></thead>
+      <tbody>
+      {% for item in group.rows %}
+        <tr class="stash-row">
+          <td>{{ item.name }}</td>
+          <td class="dim">{{ item.mod_type }}</td>
+          <td>{{ item.qty }}</td>
+          <td class="dim">{{ item.effect or '—' }}</td>
+          <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
+          <td>{{ move_select('mods', item) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endcall %}
   {% endfor %}
 {% endif %}
 
 {# ── PLANS TAB ── #}
 {% if tab == 'plans' %}
-  {% set grouped = {} %}
-  {% for p in plans %}
-    {% if p.character_id not in grouped %}{% if grouped.update({p.character_id: {'char_name': p.char_name, 'char_type': p.char_type, 'platform': p.platform, 'items': []}}) %}{% endif %}{% endif %}
-    {% if grouped[p.character_id].items.append(p) %}{% endif %}
-  {% endfor %}
-  {% if not grouped %}
-    <p class="no-data">No plans found across any character.</p>
-  {% endif %}
-  {% for cid, group in grouped.items() %}
-  <div class="char-group">
-    <div class="char-group-header">
-      <span>{{ group.char_name }} <span class="dim">({{ group.platform }})</span>{% if group.char_type == 'Mule' %} <span class="badge badge-sell">mule</span>{% endif %}</span>
-      <span class="count-badge">{{ group.items|length }} items</span>
-    </div>
-    <div class="table-wrap">
-      <table class="data-table stash-table">
-        <thead><tr>
-          <th>Name</th><th>Category</th><th>Learned</th><th>Qty (unlearned)</th><th>Sell Price</th><th>Status</th><th>→ Move</th>
-        </tr></thead>
-        <tbody>
-        {% for item in group.items %}
-          <tr class="stash-row">
-            <td>{{ item.name }}</td>
-            <td class="dim">{{ item.category }}</td>
-            <td>{{ '✓' if item.learned else '✗' }}</td>
-            <td>{{ item.qty_unlearned }}</td>
-            <td>{{ item.sell_price }}c</td>
-            <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
-            <td>
-              <select class="transfer-select" onchange="transferItem('plans', {{ item.id }}, this.value, this)">
-                <option value="">→ Move to…</option>
-                {% for c in chars if c.id != item.character_id %}
-                <option value="{{ c.id }}">{{ c.name }}</option>
-                {% endfor %}
-              </select>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+  {% if not plans %}<p class="no-data">No plans across any character.</p>{% endif %}
+  {% for group in plans %}
+    {% call char_group_card(group) %}
+    <table class="data-table stash-table">
+      <thead><tr><th>Name</th><th>Category</th><th>Learned</th><th>Qty</th><th>Price</th><th>Status</th><th>Move</th></tr></thead>
+      <tbody>
+      {% for item in group.rows %}
+        <tr class="stash-row">
+          <td>{{ item.name }}</td>
+          <td class="dim">{{ item.category }}</td>
+          <td>{% if item.learned %}<span class="accent">Yes</span>{% else %}<span class="dim">No</span>{% endif %}</td>
+          <td>{{ item.qty_unlearned }}</td>
+          <td>{{ item.sell_price }}c</td>
+          <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
+          <td>{{ move_select('plans', item) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endcall %}
   {% endfor %}
 {% endif %}
 
 {# ── FOOD TAB ── #}
 {% if tab == 'food' %}
-  {% set grouped = {} %}
-  {% for f in food %}
-    {% if f.character_id not in grouped %}{% if grouped.update({f.character_id: {'char_name': f.char_name, 'char_type': f.char_type, 'platform': f.platform, 'items': []}}) %}{% endif %}{% endif %}
-    {% if grouped[f.character_id].items.append(f) %}{% endif %}
-  {% endfor %}
-  {% if not grouped %}
-    <p class="no-data">No food/drink items found across any character.</p>
-  {% endif %}
-  {% for cid, group in grouped.items() %}
-  <div class="char-group">
-    <div class="char-group-header">
-      <span>{{ group.char_name }} <span class="dim">({{ group.platform }})</span>{% if group.char_type == 'Mule' %} <span class="badge badge-sell">mule</span>{% endif %}</span>
-      <span class="count-badge">{{ group.items|length }} items</span>
-    </div>
-    <div class="table-wrap">
-      <table class="data-table stash-table">
-        <thead><tr>
-          <th>Name</th><th>Perishable</th><th>Qty</th><th>Weight</th><th>Status</th><th>→ Move</th>
-        </tr></thead>
-        <tbody>
-        {% for item in group.items %}
-          <tr class="stash-row">
-            <td>{{ item.name }}</td>
-            <td>{% if item.perishable %}<span class="perishable-badge perishable">Perishable</span>{% else %}<span class="perishable-badge stable">Stable</span>{% endif %}</td>
-            <td>{{ item.qty }}</td>
-            <td>{{ '%.2f'|format(item.weight_each * item.qty) }}</td>
-            <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
-            <td>
-              <select class="transfer-select" onchange="transferItem('inventory', {{ item.id }}, this.value, this)">
-                <option value="">→ Move to…</option>
-                {% for c in chars if c.id != item.character_id %}
-                <option value="{{ c.id }}">{{ c.name }}</option>
-                {% endfor %}
-              </select>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+  {% if not food %}<p class="no-data">No food/drink items across any character.</p>{% endif %}
+  {% for group in food %}
+    {% call char_group_card(group) %}
+    <table class="data-table stash-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Qty</th><th>Weight</th><th>Status</th><th>Move</th></tr></thead>
+      <tbody>
+      {% for item in group.rows %}
+        <tr class="stash-row">
+          <td>{{ item.name }}</td>
+          <td>{% if item.perishable %}<span class="perishable-badge perishable">Perishable</span>{% else %}<span class="perishable-badge stable">Stable</span>{% endif %}</td>
+          <td>{{ item.qty }}</td>
+          <td>{{ '%.1f'|format(item.weight_each * item.qty) }}</td>
+          <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
+          <td>{{ move_select('inventory', item) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endcall %}
   {% endfor %}
 {% endif %}
 
 <script>
 function filterStash(val) {
   val = val.toLowerCase();
-  document.querySelectorAll('.stash-row').forEach(function(row) {
-    row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+  document.querySelectorAll('.stash-row').forEach(function(r) {
+    r.style.display = r.textContent.toLowerCase().includes(val) ? '' : 'none';
   });
-  // Hide empty character groups
-  document.querySelectorAll('.char-group').forEach(function(group) {
-    var visibleRows = group.querySelectorAll('.stash-row:not([style*="display: none"])');
-    group.style.display = visibleRows.length ? '' : 'none';
+  document.querySelectorAll('.char-group').forEach(function(g) {
+    g.style.display = g.querySelectorAll('.stash-row:not([style*="display: none"])').length ? '' : 'none';
   });
 }
 
-function transferItem(table, itemId, targetCid, selectEl) {
+function transferItem(table, id, targetCid, el) {
   if (!targetCid) return;
   fetch('/stash-overview/transfer', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({table: table, id: itemId, target_cid: parseInt(targetCid)})
+    body: JSON.stringify({table: table, id: id, target_cid: +targetCid})
   })
   .then(function(r) { return r.json(); })
-  .then(function(data) {
-    if (data.ok) {
-      showToast('Moved to ' + data.target_name, 'success');
-      var row = selectEl.closest('tr');
+  .then(function(d) {
+    if (d.ok) {
+      showToast('Moved to ' + d.target_name, 'success');
+      var row = el.closest('tr');
       row.style.transition = 'opacity 0.3s';
       row.style.opacity = '0';
       setTimeout(function() {
+        var group = row.closest('.char-group');
         row.remove();
-        // Update character group counts
-        document.querySelectorAll('.char-group').forEach(function(group) {
-          var rows = group.querySelectorAll('.stash-row');
-          var badge = group.querySelector('.count-badge');
-          if (rows.length === 0) {
-            group.remove();
-          } else if (badge) {
-            badge.textContent = rows.length + ' items';
-          }
-        });
+        var left = group.querySelectorAll('.stash-row');
+        if (!left.length) { group.remove(); }
+        else { group.querySelector('.char-group-header .count-badge').textContent = left.length; }
       }, 300);
     } else {
-      showToast('Transfer failed: ' + (data.error || 'unknown'), 'error');
-      selectEl.value = '';
+      showToast('Transfer failed: ' + (d.error || 'unknown'), 'error');
+      el.value = '';
     }
   })
-  .catch(function() {
-    showToast('Transfer failed', 'error');
-    selectEl.value = '';
-  });
+  .catch(function() { showToast('Transfer failed', 'error'); el.value = ''; });
 }
 </script>
 
