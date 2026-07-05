@@ -103,7 +103,8 @@
     <a href="/armor"       class="sidebar-item {% if '/armor' in ni and '/power-armor' not in ni %}active{% endif %}"       title="Armor">      <span class="si-icon">🛡</span><span class="si-label">Armor</span></a>
     <a href="/power-armor" class="sidebar-item {% if '/power-armor' in ni %}active{% endif %}" title="Power Armor"><span class="si-icon">⚙</span><span class="si-label">Power Armor</span></a>
     <a href="/mods"        class="sidebar-item {% if '/mods' in ni %}active{% endif %}"        title="Mods">       <span class="si-icon">🔩</span><span class="si-label">Mods</span></a>
-    <a href="/inventory" class="sidebar-item {% if '/inventory' in ni %}active{% endif %}" title="Inventory"><span class="si-icon">🎒</span><span class="si-label">Inventory</span></a>
+    <a href="/inventory" class="sidebar-item {% if '/inventory' in ni and '/stash-overview' not in ni %}active{% endif %}" title="Inventory"><span class="si-icon">🎒</span><span class="si-label">Inventory</span></a>
+    <a href="/stash-overview" class="sidebar-item {% if '/stash-overview' in ni %}active{% endif %}" title="Stash Overview"><span class="si-icon">📦</span><span class="si-label">Stash Overview</span></a>
   </div>
 
   <div class="sidebar-divider"></div>

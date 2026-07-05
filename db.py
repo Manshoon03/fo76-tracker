@@ -582,6 +582,7 @@ def init_db():
             updated_at   TEXT    DEFAULT (date('now')),
             UNIQUE(character_id, slot_num)
         )""",
+        "ALTER TABLE inventory ADD COLUMN perishable INTEGER DEFAULT 0",
         """CREATE TABLE IF NOT EXISTS comm_pool (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             donor_name   TEXT NOT NULL,

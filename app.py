@@ -1313,10 +1313,11 @@ def inventory():
 @app.route('/inventory/add', methods=['POST'])
 def inventory_add():
     db.execute(
-        "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,notes,fo1st_stored,character_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO inventory (name,category,sub_type,qty,weight_each,value_each,status,notes,fo1st_stored,perishable,character_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (fs('name'), fs('category'), fs('sub_type'), fi('qty',1),
          ff('weight_each'), fi('value_each'), fs('status','Keep'), fs('notes'),
-         1 if request.form.get('fo1st_stored') else 0, get_active_char_id())
+         1 if request.form.get('fo1st_stored') else 0,
+         1 if request.form.get('perishable') else 0, get_active_char_id())
     )
     flash('Item added!', 'success')
     return redirect(url_for('inventory'))
@@ -1324,10 +1325,11 @@ def inventory_add():
 @app.route('/inventory/<int:id>/update', methods=['POST'])
 def inventory_update(id):
     db.execute(
-        "UPDATE inventory SET name=?,category=?,sub_type=?,qty=?,weight_each=?,value_each=?,status=?,notes=?,fo1st_stored=? WHERE id=?",
+        "UPDATE inventory SET name=?,category=?,sub_type=?,qty=?,weight_each=?,value_each=?,status=?,notes=?,fo1st_stored=?,perishable=? WHERE id=?",
         (fs('name'), fs('category'), fs('sub_type'), fi('qty',1),
          ff('weight_each'), fi('value_each'), fs('status','Keep'), fs('notes'),
-         1 if request.form.get('fo1st_stored') else 0, id)
+         1 if request.form.get('fo1st_stored') else 0,
+         1 if request.form.get('perishable') else 0, id)
     )
     flash('Updated!', 'success')
     return redirect(url_for('inventory'))
@@ -4258,6 +4260,66 @@ def community_board_export_needs():
     resp.headers['Content-Disposition'] = 'attachment; filename=community_needs.csv'
     resp.headers['Content-Type'] = 'text/csv'
     return resp
+
+
+@app.route('/stash-overview')
+def stash_overview():
+    chars = db.query("SELECT * FROM characters ORDER BY char_type, name")
+    tab = request.args.get('tab', 'weapons')
+
+    weapons = db.query("""
+        SELECT w.*, c.name as char_name, c.char_type, c.platform
+        FROM weapons w JOIN characters c ON w.character_id = c.id
+        ORDER BY c.char_type, c.name, w.name
+    """)
+
+    modules = db.query("""
+        SELECT m.*, c.name as char_name, c.char_type, c.platform
+        FROM mods m JOIN characters c ON m.character_id = c.id
+        ORDER BY c.char_type, c.name, m.name
+    """)
+
+    plans = db.query("""
+        SELECT p.*, c.name as char_name, c.char_type, c.platform
+        FROM plans p JOIN characters c ON p.character_id = c.id
+        ORDER BY c.char_type, c.name, p.name
+    """)
+
+    food = db.query("""
+        SELECT i.*, c.name as char_name, c.char_type, c.platform
+        FROM inventory i JOIN characters c ON i.character_id = c.id
+        WHERE i.category = 'Food/Drink'
+        ORDER BY c.char_type, c.name, i.perishable DESC, i.name
+    """)
+
+    return render_template('stash_overview.html',
+        chars=chars, tab=tab,
+        weapons=weapons, modules=modules, plans=plans, food=food)
+
+
+@app.route('/stash-overview/transfer', methods=['POST'])
+def stash_overview_transfer():
+    data = request.get_json(force=True)
+    table = data.get('table')
+    item_id = int(data.get('id', 0))
+    target_cid = int(data.get('target_cid', 0))
+
+    if table not in ('weapons', 'mods', 'plans', 'inventory'):
+        return jsonify(error='invalid table'), 400
+    if not item_id or not target_cid:
+        return jsonify(error='missing fields'), 400
+
+    target = db.get_one("SELECT id, name FROM characters WHERE id=?", (target_cid,))
+    if not target:
+        return jsonify(error='character not found'), 404
+
+    db.execute(f"UPDATE {table} SET character_id=? WHERE id=?", (target_cid, item_id))
+
+    if table in ('weapons', 'mods'):
+        db.execute("UPDATE inventory SET character_id=? WHERE source_table=? AND source_id=?",
+                   (target_cid, table, item_id))
+
+    return jsonify(ok=True, target_name=target['name'])
 
 
 if __name__ == '__main__':

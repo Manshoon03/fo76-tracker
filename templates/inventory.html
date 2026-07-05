@@ -68,6 +68,12 @@
             Stored in FO1st Container (Scrapbox / Ammo Storage — excluded from stash weight)
           </label>
         </div>
+        <div class="form-group span2" id="perishableToggle" style="display:none">
+          <label class="toggle-label">
+            <input type="checkbox" name="perishable" value="1" {{ 'checked' if edit_item and edit_item['perishable'] else '' }}>
+            Perishable (food that expires — Brahmin Milk, Grilled Radstag, etc.)
+          </label>
+        </div>
       </div>
       <div class="form-actions">
         <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Item{% endif %}</button>
@@ -206,6 +212,8 @@
 const _INV_DL_MAP = { Weapon:'invDlWeapon', Armor:'invDlArmor', Aid:'invDlAid', Chem:'invDlAid', Ammo:'invDlAmmo', 'Food/Drink':'invDlFood', Junk:'invDlComponent', Component:'invDlComponent' };
 function updateInvNameList(sel) {
   document.getElementById('invNameInput').setAttribute('list', _INV_DL_MAP[sel.value] || '');
+  var pt = document.getElementById('perishableToggle');
+  if (pt) pt.style.display = sel.value === 'Food/Drink' ? '' : 'none';
 }
 document.addEventListener('DOMContentLoaded', function() {
   var sel = document.querySelector('select[name=category]');
