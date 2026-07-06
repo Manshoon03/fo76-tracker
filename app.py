@@ -2486,6 +2486,8 @@ def inventory_scan_import():
     cid   = get_active_char_id()
     count = 0
     updated = 0
+    scanned_names = set()
+    scanned_categories = set()
     for item in items:
         name = (item.get('name') or '').strip()
         if not name:
@@ -2494,12 +2496,14 @@ def inventory_scan_import():
         qty = max(1, int(item.get('qty') or 1))
         weight_each = round(float(item.get('weight_each') or 0), 3)
         value_each = max(0, int(item.get('value_each') or 0))
+        scanned_names.add((name, category))
+        scanned_categories.add(category)
         # Check if item already exists for this character
         existing = db.get_one(
             "SELECT id FROM inventory WHERE name=? AND category=? AND character_id=?",
             (name, category, cid))
         if existing:
-            db.execute("UPDATE inventory SET qty=?, weight_each=?, value_each=? WHERE id=?",
+            db.execute("UPDATE inventory SET qty=?, weight_each=?, value_each=?, status=CASE WHEN status='Missing?' THEN 'Keep' ELSE status END WHERE id=?",
                        (qty, weight_each, value_each, existing['id']))
             updated += 1
         else:
@@ -2508,7 +2512,20 @@ def inventory_scan_import():
                 "VALUES (?,?,?,?,?,?,?,?,0,?)",
                 (name, category, '', qty, weight_each, value_each, 'Keep', item.get('notes',''), cid))
             count += 1
-    return jsonify(ok=True, count=count, updated=updated)
+
+    # Flag items in scanned categories that weren't in the scan as 'Missing?'
+    flagged = 0
+    if scanned_categories:
+        placeholders = ','.join('?' * len(scanned_categories))
+        existing_items = db.query(
+            f"SELECT id, name, category FROM inventory WHERE character_id=? AND category IN ({placeholders}) AND status != 'Missing?'",
+            (cid, *scanned_categories))
+        for row in existing_items:
+            if (row['name'], row['category']) not in scanned_names:
+                db.execute("UPDATE inventory SET status='Missing?' WHERE id=?", (row['id'],))
+                flagged += 1
+
+    return jsonify(ok=True, count=count, updated=updated, flagged=flagged)
 
 
 # ── Vendor Screenshot Scan ────────────────────────────────────────────────────

@@ -449,6 +449,7 @@ select option { background: #0d1a0d; }
 .badge-stash  { border-color: var(--stash); color: var(--stash); }
 .badge-donate { border-color: var(--donate);color: var(--donate); }
 .badge-use    { border-color: var(--use);   color: var(--use); }
+.badge-missing\? { border-color: var(--red); color: var(--red); background: rgba(220,38,38,0.1); }
 .badge-yes    { border-color: var(--scrap); color: var(--scrap); }
 .badge-no     { border-color: var(--border-hi); color: var(--text-dim); }
 .badge-check  { border-color: var(--amber); color: var(--amber); }

@@ -90,13 +90,14 @@
   </div>
   <div class="panel-body">
     <p class="dim" style="font-size:11px;margin-bottom:10px">
-      Take a screenshot of your Pip-Boy / Stash screen and upload it. Claude reads the items, shows them in an editable table — fix anything before importing.
+      Take screenshots of your Pip-Boy / Stash screen and upload them. You can upload multiple — scroll through your inventory, take several shots, then select them all. Claude reads the items, combines them into one review table.
     </p>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <label class="btn btn-secondary" style="cursor:pointer;margin-bottom:0">
-        Choose Screenshot
-        <input type="file" id="invScanFile" accept="image/*" style="display:none" onchange="invScanUpload(this)">
+        Choose Screenshots
+        <input type="file" id="invScanFile" accept="image/*" multiple style="display:none" onchange="invScanUpload(this)">
       </label>
+      <button class="btn btn-secondary btn-sm" onclick="invScanClear()" id="invScanClearBtn" style="display:none">Clear &amp; Rescan</button>
       <span id="invScanStatus" class="dim" style="font-size:11px"></span>
     </div>
 
@@ -283,22 +284,56 @@ function saveCell(cell, url, field, value) {
 // ── Inventory screenshot scan ──────────────────────────────────────────────
 const INV_CATEGORIES = ['Aid','Ammo','Junk','Food/Drink','Chem','Component','Apparel','Weapon','Armor','Mod','Plan','Misc'];
 
+let _scanAccumulated = [];
+
 function invScanUpload(input) {
-  if (!input.files || !input.files[0]) return;
+  if (!input.files || !input.files.length) return;
+  const files = Array.from(input.files);
   const status = document.getElementById('invScanStatus');
-  status.textContent = '⏳ Scanning… this takes a few seconds';
-  const fd = new FormData();
-  fd.append('scan_image', input.files[0]);
-  fetch('/inventory/scan', {method:'POST', body: fd})
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { status.textContent = '✗ ' + data.error; return; }
-      status.textContent = `✓ Found ${data.items.length} item(s) — review below`;
-      invScanBuildTable(data.items);
-      document.getElementById('invScanPreview').style.display = 'block';
-      input.value = '';
-    })
-    .catch(e => { status.textContent = '✗ Request failed: ' + e; });
+  const total = files.length;
+  let done = 0, errors = 0;
+  status.textContent = `⏳ Scanning ${total} screenshot(s)…`;
+
+  const promises = files.map(file => {
+    const fd = new FormData();
+    fd.append('scan_image', file);
+    return fetch('/inventory/scan', {method:'POST', body: fd})
+      .then(r => r.json())
+      .then(data => {
+        done++;
+        if (data.error) { errors++; return []; }
+        status.textContent = `⏳ Scanned ${done}/${total}…`;
+        return data.items || [];
+      })
+      .catch(() => { done++; errors++; return []; });
+  });
+
+  Promise.all(promises).then(results => {
+    const newItems = results.flat();
+    // Deduplicate against already accumulated items (merge by name+category)
+    newItems.forEach(ni => {
+      const existing = _scanAccumulated.find(a => a.name === ni.name && a.category === ni.category);
+      if (existing) {
+        existing.qty = ni.qty; // update qty from latest scan
+      } else {
+        _scanAccumulated.push(ni);
+      }
+    });
+    invScanBuildTable(_scanAccumulated);
+    document.getElementById('invScanPreview').style.display = 'block';
+    document.getElementById('invScanClearBtn').style.display = '';
+    const errMsg = errors ? ` (${errors} failed)` : '';
+    status.textContent = `✓ ${_scanAccumulated.length} item(s) total from ${done} screenshot(s)${errMsg} — review below`;
+    input.value = '';
+  });
+}
+
+function invScanClear() {
+  _scanAccumulated = [];
+  document.getElementById('invScanBody').innerHTML = '';
+  document.getElementById('invScanPreview').style.display = 'none';
+  document.getElementById('invScanClearBtn').style.display = 'none';
+  document.getElementById('invScanStatus').textContent = '';
 }
 
 function invScanBuildTable(items) {
@@ -351,8 +386,14 @@ function invScanImport() {
     body: JSON.stringify({items})
   }).then(r => r.json()).then(data => {
     if (data.ok) {
-      showToast(`✓ Imported ${data.count} items!`, 'success');
+      let msg = '';
+      if (data.count) msg += `${data.count} added`;
+      if (data.updated) msg += `${msg ? ', ' : ''}${data.updated} updated`;
+      if (data.flagged) msg += `${msg ? ', ' : ''}${data.flagged} flagged missing`;
+      showToast('✓ ' + (msg || 'No changes'), 'success');
+      _scanAccumulated = [];
       document.getElementById('invScanPreview').style.display = 'none';
+      document.getElementById('invScanClearBtn').style.display = 'none';
       document.getElementById('invScanStatus').textContent = '';
       location.reload();
     } else {
