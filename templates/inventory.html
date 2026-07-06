@@ -168,7 +168,7 @@
       {% set total_val.v = total_val.v + tv %}
       {% endif %}
       <tr class="s-{{ item['status']|lower }}">
-        <td><input type="checkbox" class="row-cb" data-id="{{ item['id'] }}" onchange="updateBulkBar()"></td>
+        <td><input type="checkbox" class="row-cb" data-id="{{ item['id'] }}"></td>
         <td class="hi">{{ item['name'] }}</td>
         <td class="dim">{{ item['category'] }}</td>
         <td class="dim">{{ item['sub_type'] }}</td>
@@ -188,7 +188,7 @@
         </td>
         <td class="dim">{{ item['notes'] }}</td>
         <td class="actions">
-          <a href="/inventory?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <a href="/inventory?edit_id={{ item['id'] }}{% if cat_filter %}&cat={{ cat_filter }}{% endif %}" class="btn-sm btn-edit">✎</a>
           <form method="POST" action="/inventory/{{ item['id'] }}/delete" class="inline-form">
             <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
           </form>
@@ -222,49 +222,51 @@ document.addEventListener('DOMContentLoaded', function() {
   initItemAutocomplete('invNameInput', 'invCategorySelect');
 });
 
-// Inline editing
-const STATUS_COLORS = {Keep:'keep',Sell:'sell',Scrap:'scrap',Use:'stash',Donate:'trade'};
-document.querySelectorAll('.editable-cell').forEach(cell => {
-  cell.style.cursor = 'pointer';
-  cell.style.borderBottom = '1px dashed var(--text-dim)';
-  cell.addEventListener('click', function() {
-    if (this.querySelector('input,select')) return;
-    const url = this.dataset.url;
-    const field = this.dataset.field;
-    const isSelect = this.classList.contains('editable-select');
-    const currentVal = this.dataset.field === 'status'
-      ? this.querySelector('.badge') ? this.querySelector('.badge').textContent.trim() : this.textContent.trim()
-      : this.textContent.trim();
+// Checkbox delegation — single listener instead of 600 inline onchange handlers
+document.getElementById('invTable').addEventListener('change', function(e) {
+  if (e.target.classList.contains('row-cb')) updateBulkBar();
+});
 
-    if (isSelect) {
-      const sel = document.createElement('select');
-      sel.className = 'inline-input';
-      (this.dataset.options || '').split(',').forEach(opt => {
-        const o = document.createElement('option');
-        o.value = o.textContent = opt.trim();
-        if (opt.trim() === currentVal) o.selected = true;
-        sel.appendChild(o);
-      });
-      this.innerHTML = '';
-      this.appendChild(sel);
-      sel.focus();
-      sel.addEventListener('change', () => saveCell(this, url, field, sel.value));
-      sel.addEventListener('blur', () => saveCell(this, url, field, sel.value));
-    } else {
-      const inp = document.createElement('input');
-      inp.type = 'number'; inp.min = 0;
-      inp.className = 'inline-input';
-      inp.value = currentVal.replace(/,/g,'');
-      this.innerHTML = '';
-      this.appendChild(inp);
-      inp.focus(); inp.select();
-      inp.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { inp.blur(); }
-        if (e.key === 'Escape') { location.reload(); }
-      });
-      inp.addEventListener('blur', () => saveCell(this, url, field, inp.value));
-    }
-  });
+// Inline editing — event delegation (single listener for all cells)
+const STATUS_COLORS = {Keep:'keep',Sell:'sell',Scrap:'scrap',Use:'stash',Donate:'trade','Missing?':'missing?'};
+document.getElementById('invTable').addEventListener('click', function(e) {
+  const cell = e.target.closest('.editable-cell');
+  if (!cell || cell.querySelector('input,select')) return;
+  const url = cell.dataset.url;
+  const field = cell.dataset.field;
+  const isSelect = cell.classList.contains('editable-select');
+  const currentVal = field === 'status'
+    ? (cell.querySelector('.badge') ? cell.querySelector('.badge').textContent.trim() : cell.textContent.trim())
+    : cell.textContent.trim();
+
+  if (isSelect) {
+    const sel = document.createElement('select');
+    sel.className = 'inline-input';
+    (cell.dataset.options || '').split(',').forEach(opt => {
+      const o = document.createElement('option');
+      o.value = o.textContent = opt.trim();
+      if (opt.trim() === currentVal) o.selected = true;
+      sel.appendChild(o);
+    });
+    cell.innerHTML = '';
+    cell.appendChild(sel);
+    sel.focus();
+    sel.addEventListener('change', () => saveCell(cell, url, field, sel.value));
+    sel.addEventListener('blur', () => saveCell(cell, url, field, sel.value));
+  } else {
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.min = 0;
+    inp.className = 'inline-input';
+    inp.value = currentVal.replace(/,/g,'');
+    cell.innerHTML = '';
+    cell.appendChild(inp);
+    inp.focus(); inp.select();
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { inp.blur(); }
+      if (e.key === 'Escape') { saveCell(cell, url, field, currentVal); }
+    });
+    inp.addEventListener('blur', () => saveCell(cell, url, field, inp.value));
+  }
 });
 
 function saveCell(cell, url, field, value) {
