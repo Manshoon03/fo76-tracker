@@ -2398,10 +2398,15 @@ Extract every visible item and return a JSON array. Each element must have these
 
 Rules:
 - Include every item you can read. Do not skip lines.
-- For Aid/Chems/Food: category is "Aid", "Chem", or "Food/Drink".
-- For ammo (e.g. ".308 Rounds", "5mm Rounds"): category is "Ammo".
-- For junk components (Steel, Aluminum, Wood, etc.): category is "Component".
-- If item looks like a plan or recipe: category is "Plan".
+- Magazines (e.g. "Astoundingly Awesome Tales", "Backwoodsman", "Grognak the Barbarian", "Guns and Bullets", "Live & Love", "Scout's Life", "Tales from the West Virginia Hills", "Tesla Science", "Tumblers Today", "U.S. Covert Operations Manual"): category is "Aid".
+- Bobbleheads (e.g. "Bobblehead: Strength", "Bobblehead: Perception", any "Bobblehead:" item) and Glowing Bobbleheads: category is "Aid".
+- Stimpaks, RadAway, Rad-X, Disease Cure, Blood Packs, Antibiotics, Purified Water, Nuka-Cola variants, Buffout, Mentats, Psycho, Med-X, Overdrive, and other consumables/chems: category is "Aid".
+- Cooked/raw food and drinks (Brahmin Milk, Grilled Radstag, Corn Soup, etc.): category is "Food/Drink".
+- Ammo (e.g. ".308 Rounds", "5mm Rounds", "Fusion Core", "Plasma Cartridge"): category is "Ammo".
+- Junk components (Steel, Aluminum, Wood, Screws, Springs, etc.): category is "Component".
+- Plans and Recipes (e.g. "Plan: ", "Recipe: "): category is "Plan".
+- Holotapes: category is "Misc".
+- Notes and Keys: category is "Misc".
 - If unsure of category, use "Misc".
 - Return ONLY a valid JSON array with no explanation.
 - If no items are visible, return [].
