@@ -119,22 +119,18 @@ Each item has:
 
 ---
 
-### [ ] Improved Mobile Layout
+### [ ] Improved Mobile Layout / PWA
 **Why:** App is network-accessible. Would be useful to check on phone while playing on PC.
-**Files:** `static/style.css`, `templates/base.html`
+**Files:** `static/style.css`, `templates/base.html`, `static/manifest.json`
 **What to build:**
-- Add CSS `@media (max-width: 768px)` rules to `style.css`:
-  - Sidebar auto-closes on mobile, shows as overlay
-  - Tables switch to card layout (each row becomes a card)
-  - Form grid goes single-column
-  - Stat grid goes 2x2 instead of 4 across
-  - Hide less-important table columns (weight, value) on small screens via `.hide-mobile` class
-- Add a `<meta name="theme-color">` and `<link rel="manifest">` to base.html
-- Create `static/manifest.json` for PWA installability:
-  ```json
-  {"name":"FO76 Tracker","short_name":"FO76","start_url":"/","display":"standalone","background_color":"#0a0a0a","theme_color":"#00ff41","icons":[...]}
-  ```
-- No service worker needed for basic installability on Android Chrome
+- CSS `@media (max-width: 768px)` rules:
+  - Sidebar overlay on mobile (auto-close after nav)
+  - Tables → card layout on small screens
+  - Form grids → single column
+  - Stat grid → 2×2
+  - `.hide-mobile` class for low-priority columns
+- `<meta name="theme-color">` + `<link rel="manifest">` in base.html
+- `static/manifest.json` for PWA installability (Android Chrome "Add to homescreen")
 
 ---
 
@@ -203,25 +199,16 @@ Each item has:
 - Could extend to: schedule notes, items to watch for in their vendor
 - Add to sidebar: 📺 Streamers
 
-### [ ] Improved Mobile Layout / PWA
-**Files:** `static/style.css`, `templates/base.html`, `static/manifest.json`
-**What to build:**
-- CSS `@media (max-width: 768px)` rules:
-  - Sidebar overlay on mobile (auto-close after nav)
-  - Tables → card layout on small screens
-  - Form grids → single column
-  - Stat grid → 2×2
-  - `.hide-mobile` class for low-priority columns
-- `<meta name="theme-color">` + `<link rel="manifest">` in base.html
-- `static/manifest.json` for PWA installability (Android Chrome "Add to homescreen")
-
 ---
 
 ## Discovered During Dev (No Priority Assigned Yet)
 
 - The `caps_ledger` table (transactions) is different from `caps_sessions` (session snapshots). Both exist. The Caps Ledger page currently uses caps_sessions. Consider surfacing caps_ledger transactions or removing the unused table.
-- `playtime` page tracks play sessions via `play_sessions` table. The stats show today/week/all-time but no per-day chart. Could feed the Analytics page.
 - Export page could use a "Print All" / "Export as ZIP" option that packages all CSVs at once (a zip route already exists at `/backup/download-zip`).
+- **Server-side pagination for inventory** — 600 items still renders all rows in HTML. Consider paginating or lazy-loading when item count is high.
+- **Inventory duplicate detection** — weapons page has DUP badges, inventory doesn't. Could flag duplicate entries.
+- **Dashboard cross-character summary** — dashboard only shows active char stats. Could show a quick cross-char breakdown.
+- **Inventory CSV import** — manual text/CSV import as alternative to screenshot scanning for bulk data entry.
 
 ---
 
@@ -251,3 +238,7 @@ Each item has:
 - [x] Vendor Route Tracker — stop list, check-off, color coded freshness, reset all
 - [x] Fishing Tracker — 48 species checklist, 6 rarity tiers, catch log, progress bar, AJAX toggles
 - [x] Legendary Perks Tracker — 6 slots per character, 26 card reference, rank stars, AJAX slot editor
+- [x] Stash Overview — cross-character unified inventory view, category tabs, transfer between chars
+- [x] Multi-screenshot scan — upload multiple Pip-Boy screenshots, merged review table, dedup
+- [x] Scan dedup + missing flag — update existing items, flag missing as "Missing?" status
+- [x] Inventory performance — event delegation for 600+ items, CSS-based editable cell styles

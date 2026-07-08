@@ -28,7 +28,7 @@ def _get_anthropic():
 app = Flask(__name__)
 app.secret_key = 'fo76-vault-tec-2024'
 
-APP_VERSION = '0.14.0'
+APP_VERSION = '0.16.0'
 APP_START   = datetime.now()
 
 # Init DB once at startup, not on every request
@@ -397,9 +397,45 @@ def index():
             season_data['days_left'] = max(0, (_date.fromisoformat(end_str) - _date.today()).days)
     except Exception:
         pass
+    # Session mode data
+    session_active = db.get_setting('session_active') == '1'
+    session_start_str = db.get_setting('session_start', '')
+    # Economy balances + today's earned
+    econ_balances = {}
+    econ_daily = {}
+    today_str = str(today)
+    for key in ('scrip', 'bullion', 'stamps', 'modules'):
+        row = db.get_one("SELECT balance FROM economy_balance WHERE currency=? AND character_id=?", (key, cid))
+        econ_balances[key] = row['balance'] if row else 0
+        row = db.get_one("SELECT COALESCE(SUM(amount),0) as total FROM economy_log WHERE currency=? AND character_id=? AND txn_date=? AND amount>0", (key, cid, today_str))
+        econ_daily[key] = row['total']
+    # Active loadout
+    active_loadout_id = int(db.get_setting(f'active_loadout_id_{cid}') or 0)
+    lo_weapons = []
+    lo_mutations = []
+    lo_name = ''
+    if active_loadout_id:
+        lo = db.get_one("SELECT name FROM loadouts WHERE id=?", (active_loadout_id,))
+        if lo:
+            lo_name = lo['name']
+            lo_weapons = db.query("SELECT w.name, w.wtype FROM weapons w JOIN loadout_weapons lw ON lw.weapon_id=w.id WHERE lw.loadout_id=?", (active_loadout_id,))
+            lo_mutations = db.query("SELECT m.name FROM mutations m JOIN loadout_mutations lm ON lm.mutation_id=m.id WHERE lm.loadout_id=?", (active_loadout_id,))
+    # Top wishlist items
+    wishlist_top = db.query("SELECT item_name, category, priority FROM wishlist WHERE found=0 ORDER BY CASE priority WHEN 'High' THEN 1 WHEN 'Normal' THEN 2 ELSE 3 END LIMIT 5")
+    # Daily tasks with done status (for session mode)
+    tasks = db.query("SELECT * FROM daily_tasks WHERE active=1 ORDER BY freq, sort_order, name")
+    done_daily = {r['task_id'] for r in db.query("SELECT task_id FROM daily_completions WHERE completed_date=?", (today_str,))}
+    this_monday = str(today - timedelta(days=today.weekday()))
+    done_weekly = {r['task_id'] for r in db.query("SELECT task_id FROM daily_completions WHERE completed_date >= ?", (this_monday,))}
     return render_template('index.html', stats=stats,
                            silos=silos, today_week=today_week,
-                           season=season_data, quote=quotes.get_random())
+                           season=season_data, quote=quotes.get_random(),
+                           session_active=session_active, session_start_str=session_start_str,
+                           econ_balances=econ_balances, econ_daily=econ_daily,
+                           active_loadout_id=active_loadout_id,
+                           lo_name=lo_name, lo_weapons=lo_weapons, lo_mutations=lo_mutations,
+                           wishlist_top=wishlist_top,
+                           session_tasks=tasks, done_daily=done_daily, done_weekly=done_weekly)
 
 # ── Search ───────────────────────────────────────────────────────────────────
 
@@ -4376,6 +4412,275 @@ def stash_overview_transfer():
                    (target_cid, table, item_id))
 
     return jsonify(ok=True, target_name=target['name'])
+
+
+# ── Economy Tracker ───────────────────────────────────────────────────────────
+
+ECONOMY_CURRENCIES = {
+    'caps':      {'label': 'Caps',            'icon': '💵', 'daily_limit': 1400, 'max_balance': 40000,  'color': 'var(--accent)', 'quick': [100, 500, 1400]},
+    'scrip':     {'label': 'Legendary Scrip', 'icon': '⭐', 'daily_limit': 300,  'max_balance': 11000,  'color': 'var(--amber)',  'quick': [50, 100, 150]},
+    'bullion':   {'label': 'Gold Bullion',    'icon': '💰', 'daily_limit': 400,  'max_balance': 10000,  'color': 'var(--gold)',   'quick': [40, 200, 400]},
+    'stamps':    {'label': 'Stamps',          'icon': '📮', 'daily_limit': None, 'max_balance': None,   'color': 'var(--blue)',   'quick': [8, 20, 40]},
+    'modules':   {'label': 'Leg. Modules',    'icon': '🔩', 'daily_limit': None, 'max_balance': None,   'color': 'var(--purple)', 'quick': [1, 5, 10]},
+    'perkcoins': {'label': 'Perk Coins',      'icon': '🎴', 'daily_limit': None, 'max_balance': 150000, 'color': 'var(--accent)', 'quick': [1, 5, 10]},
+    'tadpole':   {'label': 'Tadpole Badges',  'icon': '🐸', 'daily_limit': None, 'max_balance': 100,    'color': 'var(--blue)',   'quick': [1, 2, 3]},
+    'possum':    {'label': 'Possum Badges',   'icon': '🦝', 'daily_limit': None, 'max_balance': 100,    'color': 'var(--amber)',  'quick': [1, 2, 3]},
+}
+
+@app.route('/economy')
+def economy():
+    cid = get_active_char_id()
+    today = str(date.today())
+    balances = {}
+    for key in ECONOMY_CURRENCIES:
+        row = db.get_one("SELECT balance FROM economy_balance WHERE currency=? AND character_id=?", (key, cid))
+        balances[key] = row['balance'] if row else 0
+    # Today's earned (positive amounts only) for daily limit tracking
+    daily_earned = {}
+    for key in ECONOMY_CURRENCIES:
+        row = db.get_one("SELECT COALESCE(SUM(amount),0) as total FROM economy_log WHERE currency=? AND character_id=? AND txn_date=? AND amount>0", (key, cid, today))
+        daily_earned[key] = row['total']
+    log = db.query("SELECT * FROM economy_log WHERE character_id=? ORDER BY created_at DESC LIMIT 50", (cid,))
+    return render_template('economy.html', currencies=ECONOMY_CURRENCIES, balances=balances,
+                           daily_earned=daily_earned, log=log)
+
+@app.route('/economy/log', methods=['POST'])
+def economy_log():
+    cid = get_active_char_id()
+    currency = fs('currency')
+    amount = fi('amount', 0)
+    note = fs('note')
+    if currency not in ECONOMY_CURRENCIES or amount == 0:
+        return jsonify(ok=False, error='Invalid currency or amount'), 400
+    db.execute("INSERT INTO economy_log (currency, amount, note, character_id) VALUES (?,?,?,?)",
+               (currency, amount, note, cid))
+    # Upsert balance
+    existing = db.get_one("SELECT id, balance FROM economy_balance WHERE currency=? AND character_id=?", (currency, cid))
+    if existing:
+        db.execute("UPDATE economy_balance SET balance=?, updated_at=datetime('now') WHERE id=?",
+                   (existing['balance'] + amount, existing['id']))
+    else:
+        db.execute("INSERT INTO economy_balance (currency, balance, character_id) VALUES (?,?,?)",
+                   (currency, amount, cid))
+    flash(f'{ECONOMY_CURRENCIES[currency]["label"]}: {"+" if amount > 0 else ""}{amount}', 'success')
+    return redirect(url_for('economy'))
+
+@app.route('/economy/balance/set', methods=['POST'])
+def economy_balance_set():
+    cid = get_active_char_id()
+    currency = fs('currency')
+    new_balance = fi('new_balance', 0)
+    if currency not in ECONOMY_CURRENCIES:
+        flash('Invalid currency.', 'error')
+        return redirect(url_for('economy'))
+    existing = db.get_one("SELECT id FROM economy_balance WHERE currency=? AND character_id=?", (currency, cid))
+    if existing:
+        db.execute("UPDATE economy_balance SET balance=?, updated_at=datetime('now') WHERE id=?",
+                   (new_balance, existing['id']))
+    else:
+        db.execute("INSERT INTO economy_balance (currency, balance, character_id) VALUES (?,?,?)",
+                   (currency, new_balance, cid))
+    flash(f'{ECONOMY_CURRENCIES[currency]["label"]} balance set to {new_balance}.', 'success')
+    return redirect(url_for('economy'))
+
+@app.route('/economy/log/<int:lid>/delete', methods=['POST'])
+def economy_log_delete(lid):
+    cid = get_active_char_id()
+    entry = db.get_one("SELECT * FROM economy_log WHERE id=? AND character_id=?", (lid, cid))
+    if not entry:
+        return jsonify(ok=False), 404
+    # Reverse the balance change
+    existing = db.get_one("SELECT id, balance FROM economy_balance WHERE currency=? AND character_id=?",
+                          (entry['currency'], cid))
+    if existing:
+        db.execute("UPDATE economy_balance SET balance=?, updated_at=datetime('now') WHERE id=?",
+                   (existing['balance'] - entry['amount'], existing['id']))
+    db.execute("DELETE FROM economy_log WHERE id=?", (lid,))
+    flash('Transaction deleted and balance reversed.', 'info')
+    return redirect(url_for('economy'))
+
+# ── Loadout System ────────────────────────────────────────────────────────────
+
+@app.route('/loadouts')
+def loadouts():
+    cid = get_active_char_id()
+    items = db.query("SELECT * FROM loadouts WHERE character_id=? ORDER BY name", (cid,))
+    # Stats to avoid N+1
+    stat_rows = db.query("""
+        SELECT loadout_id, 'weapon' AS kind, COUNT(*) AS cnt FROM loadout_weapons GROUP BY loadout_id
+        UNION ALL
+        SELECT loadout_id, 'armor', COUNT(*) FROM loadout_armor GROUP BY loadout_id
+        UNION ALL
+        SELECT loadout_id, 'mutation', COUNT(*) FROM loadout_mutations GROUP BY loadout_id
+    """)
+    gear_stats = {}
+    for r in stat_rows:
+        gear_stats.setdefault(r['loadout_id'], {})
+        gear_stats[r['loadout_id']][r['kind']] = r['cnt']
+    active_loadout_id = int(db.get_setting(f'active_loadout_id_{cid}') or 0)
+    builds = db.query("SELECT id, name FROM builds WHERE character_id=? ORDER BY name", (cid,))
+    weapons = db.query("SELECT id, name, wtype, star1, star2, star3 FROM weapons WHERE character_id=? ORDER BY name", (cid,))
+    armor_items = db.query("SELECT id, name, slot, star1, star2, star3 FROM armor WHERE character_id=? ORDER BY name", (cid,))
+    mutations = db.query("SELECT id, name FROM mutations WHERE character_id=? AND active=1 ORDER BY name", (cid,))
+    edit_id = request.args.get('edit_id', type=int)
+    edit_item = db.get_one("SELECT * FROM loadouts WHERE id=?", (edit_id,)) if edit_id else None
+    # Get gear for edit item
+    edit_weapon_ids = set()
+    edit_armor_ids = set()
+    edit_mutation_ids = set()
+    if edit_item:
+        edit_weapon_ids = {r['weapon_id'] for r in db.query("SELECT weapon_id FROM loadout_weapons WHERE loadout_id=?", (edit_id,))}
+        edit_armor_ids = {r['armor_id'] for r in db.query("SELECT armor_id FROM loadout_armor WHERE loadout_id=?", (edit_id,))}
+        edit_mutation_ids = {r['mutation_id'] for r in db.query("SELECT mutation_id FROM loadout_mutations WHERE loadout_id=?", (edit_id,))}
+    return render_template('loadouts.html', items=items, gear_stats=gear_stats,
+                           active_loadout_id=active_loadout_id, builds=builds,
+                           weapons=weapons, armor=armor_items, mutations=mutations,
+                           edit_item=edit_item, edit_weapon_ids=edit_weapon_ids,
+                           edit_armor_ids=edit_armor_ids, edit_mutation_ids=edit_mutation_ids)
+
+def _assign_loadout_gear(lid, weapon_ids, armor_ids, mutation_ids):
+    """Clear + re-insert junction rows for a loadout."""
+    db.execute("DELETE FROM loadout_weapons WHERE loadout_id=?", (lid,))
+    db.execute("DELETE FROM loadout_armor WHERE loadout_id=?", (lid,))
+    db.execute("DELETE FROM loadout_mutations WHERE loadout_id=?", (lid,))
+    for wid in weapon_ids:
+        if wid:
+            db.execute("INSERT INTO loadout_weapons (loadout_id, weapon_id) VALUES (?,?)", (lid, int(wid)))
+    for aid in armor_ids:
+        if aid:
+            db.execute("INSERT INTO loadout_armor (loadout_id, armor_id) VALUES (?,?)", (lid, int(aid)))
+    for mid in mutation_ids:
+        if mid:
+            db.execute("INSERT INTO loadout_mutations (loadout_id, mutation_id) VALUES (?,?)", (lid, int(mid)))
+
+@app.route('/loadouts/add', methods=['POST'])
+def loadouts_add():
+    cid = get_active_char_id()
+    db.execute("INSERT INTO loadouts (name, build_id, notes, character_id) VALUES (?,?,?,?)",
+               (fs('name'), fi('build_id', 0), fs('notes'), cid))
+    lid = db.query("SELECT last_insert_rowid() as id")[0]['id']
+    _assign_loadout_gear(lid, request.form.getlist('weapon_ids'),
+                         request.form.getlist('armor_ids'),
+                         request.form.getlist('mutation_ids'))
+    flash('Loadout created!', 'success')
+    return redirect(url_for('loadouts'))
+
+@app.route('/loadouts/<int:lid>/update', methods=['POST'])
+def loadouts_update(lid):
+    db.execute("UPDATE loadouts SET name=?, build_id=?, notes=? WHERE id=?",
+               (fs('name'), fi('build_id', 0), fs('notes'), lid))
+    _assign_loadout_gear(lid, request.form.getlist('weapon_ids'),
+                         request.form.getlist('armor_ids'),
+                         request.form.getlist('mutation_ids'))
+    flash('Loadout updated!', 'success')
+    return redirect(url_for('loadouts'))
+
+@app.route('/loadouts/<int:lid>/delete', methods=['POST'])
+def loadouts_delete(lid):
+    db.execute("DELETE FROM loadout_weapons WHERE loadout_id=?", (lid,))
+    db.execute("DELETE FROM loadout_armor WHERE loadout_id=?", (lid,))
+    db.execute("DELETE FROM loadout_mutations WHERE loadout_id=?", (lid,))
+    db.execute("DELETE FROM loadouts WHERE id=?", (lid,))
+    # Clear active if this was active
+    cid = get_active_char_id()
+    if db.get_setting(f'active_loadout_id_{cid}') == str(lid):
+        db.set_setting(f'active_loadout_id_{cid}', '0')
+    flash('Loadout deleted.', 'info')
+    return redirect(url_for('loadouts'))
+
+@app.route('/loadouts/<int:lid>/activate', methods=['POST'])
+def loadouts_activate(lid):
+    cid = get_active_char_id()
+    db.set_setting(f'active_loadout_id_{cid}', str(lid))
+    return jsonify(ok=True)
+
+@app.route('/loadouts/<int:lid>/deactivate', methods=['POST'])
+def loadouts_deactivate(lid):
+    cid = get_active_char_id()
+    db.set_setting(f'active_loadout_id_{cid}', '0')
+    return jsonify(ok=True)
+
+@app.route('/loadouts/<int:lid>')
+def loadout_detail(lid):
+    cid = get_active_char_id()
+    loadout = db.get_one("SELECT * FROM loadouts WHERE id=?", (lid,))
+    if not loadout:
+        flash('Loadout not found.', 'error')
+        return redirect(url_for('loadouts'))
+    weapons = db.query("""SELECT w.* FROM weapons w
+        JOIN loadout_weapons lw ON lw.weapon_id=w.id
+        WHERE lw.loadout_id=? ORDER BY w.name""", (lid,))
+    armor_items = db.query("""SELECT a.* FROM armor a
+        JOIN loadout_armor la ON la.armor_id=a.id
+        WHERE la.loadout_id=? ORDER BY a.name""", (lid,))
+    mutations = db.query("""SELECT m.* FROM mutations m
+        JOIN loadout_mutations lm ON lm.mutation_id=m.id
+        WHERE lm.loadout_id=? ORDER BY m.name""", (lid,))
+    build = db.get_one("SELECT name FROM builds WHERE id=?", (loadout['build_id'],)) if loadout['build_id'] else None
+    active_loadout_id = int(db.get_setting(f'active_loadout_id_{cid}') or 0)
+    return render_template('loadout_detail.html', loadout=loadout, weapons=weapons,
+                           armor=armor_items, mutations=mutations, build=build,
+                           active_loadout_id=active_loadout_id)
+
+# ── Session Mode ──────────────────────────────────────────────────────────────
+
+@app.route('/session/start', methods=['POST'])
+def session_start():
+    cid = get_active_char_id()
+    db.set_setting('session_active', '1')
+    db.set_setting('session_start', datetime.now().isoformat())
+    db.set_setting('session_char_id', str(cid))
+    return jsonify(ok=True)
+
+@app.route('/session/end', methods=['POST'])
+def session_end():
+    cid = get_active_char_id()
+    start_str = db.get_setting('session_start', '')
+    if not start_str:
+        return jsonify(ok=False, error='No active session'), 400
+    start_dt = datetime.fromisoformat(start_str)
+    end_dt = datetime.now()
+    duration_s = int((end_dt - start_dt).total_seconds())
+    # Count tasks completed during session
+    tasks_done = db.get_one(
+        "SELECT COUNT(*) as cnt FROM daily_completions WHERE completed_at >= ?",
+        (start_str,)
+    )
+    tasks_done = tasks_done['cnt'] if tasks_done else 0
+    # Caps delta during session
+    caps_delta_row = db.get_one(
+        "SELECT COALESCE(SUM(CASE WHEN txn_type='income' THEN amount ELSE -amount END), 0) as delta "
+        "FROM caps_ledger WHERE character_id=? AND created_at >= ?",
+        (cid, start_str)
+    )
+    caps_delta = caps_delta_row['delta'] if caps_delta_row else 0
+    # Economy earned during session
+    scrip_earned = 0
+    bullion_earned = 0
+    stamps_earned = 0
+    for r in db.query("SELECT currency, COALESCE(SUM(amount),0) as total FROM economy_log WHERE character_id=? AND created_at >= ? AND amount > 0 GROUP BY currency", (cid, start_str)):
+        if r['currency'] == 'scrip': scrip_earned = r['total']
+        elif r['currency'] == 'bullion': bullion_earned = r['total']
+        elif r['currency'] == 'stamps': stamps_earned = r['total']
+    # Save to history
+    db.execute(
+        "INSERT INTO session_history (character_id, started_at, ended_at, duration_s, tasks_done, caps_delta, scrip_earned, bullion_earned, stamps_earned) VALUES (?,?,?,?,?,?,?,?,?)",
+        (cid, start_str, end_dt.isoformat(), duration_s, tasks_done, caps_delta, scrip_earned, bullion_earned, stamps_earned)
+    )
+    # Clear session state
+    db.set_setting('session_active', '0')
+    db.set_setting('session_start', '')
+    db.set_setting('session_char_id', '')
+    # Format duration
+    hours = duration_s // 3600
+    minutes = (duration_s % 3600) // 60
+    dur_str = f'{hours}h {minutes}m' if hours else f'{minutes}m'
+    return jsonify(ok=True, summary={
+        'duration': dur_str, 'duration_s': duration_s,
+        'tasks_done': tasks_done, 'caps_delta': caps_delta,
+        'scrip_earned': scrip_earned, 'bullion_earned': bullion_earned,
+        'stamps_earned': stamps_earned
+    })
 
 
 if __name__ == '__main__':

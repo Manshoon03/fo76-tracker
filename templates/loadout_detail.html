@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}{{ loadout['name'] }}{% endblock %}
+{% block content %}
+
+{% set is_active = loadout['id'] == active_loadout_id %}
+
+<div class="page-header" style="display:flex;align-items:center;gap:12px">
+  <h1>⚙ {{ loadout['name'] }}</h1>
+  {% if is_active %}<span class="badge badge-keep">ACTIVE</span>{% endif %}
+</div>
+
+<div style="margin-bottom:16px;display:flex;gap:8px;align-items:center">
+  {% if build %}<span class="dim" style="font-size:12px">Build: <span class="accent">{{ build['name'] }}</span></span>{% endif %}
+  {% if loadout['notes'] %}<span class="dim" style="font-size:12px">{{ loadout['notes'] }}</span>{% endif %}
+  <div style="margin-left:auto;display:flex;gap:6px">
+    {% if is_active %}
+    <button class="btn btn-secondary" style="font-size:11px"
+            onclick="fetch('/loadouts/{{ loadout['id'] }}/deactivate',{method:'POST'}).then(()=>location.reload())">Deactivate</button>
+    {% else %}
+    <button class="btn btn-primary" style="font-size:11px"
+            onclick="fetch('/loadouts/{{ loadout['id'] }}/activate',{method:'POST'}).then(()=>location.reload())">Set Active</button>
+    {% endif %}
+    <a href="/loadouts?edit_id={{ loadout['id'] }}" class="btn btn-secondary" style="font-size:11px">Edit</a>
+    <a href="/loadouts" class="btn btn-secondary" style="font-size:11px">Back</a>
+  </div>
+</div>
+
+<div class="two-col">
+  <!-- Weapons -->
+  <div>
+    <div class="section-title">⚔ WEAPONS ({{ weapons|length }})</div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Type</th><th>Stars</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for w in weapons %}
+          <tr>
+            <td class="hi">{{ w['name'] }}</td>
+            <td class="dim">{{ w['wtype'] }}</td>
+            <td class="dim" style="font-size:10px">
+              {% if w['star1'] %}{{ w['star1'] }}{% endif %}
+              {% if w['star2'] %} / {{ w['star2'] }}{% endif %}
+              {% if w['star3'] %} / {{ w['star3'] }}{% endif %}
+            </td>
+            <td><span class="badge badge-{{ w['status']|lower }}">{{ w['status'] }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="no-data">No weapons assigned</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Armor -->
+  <div>
+    <div class="section-title">🛡 ARMOR ({{ armor|length }})</div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Slot</th><th>Stars</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for a in armor %}
+          <tr>
+            <td class="hi">{{ a['name'] }}</td>
+            <td class="dim">{{ a['slot'] }}</td>
+            <td class="dim" style="font-size:10px">
+              {% if a['star1'] %}{{ a['star1'] }}{% endif %}
+              {% if a['star2'] %} / {{ a['star2'] }}{% endif %}
+              {% if a['star3'] %} / {{ a['star3'] }}{% endif %}
+            </td>
+            <td><span class="badge badge-{{ a['status']|lower }}">{{ a['status'] }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="no-data">No armor assigned</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Mutations -->
+{% if mutations %}
+<div style="margin-top:20px">
+  <div class="section-title">🧬 MUTATIONS ({{ mutations|length }})</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    {% for m in mutations %}
+    <span class="badge" style="background:var(--bg-main);border:1px solid var(--accent);color:var(--accent);font-size:11px;padding:4px 10px">
+      {{ m['name'] }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

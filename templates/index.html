@@ -2,6 +2,20 @@
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 
+<!-- Session Bar -->
+<div style="background:var(--bg-card);border:1px solid {{ 'var(--accent)' if session_active else 'var(--border)' }};border-radius:4px;padding:8px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+  {% if session_active %}
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="color:var(--accent);font-weight:700;font-size:12px;letter-spacing:1px">⏱ SESSION ACTIVE</span>
+    <span id="sessionTimer" style="font-size:18px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums">0:00:00</span>
+  </div>
+  <button class="btn btn-secondary" style="font-size:11px" onclick="endSession()">End Session</button>
+  {% else %}
+  <span style="font-size:11px;color:var(--text-dim)">Not in a session</span>
+  <button class="btn btn-primary" style="font-size:11px" onclick="startSession()">Start Session</button>
+  {% endif %}
+</div>
+
 <div class="page-header">
   <h1>📋 {% if active_char and active_char['char_type'] == 'Mule' %}MULE DASHBOARD{% else %}VAULT-TEC DASHBOARD{% endif %}</h1>
   {% if active_char %}<span class="count-badge"><span class="plat-badge plat-{{ active_char['platform']|lower }}">{{ active_char['platform'] }}</span> {{ active_char['name'] }}</span>{% endif %}
@@ -70,6 +84,135 @@
     <div class="no-data">No prices logged yet.</div>
     {% endif %}
   </div>
+</div>
+
+{% elif session_active %}
+{# ── SESSION MODE ── #}
+
+<!-- Session stat cards -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <span class="stat-num accent">{{ "{:,}".format(stats['current_caps']) }}</span>
+    <span class="stat-label">💵 Caps</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num">{{ stats.get('stash_weight', {}).get('total', 0) }}</span>
+    <span class="stat-label">⚖ Stash Weight</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num {{ 'gold' if stats['daily_pending'] > 0 else 'accent' }}">{{ stats['daily_pending'] }}</span>
+    <span class="stat-label">✅ Daily Tasks Left</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num" style="color:var(--amber)">{{ econ_balances.get('scrip', 0) }}</span>
+    <span class="stat-label">⭐ Scrip</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num" style="color:var(--gold)">{{ econ_balances.get('bullion', 0) }}</span>
+    <span class="stat-label">💰 Bullion</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-num" style="color:var(--blue)">{{ econ_balances.get('stamps', 0) }}</span>
+    <span class="stat-label">📮 Stamps</span>
+  </div>
+</div>
+
+<!-- Today's Tasks -->
+<div style="margin-top:16px">
+  <div class="section-title">✅ TODAY'S TASKS</div>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:12px">
+    {% for t in session_tasks %}
+    {% set is_done = (t['freq'] == 'daily' and t['id'] in done_daily) or (t['freq'] == 'weekly' and t['id'] in done_weekly) %}
+    <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:12px"
+           onclick="toggleTask({{ t['id'] }}, {{ 'true' if is_done else 'false' }}, this)">
+      <input type="checkbox" {{ 'checked' if is_done else '' }} style="pointer-events:none">
+      <span class="{{ 'dim' if is_done else 'hi' }}" style="{{ 'text-decoration:line-through' if is_done else '' }}">{{ t['name'] }}</span>
+      <span class="dim" style="font-size:9px;margin-left:auto">{{ t['freq'] }}</span>
+    </label>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="two-col" style="margin-top:16px">
+  <!-- Active Loadout -->
+  <div>
+    <div class="section-title">⚙ ACTIVE LOADOUT</div>
+    {% if lo_name %}
+    <div style="background:var(--bg-card);border:1px solid var(--accent);border-radius:4px;padding:12px">
+      <div style="font-size:14px;font-weight:700;color:var(--accent);margin-bottom:8px">{{ lo_name }}</div>
+      {% if lo_weapons %}
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Weapons:</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+        {% for w in lo_weapons %}
+        <span class="badge" style="font-size:10px;padding:2px 8px">⚔ {{ w['name'] }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if lo_mutations %}
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Mutations:</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        {% for m in lo_mutations %}
+        <span class="badge" style="font-size:10px;padding:2px 8px;border-color:var(--accent);color:var(--accent)">🧬 {{ m['name'] }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <a href="/loadouts/{{ active_loadout_id }}" style="font-size:10px;color:var(--text-dim);display:block;margin-top:8px">View detail →</a>
+    </div>
+    {% else %}
+    <div class="no-data" style="padding:12px">No active loadout. <a href="/loadouts" class="accent">Set one →</a></div>
+    {% endif %}
+  </div>
+
+  <!-- Economy Today -->
+  <div>
+    <div class="section-title">💹 ECONOMY TODAY</div>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:12px">
+      {% set scrip_today = econ_daily.get('scrip', 0) %}
+      {% set bullion_today = econ_daily.get('bullion', 0) %}
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+          <span>⭐ Scrip</span>
+          <span style="color:var(--amber)">{{ scrip_today }} / 300</span>
+        </div>
+        {% set s_pct = [[(scrip_today / 300 * 100)|round|int, 0]|max, 100]|min %}
+        <div class="progress-bar-wrap" style="height:6px">
+          <div class="progress-bar" style="width:{{ s_pct }}%;background:var(--amber)"></div>
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+          <span>💰 Bullion</span>
+          <span style="color:var(--gold)">{{ bullion_today }} / 400</span>
+        </div>
+        {% set b_pct = [[(bullion_today / 400 * 100)|round|int, 0]|max, 100]|min %}
+        <div class="progress-bar-wrap" style="height:6px">
+          <div class="progress-bar" style="width:{{ b_pct }}%;background:var(--gold)"></div>
+        </div>
+      </div>
+      <a href="/economy" style="font-size:10px;color:var(--text-dim)">Full economy →</a>
+    </div>
+  </div>
+</div>
+
+<!-- Wishlist -->
+{% if wishlist_top %}
+<div style="margin-top:16px">
+  <div class="section-title">⭐ HUNTING (WISHLIST)</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    {% for w in wishlist_top %}
+    <span class="badge {{ 'badge-trade' if w['priority'] == 'High' else '' }}" style="font-size:11px;padding:4px 10px">
+      {{ w['item_name'] }}
+      {% if w['category'] %}<span class="dim" style="font-size:9px">({{ w['category'] }})</span>{% endif %}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Quick Log + End Session -->
+<div style="margin-top:24px;display:flex;gap:12px;justify-content:center">
+  <button class="btn btn-primary" onclick="openQuickLog()" style="padding:8px 24px">⚡ Quick Log</button>
+  <button class="btn btn-secondary" onclick="endSession()" style="padding:8px 24px">⏹ End Session</button>
 </div>
 
 {% else %}
@@ -378,5 +521,66 @@ document.addEventListener('DOMContentLoaded', function() { startNukeCountdown('d
 {% endif %}
 
 {% endif %}{# end mule/playable branch #}
+
+<!-- Session Mode JS -->
+<script>
+function startSession() {
+  fetch('/session/start', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
+    if(d.ok) location.reload();
+  });
+}
+
+function endSession() {
+  fetch('/session/end', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d.ok) return;
+    var s = d.summary;
+    var html = '<div style="text-align:center;padding:20px">' +
+      '<div style="font-size:11px;color:var(--text-dim);letter-spacing:2px;margin-bottom:12px">SESSION COMPLETE</div>' +
+      '<div style="font-size:28px;font-weight:700;color:var(--accent);margin-bottom:16px">' + s.duration + '</div>' +
+      '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:16px">' +
+        '<div class="stat-card" style="min-width:80px"><span class="stat-num">' + s.tasks_done + '</span><span class="stat-label">Tasks Done</span></div>' +
+        '<div class="stat-card" style="min-width:80px"><span class="stat-num ' + (s.caps_delta>0?'accent':'') + '">' + (s.caps_delta>0?'+':'') + s.caps_delta.toLocaleString() + '</span><span class="stat-label">Caps</span></div>' +
+        '<div class="stat-card" style="min-width:80px"><span class="stat-num" style="color:var(--amber)">' + s.scrip_earned + '</span><span class="stat-label">Scrip</span></div>' +
+        '<div class="stat-card" style="min-width:80px"><span class="stat-num" style="color:var(--gold)">' + s.bullion_earned + '</span><span class="stat-label">Bullion</span></div>' +
+        '<div class="stat-card" style="min-width:80px"><span class="stat-num" style="color:var(--blue)">' + s.stamps_earned + '</span><span class="stat-label">Stamps</span></div>' +
+      '</div>' +
+      '<button class="btn btn-primary" onclick="this.closest(\'#sessionSummaryModal\').style.display=\'none\';location.reload()">Done</button>' +
+    '</div>';
+    var modal = document.createElement('div');
+    modal.id = 'sessionSummaryModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML = '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;max-width:480px;width:90%;padding:1.2rem">' + html + '</div>';
+    modal.onclick = function(e){ if(e.target===modal){ modal.style.display='none'; location.reload(); } };
+    document.body.appendChild(modal);
+  });
+}
+
+function toggleTask(tid, isDone, label) {
+  var url = isDone ? '/daily/uncomplete/' + tid : '/daily/complete/' + tid;
+  fetch(url, {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d.ok) return;
+    var cb = label.querySelector('input[type=checkbox]');
+    var span = label.querySelector('span');
+    cb.checked = d.done;
+    if(d.done) { span.classList.add('dim'); span.classList.remove('hi'); span.style.textDecoration='line-through'; }
+    else       { span.classList.remove('dim'); span.classList.add('hi'); span.style.textDecoration=''; }
+  });
+}
+
+{% if session_active and session_start_str %}
+(function(){
+  var start = new Date('{{ session_start_str }}');
+  var el = document.getElementById('sessionTimer');
+  if(!el) return;
+  function tick(){
+    var s = Math.floor((Date.now() - start.getTime()) / 1000);
+    var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    el.textContent = h + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+{% endif %}
+</script>
 
 {% endblock %}

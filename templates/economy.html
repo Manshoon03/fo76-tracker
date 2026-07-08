@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% block title %}Economy Tracker{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>💹 ECONOMY TRACKER</h1>
+</div>
+
+<!-- Currency Panels -->
+<div class="stat-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
+  {% for key, meta in currencies.items() %}
+  {% set bal = balances.get(key, 0) %}
+  {% set earned = daily_earned.get(key, 0) %}
+  <div class="stat-card" style="border-top:3px solid {{ meta.color }};text-align:left;padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-size:13px;font-weight:700;color:var(--text-hi)">{{ meta.icon }} {{ meta.label }}</span>
+    </div>
+
+    <!-- Balance -->
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+      <span style="font-size:28px;font-weight:700;color:{{ meta.color }}">{{ "{:,}".format(bal) }}</span>
+      {% if meta.max_balance %}
+      <span class="dim" style="font-size:11px">/ {{ "{:,}".format(meta.max_balance) }}</span>
+      {% endif %}
+    </div>
+
+    <!-- Balance progress bar (scrip/bullion) -->
+    {% if meta.max_balance %}
+    {% set bal_pct = [[(bal / meta.max_balance * 100)|round|int, 0]|max, 100]|min %}
+    <div class="progress-bar-wrap" style="height:6px;margin-bottom:8px">
+      <div class="progress-bar" style="width:{{ bal_pct }}%;background:{{ meta.color }}"></div>
+    </div>
+    {% endif %}
+
+    <!-- Daily limit (scrip/bullion) -->
+    {% if meta.daily_limit %}
+    {% set day_pct = [[(earned / meta.daily_limit * 100)|round|int, 0]|max, 100]|min %}
+    <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">
+      Today: <span style="color:{{ meta.color }}">{{ earned }}</span> / {{ meta.daily_limit }}
+      {% if day_pct >= 100 %}<span style="color:var(--accent);margin-left:4px">MAXED</span>{% endif %}
+    </div>
+    <div class="progress-bar-wrap" style="height:4px;margin-bottom:10px">
+      <div class="progress-bar {{ 'complete' if day_pct >= 100 else '' }}" style="width:{{ day_pct }}%;background:{{ 'var(--accent)' if day_pct >= 100 else meta.color }}"></div>
+    </div>
+    {% endif %}
+
+    <!-- Quick-log buttons -->
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+      {% for q in meta.quick %}
+      <form method="POST" action="/economy/log" style="margin:0">
+        <input type="hidden" name="currency" value="{{ key }}">
+        <input type="hidden" name="amount" value="{{ q }}">
+        <input type="hidden" name="note" value="">
+        <button type="submit" class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:var(--bg-main);border:1px solid {{ meta.color }};color:{{ meta.color }}">+{{ q }}</button>
+      </form>
+      {% endfor %}
+      <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:var(--bg-main);border:1px solid var(--red);color:var(--red)"
+              onclick="openSpendPanel('{{ key }}')">Spend</button>
+    </div>
+
+    <!-- Set balance inline -->
+    <form method="POST" action="/economy/balance/set" style="display:flex;gap:4px;align-items:center">
+      <input type="hidden" name="currency" value="{{ key }}">
+      <input type="number" name="new_balance" placeholder="Set balance" style="width:90px;font-size:10px;padding:2px 6px" min="0">
+      <button type="submit" class="btn btn-sm" style="font-size:10px;padding:2px 8px">Set</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Log Transaction Panel -->
+<section class="add-panel" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>+ Log Transaction</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/economy/log">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Currency</label>
+          <select name="currency" id="logCurrency" required>
+            {% for key, meta in currencies.items() %}
+            <option value="{{ key }}">{{ meta.icon }} {{ meta.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Amount (negative = spent)</label>
+          <input type="number" name="amount" id="logAmount" required placeholder="e.g. 150 or -50">
+        </div>
+        <div class="form-group">
+          <label>Note</label>
+          <input type="text" name="note" placeholder="Optional note">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Log</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Spend Panel (hidden, opened by Spend buttons) -->
+<section class="add-panel" id="spendPanel">
+  <div class="panel-toggle" onclick="togglePanel('spendPanel')">
+    <span>- Spend Currency</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="/economy/log">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Currency</label>
+          <select name="currency" id="spendCurrency" required>
+            {% for key, meta in currencies.items() %}
+            <option value="{{ key }}">{{ meta.icon }} {{ meta.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Amount to spend</label>
+          <input type="number" name="spend_amount" id="spendAmount" required placeholder="e.g. 50" min="1">
+        </div>
+        <div class="form-group">
+          <label>Note</label>
+          <input type="text" name="note" placeholder="What did you buy?">
+        </div>
+      </div>
+      <input type="hidden" name="amount" id="spendAmountHidden" value="0">
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" onclick="document.getElementById('spendAmountHidden').value = -Math.abs(parseInt(document.getElementById('spendAmount').value)||0)">Spend</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Recent Transactions -->
+<div style="margin-top:20px">
+  <div class="section-title">📋 RECENT TRANSACTIONS</div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Date</th><th>Currency</th><th>Amount</th><th>Note</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for entry in log %}
+        <tr>
+          <td class="dim">{{ entry['txn_date'] }}</td>
+          <td>
+            {% set m = currencies.get(entry['currency'], {}) %}
+            {{ m.get('icon','') }} {{ m.get('label', entry['currency']) }}
+          </td>
+          <td style="color:{{ 'var(--accent)' if entry['amount'] > 0 else 'var(--red)' }};font-weight:700">
+            {{ '+' if entry['amount'] > 0 else '' }}{{ entry['amount'] }}
+          </td>
+          <td class="dim">{{ entry['note'] }}</td>
+          <td>
+            <form method="POST" action="/economy/log/{{ entry['id'] }}/delete" class="inline-form" onsubmit="return confirmDelete()">
+              <button class="btn-sm btn-delete" type="submit">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="no-data">No transactions logged yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function openSpendPanel(currency) {
+  var panel = document.getElementById('spendPanel');
+  if (!panel.classList.contains('open')) togglePanel('spendPanel');
+  document.getElementById('spendCurrency').value = currency;
+  document.getElementById('spendAmount').focus();
+}
+</script>
+
+{% endblock %}

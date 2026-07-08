@@ -651,6 +651,86 @@ def init_db():
         except Exception:
             pass
 
+    # Loadout tables
+    for stmt in [
+        """CREATE TABLE IF NOT EXISTS loadouts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            character_id INTEGER NOT NULL DEFAULT 1,
+            build_id     INTEGER DEFAULT 0,
+            notes        TEXT DEFAULT '',
+            created_at   TEXT DEFAULT (date('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS loadout_weapons (
+            loadout_id INTEGER NOT NULL,
+            weapon_id  INTEGER NOT NULL,
+            PRIMARY KEY (loadout_id, weapon_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS loadout_armor (
+            loadout_id INTEGER NOT NULL,
+            armor_id   INTEGER NOT NULL,
+            PRIMARY KEY (loadout_id, armor_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS loadout_mutations (
+            loadout_id  INTEGER NOT NULL,
+            mutation_id INTEGER NOT NULL,
+            PRIMARY KEY (loadout_id, mutation_id)
+        )""",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
+    # Economy tables
+    for stmt in [
+        """CREATE TABLE IF NOT EXISTS economy_balance (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            currency     TEXT NOT NULL,
+            balance      INTEGER DEFAULT 0,
+            character_id INTEGER NOT NULL DEFAULT 1,
+            updated_at   TEXT DEFAULT (datetime('now')),
+            UNIQUE(currency, character_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS economy_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            currency     TEXT NOT NULL,
+            amount       INTEGER NOT NULL DEFAULT 0,
+            note         TEXT DEFAULT '',
+            txn_date     TEXT DEFAULT (date('now')),
+            character_id INTEGER NOT NULL DEFAULT 1,
+            created_at   TEXT DEFAULT (datetime('now'))
+        )""",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
+    # Session history table
+    for stmt in [
+        """CREATE TABLE IF NOT EXISTS session_history (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id   INTEGER NOT NULL DEFAULT 1,
+            started_at     TEXT NOT NULL,
+            ended_at       TEXT DEFAULT (datetime('now')),
+            duration_s     INTEGER DEFAULT 0,
+            tasks_done     INTEGER DEFAULT 0,
+            caps_delta     INTEGER DEFAULT 0,
+            scrip_earned   INTEGER DEFAULT 0,
+            bullion_earned INTEGER DEFAULT 0,
+            stamps_earned  INTEGER DEFAULT 0,
+            notes          TEXT DEFAULT ''
+        )""",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
     # Seed default daily tasks (only if table is empty)
     if conn.execute("SELECT COUNT(*) FROM daily_tasks").fetchone()[0] == 0:
         defaults = [

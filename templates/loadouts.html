@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+{% block title %}Loadouts{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>⚙ LOADOUTS</h1>
+  <span class="count-badge">{{ items|length }}</span>
+</div>
+
+<!-- Add / Edit Panel -->
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✏ Edit {{ edit_item['name'] }}{% else %}+ Add Loadout{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/loadouts/{{ edit_item['id'] }}/update{% else %}/loadouts/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Loadout Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}" placeholder="e.g. Bloodied Commando, SBQ Setup">
+        </div>
+        <div class="form-group">
+          <label>Linked Build</label>
+          <select name="build_id">
+            <option value="0">— None —</option>
+            {% for b in builds %}
+            <option value="{{ b['id'] }}" {{ 'selected' if edit_item and edit_item['build_id'] == b['id'] else '' }}>{{ b['name'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}" placeholder="Optional notes">
+        </div>
+      </div>
+
+      <!-- Gear Selection -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px">
+        <!-- Weapons -->
+        <div>
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px">⚔ Weapons</label>
+          <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px">
+            {% for w in weapons %}
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;cursor:pointer">
+              <input type="checkbox" name="weapon_ids" value="{{ w['id'] }}"
+                     {{ 'checked' if w['id'] in edit_weapon_ids else '' }}>
+              <span class="hi">{{ w['name'] }}</span>
+              {% if w['star1'] %}<span class="dim" style="font-size:9px">{{ w['wtype'] }}</span>{% endif %}
+            </label>
+            {% else %}
+            <span class="dim" style="font-size:11px">No weapons</span>
+            {% endfor %}
+          </div>
+        </div>
+        <!-- Armor -->
+        <div>
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px">🛡 Armor</label>
+          <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px">
+            {% for a in armor %}
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;cursor:pointer">
+              <input type="checkbox" name="armor_ids" value="{{ a['id'] }}"
+                     {{ 'checked' if a['id'] in edit_armor_ids else '' }}>
+              <span class="hi">{{ a['name'] }}</span>
+              {% if a['slot'] %}<span class="dim" style="font-size:9px">{{ a['slot'] }}</span>{% endif %}
+            </label>
+            {% else %}
+            <span class="dim" style="font-size:11px">No armor</span>
+            {% endfor %}
+          </div>
+        </div>
+        <!-- Mutations -->
+        <div>
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px">🧬 Mutations</label>
+          <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px">
+            {% for m in mutations %}
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;cursor:pointer">
+              <input type="checkbox" name="mutation_ids" value="{{ m['id'] }}"
+                     {{ 'checked' if m['id'] in edit_mutation_ids else '' }}>
+              <span class="hi">{{ m['name'] }}</span>
+            </label>
+            {% else %}
+            <span class="dim" style="font-size:11px">No active mutations</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions" style="margin-top:12px">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Loadout{% endif %}</button>
+        {% if edit_item %}
+        <a href="/loadouts" class="btn btn-secondary">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Loadout Cards -->
+<div class="build-cards" style="margin-top:16px">
+  {% for lo in items %}
+  {% set stats = gear_stats.get(lo['id'], {}) %}
+  {% set is_active = lo['id'] == active_loadout_id %}
+  <div class="build-card" style="{% if is_active %}border-color:var(--accent){% endif %}">
+    <div class="bc-head" style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <a href="/loadouts/{{ lo['id'] }}" style="text-decoration:none">
+          <div class="bc-name">{{ lo['name'] }}</div>
+        </a>
+        {% if lo['notes'] %}<div class="bc-playstyle">{{ lo['notes'] }}</div>{% endif %}
+      </div>
+      {% if is_active %}
+      <span class="badge badge-keep" style="font-size:10px">ACTIVE</span>
+      {% endif %}
+    </div>
+
+    <!-- Gear counts -->
+    <div style="display:flex;gap:16px;padding:10px 16px;font-size:12px">
+      <span>⚔ <span class="hi">{{ stats.get('weapon', 0) }}</span> <span class="dim">weapons</span></span>
+      <span>🛡 <span class="hi">{{ stats.get('armor', 0) }}</span> <span class="dim">armor</span></span>
+      <span>🧬 <span class="hi">{{ stats.get('mutation', 0) }}</span> <span class="dim">mutations</span></span>
+    </div>
+
+    <!-- Footer -->
+    <div class="bc-foot">
+      <div style="display:flex;gap:6px">
+        <a href="/loadouts?edit_id={{ lo['id'] }}" class="btn-sm btn-edit">Edit</a>
+        <form method="POST" action="/loadouts/{{ lo['id'] }}/delete" class="inline-form" onsubmit="return confirmDelete()">
+          <button class="btn-sm btn-delete" type="submit">Del</button>
+        </form>
+      </div>
+      <div>
+        {% if is_active %}
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 10px"
+                onclick="fetch('/loadouts/{{ lo['id'] }}/deactivate',{method:'POST'}).then(()=>location.reload())">Deactivate</button>
+        {% else %}
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 10px;border-color:var(--accent);color:var(--accent)"
+                onclick="fetch('/loadouts/{{ lo['id'] }}/activate',{method:'POST'}).then(()=>location.reload())">Set Active</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="no-data" style="grid-column:1/-1">No loadouts yet. Create one above!</div>
+  {% endfor %}
+</div>
+
+{% endblock %}

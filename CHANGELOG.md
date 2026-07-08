@@ -5,6 +5,41 @@ Format: Version | Date | What changed
 
 ---
 
+## [0.16.0] — 2026-07-06
+
+### Added
+- **Stash Overview** (`/stash-overview`) — unified cross-character inventory view.
+  - Single flat table showing all items from weapons, armor, mods, plans, and inventory tables across all characters
+  - Dynamic category tabs based on actual data (All, Ammo, Armor, Weapons, etc.)
+  - Character name displayed per row with colored tag (green = playable, gold = mule)
+  - Text filter searches across all columns
+  - "Move to" transfer dropdown per row — reassign items between characters via AJAX
+  - Transfer endpoint validates table name (prevents SQL injection), syncs inventory mirror for weapons/armor/mods
+  - Sidebar entry in Gear section after Inventory
+- **Perishable toggle** for Food/Drink inventory items.
+  - New `perishable INTEGER DEFAULT 0` column on inventory table (safe migration)
+  - Checkbox in add/edit form, auto-shows only when category is Food/Drink
+  - Perishable badge (red/green) displayed on Stash Overview Food tab
+- **Multi-screenshot upload** for inventory scan.
+  - File picker accepts multiple images — scroll through Pip-Boy, take several shots, select all at once
+  - Each screenshot scanned in parallel, results merged into one review table
+  - Deduplicates across screenshots (same name+category keeps latest qty)
+  - "Clear & Rescan" button to start fresh
+- **Scan dedup** — importing scanned items now checks for existing items (by name + category + character). Existing items get qty/weight/value updated instead of creating duplicates.
+- **Missing item flagging** — after scan import, items in scanned categories that weren't in the screenshots get flagged as `Missing?` status with red badge. Re-scanning with the item present clears the flag back to previous status.
+- **Scan categorization fix** — AI scan prompt now explicitly categorizes Magazines (Astoundingly Awesome Tales, Backwoodsman, etc.) and Bobbleheads (regular + Glowing) as Aid. Added rules for Stimpaks/chems, Food/Drink, Ammo, Components, Plans, Holotapes, Notes, Keys.
+
+### Fixed
+- **Inventory performance with 600+ items** — replaced per-cell event listeners (1,200+ bindings on page load) with event delegation (1 click listener on table). Replaced per-checkbox `onchange` with delegated change listener. Moved `.editable-cell` cursor/border styles to CSS. Eliminated mouse stuttering and Edge becoming unresponsive.
+- **Edit button loses category filter** — clicking edit on a filtered inventory view now preserves the `?cat=` parameter instead of dumping back to all 600 items.
+- **Escape key in inline edit** — now restores original value instead of triggering full page reload.
+
+### Removed
+- **Season Tracker** — removed from sidebar navigation. Routes kept for historical data access.
+- **Ammo Counter** — removed from sidebar navigation. Ammo now tracked via Inventory page. Routes kept.
+
+---
+
 ## [0.15.0] — 2026-05-25
 
 ### Added
@@ -637,6 +672,8 @@ Format: Version | Date | What changed
 - [x] World Finds tracker with multi-screenshot support (v0.10.0)
 
 ### Removed features (no longer in app)
+- Season Tracker — retired v0.16.0 (sidebar removed, routes kept)
+- Ammo Counter — retired v0.16.0 (tracked via Inventory now, routes kept)
 - Session Journal — removed v0.12.0 (replaced by World Finds + character tracking)
 - Spawn Notes — removed v0.12.0 (not used)
 - Trade Partners / Trade History — removed v0.11.0 (low usage, clutter)
