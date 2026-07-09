@@ -14,7 +14,7 @@
 </div>
 
 <div class="table-controls">
-  <input type="text" class="filter-input" placeholder="Filter by name, character, status…" oninput="filterStash(this.value)" id="stashFilter">
+  <input type="text" class="filter-input" placeholder="Filter by name, character, status…" oninput="debouncedFilter(this.value)" id="stashFilter">
 </div>
 
 {% if not items %}
@@ -35,29 +35,74 @@
     <tbody>
     {% for item in items %}
       <tr class="stash-row">
-        <td><span class="char-tag {% if item.char_type == 'Mule' %}mule{% endif %}">{{ item.char_name }}</span></td>
-        <td class="hi">{{ item.name }}{% if item.stars %} <span class="dim">{{ item.stars }}</span>{% endif %}</td>
-        <td><span class="dim">{{ item.category }}</span></td>
-        <td class="dim">{{ item.detail }}</td>
-        <td>{{ item.qty }}</td>
-        <td>{{ '%.1f'|format(item.weight) if item.weight else '—' }}</td>
-        <td><span class="badge badge-{{ item.status|lower }}">{{ item.status }}</span></td>
+        <td><span class="char-tag {% if item['char_type'] == 'Mule' %}mule{% endif %}">{{ item['char_name'] }}</span></td>
+        <td class="hi">{{ item['name'] }}{% if item['stars'] and item['stars'].strip() %} <span class="dim">{{ item['stars'].strip() }}</span>{% endif %}</td>
+        <td><span class="dim">{{ item['category'] }}</span></td>
+        <td class="dim">{{ item['detail'] }}</td>
+        <td>{{ item['qty'] }}</td>
+        <td>{{ '%.1f'|format(item['weight']) if item['weight'] else '—' }}</td>
+        <td><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
         <td>
-          <select class="transfer-select" onchange="transferItem('{{ item.table }}', {{ item.id }}, this.value, this)">
-            <option value="">→</option>
-            {% for c in chars if c.id != item.character_id %}
-            <option value="{{ c.id }}">{{ c.name }}</option>
-            {% endfor %}
-          </select>
+          <button class="btn-sm btn-secondary" style="padding:2px 8px;font-size:11px"
+                  onclick="openTransferModal('{{ item['tbl'] }}', {{ item['id'] }}, {{ item['character_id'] }}, '{{ item['name']|e }}')"
+                  title="Transfer to another character">→</button>
         </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+
+{% if total_pages > 1 %}
+<div class="pagination-bar" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:16px 0;flex-wrap:wrap">
+  <span class="dim" style="font-size:12px">Showing {{ (page-1)*100+1 }}–{{ [page*100, total]|min }} of {{ total }}</span>
+  {% if page > 1 %}
+  <a href="?page={{ page-1 }}{% if cat_filter %}&cat={{ cat_filter }}{% endif %}" class="btn btn-secondary btn-sm">&lt; Prev</a>
+  {% endif %}
+  {% for p in range(1, total_pages+1) %}
+    {% if p == page %}
+    <span class="btn btn-primary btn-sm" style="pointer-events:none">{{ p }}</span>
+    {% elif p <= 3 or p > total_pages-2 or (p >= page-1 and p <= page+1) %}
+    <a href="?page={{ p }}{% if cat_filter %}&cat={{ cat_filter }}{% endif %}" class="btn btn-secondary btn-sm">{{ p }}</a>
+    {% elif p == 4 and page > 5 %}
+    <span class="dim">…</span>
+    {% elif p == total_pages-2 and page < total_pages-4 %}
+    <span class="dim">…</span>
+    {% endif %}
+  {% endfor %}
+  {% if page < total_pages %}
+  <a href="?page={{ page+1 }}{% if cat_filter %}&cat={{ cat_filter }}{% endif %}" class="btn btn-secondary btn-sm">Next &gt;</a>
+  {% endif %}
+</div>
 {% endif %}
 
+{% endif %}
+
+<!-- Shared transfer modal (1 modal instead of per-row selects) -->
+<div id="transferModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:20px;max-width:340px;width:90%">
+    <h3 style="margin:0 0 8px">Transfer Item</h3>
+    <p class="dim" style="font-size:12px;margin:0 0 12px" id="transferItemName"></p>
+    <select id="transferTarget" class="form-control" style="width:100%;padding:6px;margin-bottom:12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px">
+      <option value="">Select character…</option>
+      {% for c in chars %}
+      <option value="{{ c.id }}">{{ c.name }}{% if c.char_type == 'Mule' %} (Mule){% endif %}</option>
+      {% endfor %}
+    </select>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary btn-sm" onclick="closeTransferModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="doTransfer()">Transfer</button>
+    </div>
+  </div>
+</div>
+
 <script>
+// Debounced text filter
+var _filterTimer = null;
+function debouncedFilter(val) {
+  clearTimeout(_filterTimer);
+  _filterTimer = setTimeout(function() { filterStash(val); }, 200);
+}
 function filterStash(val) {
   val = val.toLowerCase();
   var rows = document.querySelectorAll('.stash-row');
@@ -66,28 +111,47 @@ function filterStash(val) {
   });
 }
 
-function transferItem(table, id, targetCid, el) {
-  if (!targetCid) return;
+// Transfer modal
+var _transferState = {};
+function openTransferModal(table, id, currentCid, name) {
+  _transferState = {table: table, id: id, currentCid: currentCid};
+  document.getElementById('transferItemName').textContent = name;
+  var sel = document.getElementById('transferTarget');
+  // Hide current character option
+  for (var i = 0; i < sel.options.length; i++) {
+    sel.options[i].style.display = (sel.options[i].value == currentCid) ? 'none' : '';
+  }
+  sel.value = '';
+  document.getElementById('transferModal').style.display = 'flex';
+}
+function closeTransferModal() {
+  document.getElementById('transferModal').style.display = 'none';
+  _transferState = {};
+}
+function doTransfer() {
+  var targetCid = document.getElementById('transferTarget').value;
+  if (!targetCid) { showToast('Select a character', 'warning'); return; }
   fetch('/stash-overview/transfer', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({table: table, id: id, target_cid: +targetCid})
+    body: JSON.stringify({table: _transferState.table, id: _transferState.id, target_cid: +targetCid})
   })
   .then(function(r) { return r.json(); })
   .then(function(d) {
     if (d.ok) {
       showToast('Moved to ' + d.target_name, 'success');
-      var row = el.closest('tr');
-      row.style.transition = 'opacity 0.3s';
-      row.style.opacity = '0';
-      setTimeout(function() { row.remove(); }, 300);
+      closeTransferModal();
+      location.reload();
     } else {
       showToast('Transfer failed: ' + (d.error || 'unknown'), 'error');
-      el.value = '';
     }
   })
-  .catch(function() { showToast('Transfer failed', 'error'); el.value = ''; });
+  .catch(function() { showToast('Transfer failed', 'error'); });
 }
+// Close modal on backdrop click
+document.getElementById('transferModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTransferModal();
+});
 </script>
 
 {% endblock %}

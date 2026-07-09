@@ -1333,18 +1333,41 @@ def plans_bulk():
 def inventory():
     cid = get_active_char_id()
     cat_filter = request.args.get('cat', '')
+    page = max(1, request.args.get('page', 1, type=int))
     edit_id = request.args.get('edit_id', type=int)
+    PER_PAGE = 100
+
+    where = "WHERE character_id=?"
+    params = [cid]
     if cat_filter:
-        items = db.query("SELECT * FROM inventory WHERE character_id=? AND category=? ORDER BY name", (cid, cat_filter))
-    else:
-        items = db.query("SELECT * FROM inventory WHERE character_id=? ORDER BY category, name", (cid,))
+        where += " AND category=?"
+        params.append(cat_filter)
+
+    # Total count & SQL-computed totals (non-FO1st items only)
+    total_count = db.get_one(f"SELECT COUNT(*) as cnt FROM inventory {where}", params)['cnt']
+    totals_row = db.get_one(
+        f"SELECT COALESCE(SUM(qty * weight_each), 0) as total_wt, COALESCE(SUM(qty * value_each), 0) as total_val "
+        f"FROM inventory {where} AND fo1st_stored=0", params)
+    total_wt = totals_row['total_wt']
+    total_val = int(totals_row['total_val'])
+
+    total_pages = max(1, (total_count + PER_PAGE - 1) // PER_PAGE)
+    page = min(page, total_pages)
+    offset = (page - 1) * PER_PAGE
+
+    order = "ORDER BY name" if cat_filter else "ORDER BY category, name"
+    items = db.query(f"SELECT * FROM inventory {where} {order} LIMIT ? OFFSET ?", params + [PER_PAGE, offset])
+
     edit_item = db.get_one("SELECT * FROM inventory WHERE id=?", (edit_id,)) if edit_id else None
     # Vendor allocation lookup: (name, category) → qty currently listed in vendor
     vendor_qtys = {}
     for v in db.query("SELECT name, category, SUM(qty) as total FROM vendor_stock WHERE character_id=? GROUP BY name, category", (cid,)):
         vendor_qtys[(v['name'], v['category'])] = v['total']
+
     return render_template('inventory.html', items=items, edit_item=edit_item,
-                           cat_filter=cat_filter, vendor_qtys=vendor_qtys)
+                           cat_filter=cat_filter, vendor_qtys=vendor_qtys,
+                           page=page, total_pages=total_pages, total_count=total_count,
+                           total_wt=total_wt, total_val=total_val)
 
 @app.route('/inventory/add', methods=['POST'])
 def inventory_add():
@@ -4334,59 +4357,66 @@ def community_board_export_needs():
 def stash_overview():
     chars = db.query("SELECT * FROM characters ORDER BY char_type, name")
     cat_filter = request.args.get('cat', '')
+    page = max(1, request.args.get('page', 1, type=int))
+    PER_PAGE = 100
 
-    # Pull everything into a unified list
-    items = []
+    # Unified UNION ALL query
+    union_sql = """
+        SELECT w.id, w.name, 'Weapons' as category, COALESCE(w.wtype,'') as detail,
+               1 as qty, COALESCE(w.weight,0) as weight, w.status,
+               c.name as char_name, c.char_type, w.character_id, 'weapons' as tbl,
+               COALESCE(w.star1,'') || ' ' || COALESCE(w.star2,'') || ' ' || COALESCE(w.star3,'') as stars
+        FROM weapons w JOIN characters c ON w.character_id=c.id
+        UNION ALL
+        SELECT a.id, a.name, 'Armor', COALESCE(a.slot,''),
+               1, COALESCE(a.weight,0), a.status,
+               c.name, c.char_type, a.character_id, 'armor',
+               COALESCE(a.star1,'') || ' ' || COALESCE(a.star2,'') || ' ' || COALESCE(a.star3,'')
+        FROM armor a JOIN characters c ON a.character_id=c.id
+        UNION ALL
+        SELECT m.id, m.name, 'Mods', COALESCE(m.mod_type,''),
+               m.qty, 0, m.status,
+               c.name, c.char_type, m.character_id, 'mods', ''
+        FROM mods m JOIN characters c ON m.character_id=c.id
+        UNION ALL
+        SELECT p.id, p.name, 'Plans', COALESCE(p.category,''),
+               COALESCE(p.qty_unlearned,1), 0, p.status,
+               c.name, c.char_type, p.character_id, 'plans', ''
+        FROM plans p JOIN characters c ON p.character_id=c.id
+        UNION ALL
+        SELECT i.id, i.name, COALESCE(i.category,'Misc'), COALESCE(i.sub_type,''),
+               i.qty, COALESCE(i.weight_each,0)*COALESCE(i.qty,1), i.status,
+               c.name, c.char_type, i.character_id, 'inventory', ''
+        FROM inventory i JOIN characters c ON i.character_id=c.id
+    """
 
-    for w in db.query("""SELECT w.*, c.name as char_name, c.char_type
-        FROM weapons w JOIN characters c ON w.character_id=c.id ORDER BY c.name, w.name"""):
-        items.append({'id': w['id'], 'name': w['name'], 'category': 'Weapons',
-            'detail': w['wtype'] or '', 'qty': 1, 'weight': w['weight'] or 0,
-            'status': w['status'], 'char_name': w['char_name'], 'char_type': w['char_type'],
-            'character_id': w['character_id'], 'table': 'weapons',
-            'stars': ' '.join(filter(None, [w['star1'], w['star2'], w['star3']]))})
+    # Category counts (lightweight aggregate, no full row load)
+    count_rows = db.query(f"SELECT category, COUNT(*) as cnt FROM ({union_sql}) GROUP BY category")
+    cat_counts = {r['category']: r['cnt'] for r in count_rows}
+    grand_total = sum(cat_counts.values())
 
-    for a in db.query("""SELECT a.*, c.name as char_name, c.char_type
-        FROM armor a JOIN characters c ON a.character_id=c.id ORDER BY c.name, a.name"""):
-        items.append({'id': a['id'], 'name': a['name'], 'category': 'Armor',
-            'detail': a['slot'] or '', 'qty': 1, 'weight': a['weight'] or 0,
-            'status': a['status'], 'char_name': a['char_name'], 'char_type': a['char_type'],
-            'character_id': a['character_id'], 'table': 'armor',
-            'stars': ' '.join(filter(None, [a['star1'], a['star2'], a['star3']]))})
-
-    for m in db.query("""SELECT m.*, c.name as char_name, c.char_type
-        FROM mods m JOIN characters c ON m.character_id=c.id ORDER BY c.name, m.name"""):
-        items.append({'id': m['id'], 'name': m['name'], 'category': 'Mods',
-            'detail': m['mod_type'] or '', 'qty': m['qty'], 'weight': 0,
-            'status': m['status'], 'char_name': m['char_name'], 'char_type': m['char_type'],
-            'character_id': m['character_id'], 'table': 'mods', 'stars': ''})
-
-    for p in db.query("""SELECT p.*, c.name as char_name, c.char_type
-        FROM plans p JOIN characters c ON p.character_id=c.id ORDER BY c.name, p.name"""):
-        items.append({'id': p['id'], 'name': p['name'], 'category': 'Plans',
-            'detail': p['category'] or '', 'qty': p['qty_unlearned'] or 1, 'weight': 0,
-            'status': p['status'], 'char_name': p['char_name'], 'char_type': p['char_type'],
-            'character_id': p['character_id'], 'table': 'plans', 'stars': ''})
-
-    for i in db.query("""SELECT i.*, c.name as char_name, c.char_type
-        FROM inventory i JOIN characters c ON i.character_id=c.id ORDER BY c.name, i.name"""):
-        items.append({'id': i['id'], 'name': i['name'], 'category': i['category'] or 'Misc',
-            'detail': i['sub_type'] or '', 'qty': i['qty'], 'weight': (i['weight_each'] or 0) * (i['qty'] or 1),
-            'status': i['status'], 'char_name': i['char_name'], 'char_type': i['char_type'],
-            'character_id': i['character_id'], 'table': 'inventory', 'stars': ''})
-
-    # Build category counts for tabs
-    cat_counts = {}
-    for it in items:
-        cat_counts[it['category']] = cat_counts.get(it['category'], 0) + 1
-
-    # Filter if category selected
+    # Filtered total & paginated items
     if cat_filter:
-        items = [it for it in items if it['category'] == cat_filter]
+        filtered_total = cat_counts.get(cat_filter, 0)
+        total_pages = max(1, (filtered_total + PER_PAGE - 1) // PER_PAGE)
+        page = min(page, total_pages)
+        offset = (page - 1) * PER_PAGE
+        items = db.query(
+            f"SELECT * FROM ({union_sql}) WHERE category=? ORDER BY char_name, name LIMIT ? OFFSET ?",
+            (cat_filter, PER_PAGE, offset))
+    else:
+        filtered_total = grand_total
+        total_pages = max(1, (filtered_total + PER_PAGE - 1) // PER_PAGE)
+        page = min(page, total_pages)
+        offset = (page - 1) * PER_PAGE
+        items = db.query(
+            f"SELECT * FROM ({union_sql}) ORDER BY char_name, name LIMIT ? OFFSET ?",
+            (PER_PAGE, offset))
 
     return render_template('stash_overview.html',
         chars=chars, items=items, cat_filter=cat_filter,
-        cat_counts=cat_counts, total=len(items))
+        cat_counts=cat_counts, total=filtered_total,
+        page=page, total_pages=total_pages)
 
 
 @app.route('/stash-overview/transfer', methods=['POST'])

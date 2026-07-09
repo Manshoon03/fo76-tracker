@@ -854,6 +854,21 @@ def init_db():
         except Exception:
             pass
 
+    # Performance indexes on character_id columns
+    for stmt in [
+        "CREATE INDEX IF NOT EXISTS idx_inventory_char    ON inventory(character_id)",
+        "CREATE INDEX IF NOT EXISTS idx_weapons_char      ON weapons(character_id)",
+        "CREATE INDEX IF NOT EXISTS idx_armor_char        ON armor(character_id)",
+        "CREATE INDEX IF NOT EXISTS idx_mods_char         ON mods(character_id)",
+        "CREATE INDEX IF NOT EXISTS idx_plans_char        ON plans(character_id)",
+        "CREATE INDEX IF NOT EXISTS idx_vendor_stock_char ON vendor_stock(character_id)",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
     # Seed default character (PC Main) if no characters exist yet
     if conn.execute("SELECT COUNT(*) FROM characters").fetchone()[0] == 0:
         conn.execute(
