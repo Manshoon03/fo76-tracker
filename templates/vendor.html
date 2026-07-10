@@ -361,7 +361,10 @@ function vendorScanImport() {
     body: JSON.stringify({items})
   }).then(r => r.json()).then(data => {
     if (data.ok) {
-      showToast(`✓ Imported ${data.count} listings!`, 'success');
+      const parts = [];
+      if (data.added) parts.push(`${data.added} added`);
+      if (data.updated) parts.push(`${data.updated} updated`);
+      showToast(`✓ ${parts.join(', ') || 'No changes'}`, 'success');
       document.getElementById('vendorScanPreview').style.display = 'none';
       document.getElementById('vendorScanStatus').textContent = '';
       location.reload();

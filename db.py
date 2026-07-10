@@ -731,6 +731,39 @@ def init_db():
         except Exception:
             pass
 
+    # Vendor stock linkage columns
+    for stmt in [
+        "ALTER TABLE vendor_stock ADD COLUMN linked_table TEXT DEFAULT ''",
+        "ALTER TABLE vendor_stock ADD COLUMN linked_id INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
+    # Backfill vendor_stock linkage for existing Weapon/Armor/Mod entries
+    try:
+        unlinked = conn.execute(
+            "SELECT id, name, category, character_id FROM vendor_stock "
+            "WHERE linked_table='' AND category IN ('Weapon','Armor','Mod')"
+        ).fetchall()
+        section_map = {'Weapon': 'weapons', 'Armor': 'armor', 'Mod': 'mods'}
+        for row in unlinked:
+            tbl = section_map[row['category']]
+            match = conn.execute(
+                f"SELECT id FROM {tbl} WHERE name=? AND status='Sell' AND character_id=? ORDER BY id DESC LIMIT 1",
+                (row['name'], row['character_id'])
+            ).fetchone()
+            if match:
+                conn.execute(
+                    "UPDATE vendor_stock SET linked_table=?, linked_id=? WHERE id=?",
+                    (tbl, match['id'], row['id'])
+                )
+        conn.commit()
+    except Exception:
+        pass
+
     # Seed default daily tasks (only if table is empty)
     if conn.execute("SELECT COUNT(*) FROM daily_tasks").fetchone()[0] == 0:
         defaults = [

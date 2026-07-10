@@ -1005,6 +1005,7 @@ def vendor_add():
              ff('weight'), price, 'Sell', notes, cid)
         )
         _inv_sync('weapons', wid, name, 'Weapon', fs('wtype'), qty, ff('weight'), price, 'Sell')
+        db.execute("UPDATE vendor_stock SET linked_table='weapons', linked_id=? WHERE id=?", (wid, vid))
 
     elif category == 'Armor':
         # Create armor record
@@ -1014,6 +1015,7 @@ def vendor_add():
              ff('weight'), 'Sell', notes, cid)
         )
         _inv_sync('armor', aid, name, 'Armor', fs('slot'), qty, ff('weight'), 0, 'Sell')
+        db.execute("UPDATE vendor_stock SET linked_table='armor', linked_id=? WHERE id=?", (aid, vid))
 
     elif category == 'Mod':
         # Create mod record
@@ -1023,6 +1025,7 @@ def vendor_add():
         )
         sub = (fs('mod_type','Normal') + ' — ' + fs('applies_to')).strip(' —')
         _inv_sync('mods', mid, name, 'Mod', sub, qty, 0, price, 'Sell')
+        db.execute("UPDATE vendor_stock SET linked_table='mods', linked_id=? WHERE id=?", (mid, vid))
 
     # Aid, Ammo, Plan, Misc etc. — vendor is tracked independently.
     # Inventory shows total owned; vendor shows what's listed. No auto-sync.
@@ -1042,65 +1045,80 @@ def vendor_update(id):
 
 @app.route('/vendor/<int:id>/delete', methods=['POST'])
 def vendor_delete(id):
-    row = db.get_one("SELECT name, category, qty FROM vendor_stock WHERE id=?", (id,))
+    row = db.get_one("SELECT name, category, qty, linked_table, linked_id FROM vendor_stock WHERE id=?", (id,))
     if row:
         category = row['category']
         if category in ('Weapon', 'Armor', 'Mod'):
-            # Find the linked specialized record by name+status='Sell', then revert its inventory to Keep
             section_map = {'Weapon': 'weapons', 'Armor': 'armor', 'Mod': 'mods'}
-            tbl = section_map[category]
-            # Find the most recently created matching section record
-            sec_row = db.get_one(
-                "SELECT id FROM " + tbl + " WHERE name=? AND status='Sell' ORDER BY id DESC LIMIT 1",
-                (row['name'],)
-            )
-            if sec_row:
+            # Use linkage if available, else fall back to name-based search
+            if row['linked_table'] and row['linked_id']:
+                tbl = row['linked_table']
+                sec_id = row['linked_id']
+            else:
+                tbl = section_map[category]
+                sec_row = db.get_one(
+                    "SELECT id FROM " + tbl + " WHERE name=? AND status='Sell' ORDER BY id DESC LIMIT 1",
+                    (row['name'],)
+                )
+                sec_id = sec_row['id'] if sec_row else None
+            if sec_id:
                 inv = db.get_one(
                     "SELECT id FROM inventory WHERE source_table=? AND source_id=?",
-                    (tbl, sec_row['id'])
+                    (tbl, sec_id)
                 )
                 if inv:
                     db.execute("UPDATE inventory SET status='Keep' WHERE id=?", (inv['id'],))
-        # else: Aid/Ammo/Misc — inventory is independent, no automatic update
     db.execute("DELETE FROM vendor_stock WHERE id=?", (id,))
     flash('Removed from vendor. Inventory updated.', 'info')
     return redirect(url_for('vendor'))
 
 @app.route('/vendor/<int:id>/sold', methods=['POST'])
 def vendor_sold(id):
-    row = db.get_one("SELECT name, category FROM vendor_stock WHERE id=?", (id,))
+    row = db.get_one("SELECT name, category, linked_table, linked_id FROM vendor_stock WHERE id=?", (id,))
     if row and row['category'] in ('Weapon', 'Armor', 'Mod'):
         section_map = {'Weapon': 'weapons', 'Armor': 'armor', 'Mod': 'mods'}
-        tbl = section_map[row['category']]
-        sec_row = db.get_one(
-            "SELECT id FROM " + tbl + " WHERE name=? AND status='Sell' ORDER BY id DESC LIMIT 1",
-            (row['name'],)
-        )
-        if sec_row:
-            inv = db.get_one("SELECT id FROM inventory WHERE source_table=? AND source_id=?", (tbl, sec_row['id']))
+        # Use linkage if available, else fall back to name-based search
+        if row['linked_table'] and row['linked_id']:
+            tbl = row['linked_table']
+            sec_id = row['linked_id']
+        else:
+            tbl = section_map[row['category']]
+            sec_row = db.get_one(
+                "SELECT id FROM " + tbl + " WHERE name=? AND status='Sell' ORDER BY id DESC LIMIT 1",
+                (row['name'],)
+            )
+            sec_id = sec_row['id'] if sec_row else None
+        if sec_id:
+            inv = db.get_one("SELECT id FROM inventory WHERE source_table=? AND source_id=?", (tbl, sec_id))
             if inv:
                 db.execute("DELETE FROM inventory WHERE id=?", (inv['id'],))
-            db.execute("DELETE FROM " + tbl + " WHERE id=?", (sec_row['id'],))
+            db.execute("DELETE FROM " + tbl + " WHERE id=?", (sec_id,))
     db.execute("DELETE FROM vendor_stock WHERE id=?", (id,))
     flash('Sold! Removed from inventory.', 'success')
     return redirect(url_for('vendor'))
 
 @app.route('/vendor/wipe', methods=['POST'])
 def vendor_wipe():
-    items = db.query("SELECT name, category FROM vendor_stock")
+    items = db.query("SELECT name, category, linked_table, linked_id FROM vendor_stock")
     section_map = {'Weapon': 'weapons', 'Armor': 'armor', 'Mod': 'mods'}
     for row in items:
         if row['category'] in section_map:
-            tbl = section_map[row['category']]
-            sec_row = db.get_one(
-                "SELECT id FROM " + tbl + " WHERE name=? AND status='Sell' ORDER BY id DESC LIMIT 1",
-                (row['name'],)
-            )
-            if sec_row:
-                inv = db.get_one("SELECT id FROM inventory WHERE source_table=? AND source_id=?", (tbl, sec_row['id']))
+            # Use linkage if available, else fall back to name-based search
+            if row['linked_table'] and row['linked_id']:
+                tbl = row['linked_table']
+                sec_id = row['linked_id']
+            else:
+                tbl = section_map[row['category']]
+                sec_row = db.get_one(
+                    "SELECT id FROM " + tbl + " WHERE name=? AND status='Sell' ORDER BY id DESC LIMIT 1",
+                    (row['name'],)
+                )
+                sec_id = sec_row['id'] if sec_row else None
+            if sec_id:
+                inv = db.get_one("SELECT id FROM inventory WHERE source_table=? AND source_id=?", (tbl, sec_id))
                 if inv:
                     db.execute("DELETE FROM inventory WHERE id=?", (inv['id'],))
-                db.execute("DELETE FROM " + tbl + " WHERE id=?", (sec_row['id'],))
+                db.execute("DELETE FROM " + tbl + " WHERE id=?", (sec_id,))
     db.execute("DELETE FROM vendor_stock")
     flash('Vendor wiped. Items removed from inventory.', 'info')
     return redirect(url_for('vendor'))
@@ -2560,11 +2578,11 @@ def inventory_scan_import():
         qty = max(1, int(item.get('qty') or 1))
         weight_each = round(float(item.get('weight_each') or 0), 3)
         value_each = max(0, int(item.get('value_each') or 0))
-        scanned_names.add((name, category))
+        scanned_names.add((name.lower(), category))
         scanned_categories.add(category)
-        # Check if item already exists for this character
+        # Check if item already exists for this character (case-insensitive)
         existing = db.get_one(
-            "SELECT id FROM inventory WHERE name=? AND category=? AND character_id=?",
+            "SELECT id FROM inventory WHERE name=? COLLATE NOCASE AND category=? AND character_id=?",
             (name, category, cid))
         if existing:
             db.execute("UPDATE inventory SET qty=?, weight_each=?, value_each=?, status=CASE WHEN status='Missing?' THEN 'Keep' ELSE status END WHERE id=?",
@@ -2585,7 +2603,7 @@ def inventory_scan_import():
             f"SELECT id, name, category FROM inventory WHERE character_id=? AND category IN ({placeholders}) AND status != 'Missing?'",
             (cid, *scanned_categories))
         for row in existing_items:
-            if (row['name'], row['category']) not in scanned_names:
+            if (row['name'].lower(), row['category']) not in scanned_names:
                 db.execute("UPDATE inventory SET status='Missing?' WHERE id=?", (row['id'],))
                 flagged += 1
 
@@ -2631,20 +2649,55 @@ def vendor_scan_import():
     data  = request.get_json(force=True)
     items = data.get('items', [])
     cid   = get_active_char_id()
-    count = 0
+    added = 0
+    updated = 0
     for item in items:
         name = (item.get('name') or '').strip()
         if not name:
             continue
-        db.execute(
-            "INSERT INTO vendor_stock (name,category,description,qty,my_price,avg_market_price,date_listed,notes,character_id) "
-            "VALUES (?,?,?,?,?,0,date('now'),'',?)",
-            (name, item.get('category','Misc'), item.get('description',''),
-             max(1, int(item.get('qty') or 1)),
-             max(0, int(item.get('my_price') or 0)), cid)
-        )
-        count += 1
-    return jsonify(ok=True, count=count)
+        category = item.get('category', 'Misc')
+        qty = max(1, int(item.get('qty') or 1))
+        my_price = max(0, int(item.get('my_price') or 0))
+        description = item.get('description', '')
+
+        # Case-insensitive dedup check
+        existing = db.get_one(
+            "SELECT id FROM vendor_stock WHERE name=? COLLATE NOCASE AND category=? AND character_id=?",
+            (name, category, cid))
+        if existing:
+            db.execute("UPDATE vendor_stock SET qty=?, my_price=? WHERE id=?",
+                       (qty, my_price, existing['id']))
+            updated += 1
+        else:
+            vid = db.insert(
+                "INSERT INTO vendor_stock (name,category,description,qty,my_price,avg_market_price,date_listed,notes,character_id) "
+                "VALUES (?,?,?,?,?,0,date('now'),'',?)",
+                (name, category, description, qty, my_price, cid)
+            )
+            # For Weapon/Armor/Mod: create linked section record + inventory sync
+            if category == 'Weapon':
+                wid = db.insert(
+                    "INSERT INTO weapons (name,wtype,star1,star2,star3,weight,value,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (name, '', '', '', '', 0, my_price, 'Sell', '', cid)
+                )
+                _inv_sync('weapons', wid, name, 'Weapon', '', qty, 0, my_price, 'Sell')
+                db.execute("UPDATE vendor_stock SET linked_table='weapons', linked_id=? WHERE id=?", (wid, vid))
+            elif category == 'Armor':
+                aid = db.insert(
+                    "INSERT INTO armor (name,slot,star1,star2,star3,weight,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (name, '', '', '', '', 0, 'Sell', '', cid)
+                )
+                _inv_sync('armor', aid, name, 'Armor', '', qty, 0, 0, 'Sell')
+                db.execute("UPDATE vendor_stock SET linked_table='armor', linked_id=? WHERE id=?", (aid, vid))
+            elif category == 'Mod':
+                mid = db.insert(
+                    "INSERT INTO mods (name,mod_type,applies_to,qty,value_each,status,notes,character_id) VALUES (?,?,?,?,?,?,?,?)",
+                    (name, 'Normal', '', qty, my_price, 'Sell', '', cid)
+                )
+                _inv_sync('mods', mid, name, 'Mod', '', qty, 0, my_price, 'Sell')
+                db.execute("UPDATE vendor_stock SET linked_table='mods', linked_id=? WHERE id=?", (mid, vid))
+            added += 1
+    return jsonify(ok=True, added=added, updated=updated)
 
 
 @app.route('/backup')
