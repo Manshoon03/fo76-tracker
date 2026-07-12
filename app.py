@@ -1852,12 +1852,12 @@ Rules:
             model='claude-sonnet-4-6',
             max_tokens=2500,
             messages=[
-                {'role': 'user',      'content': prompt},
-                {'role': 'assistant', 'content': '{'}
+                {'role': 'user', 'content': prompt}
             ]
         )
-        text  = '{' + response.content[0].text.strip()
-        text  = re.sub(r'```[\w]*\s*$', '', text).strip()
+        text = response.content[0].text.strip()
+        text = re.sub(r'^```[\w]*\s*', '', text)
+        text = re.sub(r'```\s*$', '', text).strip()
         build = json.loads(text)
         return jsonify({'success': True, 'build': build})
     except Exception as e:
