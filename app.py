@@ -1808,24 +1808,28 @@ def build_generator_generate():
     bloodied_hint = "Focus on low-health perks: Nerd Rage, Serendipity, Dodgy, Blocker." if health == 'Bloodied' else ""
     ghoul_hint    = "Include Ghoulish and radiation perks since race is Ghoul." if race == 'Ghoul' else ""
 
-    prompt = f"""You are a Fallout 76 expert. Generate an optimized build for:
-Race: {race}
-Health Style: {health}
-Primary Weapon: {weapon}
-Notes: {notes or 'None'}
+    user_notes = f"\n\nIMPORTANT — The user specifically requested: {notes}\nYou MUST incorporate these requirements into the build. Do not ignore them." if notes else ""
+
+    prompt = f"""You are a Fallout 76 endgame build expert. Generate a META-OPTIMIZED build based on current publicly known game balance, community consensus, and proven endgame strategies.
+
+Build request:
+- Race: {race}
+- Health Style: {health}
+- Primary Weapon: {weapon}
 {bloodied_hint}
 {ghoul_hint}
+{user_notes}
 
 Return ONLY valid JSON matching this structure exactly:
 {{
   "name": "Short descriptive build name",
-  "summary": "2-3 sentence overview",
+  "summary": "2-3 sentence overview explaining why this is meta",
   "special": {{"s":0,"p":0,"e":0,"c":0,"i":0,"a":0,"l":0}},
   "perk_cards": [
     {{"name":"Exact in-game perk name","special":"S","rank":3,"max_rank":3,"reason":"Why this perk at this rank"}}
   ],
   "legendary_perks": [
-    {{"name":"Legendary perk name","rank":6,"max_rank":6,"reason":"Why and at what rank"}}
+    {{"name":"Legendary perk name","rank":4,"max_rank":4,"reason":"Why and at what rank"}}
   ],
   "weapons": ["Weapon with legendary prefix and effects"],
   "armor": "Armor set with legendary effects",
@@ -1836,14 +1840,17 @@ Return ONLY valid JSON matching this structure exactly:
 Rules:
 - SPECIAL total must be exactly 56 (max 15 per stat, min 1)
 - Include 12-15 perk cards — use EXACT in-game names, specify the recommended rank (not always max — some perks are only needed at rank 1, others at rank 3 for full effect) and the actual max_rank for that card
-- Include 2-4 legendary perks (unlocked at level 50+, e.g. Legendary Charisma, Legendary Strength) with recommended rank (1-6, not always max)
+- Include 2-4 legendary perks with recommended rank and max_rank (e.g. Legendary Strength max_rank 4, What Rads max_rank 4, Follow Through max_rank 4)
+- Use meta-proven legendary prefixes: Anti-Armor, Bloodied, Quad, Vampire's, Aristocrat's — with 25% faster fire rate, explosive, 50% crit damage as appropriate
+- Recommend actual meta mutations (Marsupial, Speed Demon, Adrenal Reaction for bloodied, etc.)
+- Base recommendations on what endgame players actually run, not just what sounds reasonable
 - Return only the JSON object, no markdown, no explanation"""
 
     try:
         client   = _get_anthropic()
         response = client.messages.create(
-            model='claude-haiku-4-5-20251001',
-            max_tokens=2000,
+            model='claude-sonnet-4-6',
+            max_tokens=2500,
             messages=[
                 {'role': 'user',      'content': prompt},
                 {'role': 'assistant', 'content': '{'}

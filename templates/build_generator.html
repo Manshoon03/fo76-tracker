@@ -217,7 +217,7 @@ async function generate() {
   const btn = document.getElementById('gen-btn');
   const st  = document.getElementById('gen-status');
   btn.disabled = true;
-  st.textContent = 'Generating... (~10s)';
+  st.textContent = 'Generating... (~15-20s)';
 
   try {
     const r = await fetch('/build-generator/generate', {
@@ -285,7 +285,9 @@ function renderPerks(cards) {
   const spColors = {S:'#e05050',P:'#e08040',E:'#50c050',C:'#e0c040',I:'#4090e0',A:'#40c0c0',L:'#c040e0'};
   el.innerHTML = cards.map(c => {
     const img = findPerkImage(c.name);
-    const stars = '★'.repeat(c.rank || 1) + '☆'.repeat(3-(c.rank||1));
+    const rank = Math.min(Math.max(c.rank || 1, 1), 5);
+    const maxRank = Math.max(rank, 3);
+    const stars = '★'.repeat(rank) + '☆'.repeat(maxRank - rank);
     const spColor = spColors[c.special] || 'var(--accent)';
     return `<div class="perk-card">
       <span class="pc-sp" style="color:${spColor}">${c.special||''}</span>
