@@ -1,0 +1,355 @@
+"""Daily blueprint: challenges, daily checklist, legend runs,
+nuke codes, season, ammo."""
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from datetime import datetime, timedelta, date
+import threading
+import db
+from routes.helpers import fs, fi, get_active_char_id
+
+bp = Blueprint('daily', __name__)
+
+# ── Nuke code background thread state ────────────────────────────────────────
+_nuke_fetch = {}
+
+def _do_nuke_fetch():
+    """Background thread: scrape nukacrypt.com and update nuke codes in DB."""
+    import re as _re
+    _HDRS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36'}
+    SILO_KEYS = {'alpha': 'Alpha', 'bravo': 'Bravo', 'charlie': 'Charlie'}
+    _BAD = {'CHARLIE', 'ALPHA', 'BRAVO', 'SITE', 'LAUNCH', 'CODES', 'SILO', 'NUKE'}
+    CODE_RE = _re.compile(r'\b([A-Z0-9]{7,10})\b')
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        codes = {}
+        # --- Attempt 1: JSON API endpoint ---
+        try:
+            r = requests.get('https://nukacrypt.com/api/codes', headers=_HDRS, timeout=(5, 8))
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, dict):
+                    for key, silo in SILO_KEYS.items():
+                        val = str(data.get(key.upper(), data.get(key, ''))).strip()
+                        if val and _re.match(r'^[A-Z0-9]{5,12}$', val.upper()) and val.upper() not in _BAD:
+                            codes[silo] = val.upper()
+                elif isinstance(data, list):
+                    for item in data:
+                        name = str(item.get('silo', item.get('name', ''))).lower()
+                        code = str(item.get('code', item.get('value', ''))).upper().strip()
+                        for key, silo in SILO_KEYS.items():
+                            if key in name and _re.match(r'^[A-Z0-9]{5,12}$', code) and code not in _BAD:
+                                codes[silo] = code
+        except Exception:
+            pass
+        # --- Attempt 2: HTML page + embedded JSON ---
+        if len(codes) < 3:
+            try:
+                r = requests.get('https://nukacrypt.com', headers=_HDRS, timeout=(5, 10))
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    for script in soup.find_all('script'):
+                        stext = script.get_text() or ''
+                        if not any(k in stext.lower() for k in SILO_KEYS):
+                            continue
+                        upper = stext.upper()
+                        for key, silo in SILO_KEYS.items():
+                            if silo in codes:
+                                continue
+                            idx = upper.find(key.upper())
+                            if idx != -1:
+                                chunk = upper[max(0, idx - 5):idx + 120]
+                                m = CODE_RE.search(chunk)
+                                if m and m.group(1) not in _BAD:
+                                    codes[silo] = m.group(1)
+                    if len(codes) < 3:
+                        full = soup.get_text(separator=' ').upper()
+                        for key, silo in SILO_KEYS.items():
+                            if silo in codes:
+                                continue
+                            search_start = 0
+                            while True:
+                                idx = full.find(key.upper(), search_start)
+                                if idx == -1:
+                                    break
+                                chunk = full[idx:idx + 120]
+                                m = CODE_RE.search(chunk)
+                                if m and m.group(1) not in _BAD:
+                                    codes[silo] = m.group(1)
+                                    break
+                                search_start = idx + 1
+            except Exception:
+                pass
+        if codes:
+            week_of = str(date.today() - timedelta(days=date.today().weekday()))
+            for silo, code in codes.items():
+                db.execute(
+                    "UPDATE nuke_codes SET code=?, week_of=?, updated_at=date('now') WHERE silo=?",
+                    (code, week_of, silo),
+                )
+            found = ', '.join(sorted(codes.keys()))
+            db.set_setting('nuke_fetch_status', f'ok|Fetched {found} — {datetime.now().strftime("%b %d %H:%M")}')
+        else:
+            db.set_setting('nuke_fetch_status',
+                           f'fail|Could not parse codes from nukacrypt.com — enter manually '
+                           f'({datetime.now().strftime("%H:%M")})')
+    except ImportError:
+        db.set_setting('nuke_fetch_status', 'fail|beautifulsoup4 not installed — run: pip install beautifulsoup4')
+    except Exception as e:
+        db.set_setting('nuke_fetch_status', f'fail|Fetch error: {str(e)[:100]}')
+    finally:
+        _nuke_fetch['running'] = False
+
+
+# ── Challenges ───────────────────────────────────────────────────────────────
+
+@bp.route('/challenges')
+def challenges():
+    cid = get_active_char_id()
+    ctype_filter = request.args.get('type', 'incomplete')
+    edit_id = request.args.get('edit_id', type=int)
+    ORDER = "CASE ctype WHEN 'Daily' THEN 1 WHEN 'Weekly' THEN 2 WHEN 'Season' THEN 3 ELSE 4 END, name"
+    if ctype_filter == 'incomplete':
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND completed=0 AND active=1 ORDER BY {ORDER}", (cid,))
+    elif ctype_filter == 'done':
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND completed=1 AND active=1 ORDER BY {ORDER}", (cid,))
+    elif ctype_filter == 'dormant':
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND active=0 ORDER BY {ORDER}", (cid,))
+    elif ctype_filter in ('Daily','Weekly','Season','Static'):
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND ctype=? AND active=1 ORDER BY completed, name", (cid, ctype_filter))
+    else:
+        items = db.query(f"SELECT * FROM challenges WHERE character_id=? AND active=1 ORDER BY completed, {ORDER}", (cid,))
+    edit_item = db.get_one("SELECT * FROM challenges WHERE id=?", (edit_id,)) if edit_id else None
+    counts = {
+        'Daily':   db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Daily'  AND active=1", (cid,)),
+        'Weekly':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Weekly' AND active=1", (cid,)),
+        'Season':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Season' AND active=1", (cid,)),
+        'Static':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Static' AND active=1", (cid,)),
+        'dormant': db.get_one("SELECT COUNT(*) as n, 0 as done FROM challenges WHERE character_id=? AND active=0", (cid,)),
+    }
+    return render_template('challenges.html', items=items, edit_item=edit_item,
+                           ctype_filter=ctype_filter, counts=counts)
+
+@bp.route('/challenges/add', methods=['POST'])
+def challenges_add():
+    db.execute(
+        "INSERT INTO challenges (name,ctype,category,description,progress,target,completed,score_reward,atoms_reward,reward,repeatable,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (fs('name'), fs('ctype','Daily'), fs('category'), fs('description'),
+         fi('progress',0), fi('target',1), 1 if request.form.get('completed') else 0,
+         fi('score_reward'), fi('atoms_reward'), fs('reward'),
+         1 if request.form.get('repeatable') else 0, fs('notes'), get_active_char_id())
+    )
+    flash('Challenge added!', 'success')
+    return redirect(url_for('daily.challenges'))
+
+@bp.route('/challenges/<int:id>/update', methods=['POST'])
+def challenges_update(id):
+    db.execute(
+        "UPDATE challenges SET name=?,ctype=?,category=?,description=?,progress=?,target=?,completed=?,score_reward=?,atoms_reward=?,reward=?,repeatable=?,notes=? WHERE id=?",
+        (fs('name'), fs('ctype','Daily'), fs('category'), fs('description'),
+         fi('progress',0), fi('target',1), 1 if request.form.get('completed') else 0,
+         fi('score_reward'), fi('atoms_reward'), fs('reward'),
+         1 if request.form.get('repeatable') else 0, fs('notes'), id)
+    )
+    flash('Challenge updated!', 'success')
+    return redirect(url_for('daily.challenges'))
+
+@bp.route('/challenges/<int:id>/delete', methods=['POST'])
+def challenges_delete(id):
+    db.execute("DELETE FROM challenges WHERE id=?", (id,))
+    flash('Deleted.', 'info')
+    return redirect(url_for('daily.challenges'))
+
+@bp.route('/challenges/<int:id>/toggle', methods=['POST'])
+def challenges_toggle(id):
+    row = db.get_one("SELECT completed, name, repeatable, target FROM challenges WHERE id=?", (id,))
+    new_val = 0 if row['completed'] else 1
+    db.execute("UPDATE challenges SET completed=?, completed_at=CASE WHEN ?=1 THEN datetime('now') ELSE NULL END WHERE id=?",
+               (new_val, new_val, id))
+    if new_val and row['repeatable']:
+        db.execute("UPDATE challenges SET times_completed = times_completed + 1 WHERE id=?", (id,))
+    return redirect(url_for('daily.challenges', type='incomplete'))
+
+@bp.route('/challenges/<int:id>/progress', methods=['POST'])
+def challenges_progress(id):
+    delta = fi('delta', 1)
+    row = db.get_one("SELECT progress, target FROM challenges WHERE id=?", (id,))
+    if row:
+        new_prog = max(0, row['progress'] + delta)
+        auto_done = 1 if new_prog >= row['target'] else 0
+        db.execute("UPDATE challenges SET progress=?, completed=CASE WHEN ?>=target THEN 1 ELSE completed END WHERE id=?",
+                   (new_prog, new_prog, id))
+    return jsonify(ok=True)
+
+@bp.route('/challenges/<int:id>/dormant', methods=['POST'])
+def challenges_dormant(id):
+    db.execute("UPDATE challenges SET active=0 WHERE id=?", (id,))
+    flash('Challenge moved to dormant.', 'info')
+    return redirect(url_for('daily.challenges'))
+
+@bp.route('/challenges/<int:id>/activate', methods=['POST'])
+def challenges_activate(id):
+    db.execute("UPDATE challenges SET active=1 WHERE id=?", (id,))
+    flash('Challenge reactivated.', 'success')
+    return redirect(url_for('daily.challenges'))
+
+
+# ── Daily Checklist ──────────────────────────────────────────────────────────
+
+@bp.route('/daily')
+def daily_checklist():
+    from routes.helpers import fo76_today, fo76_this_monday
+    today = fo76_today()
+    this_monday = fo76_this_monday()
+    tasks = db.query("SELECT * FROM daily_tasks WHERE active=1 ORDER BY freq, sort_order, name")
+    done_daily = {r['task_id'] for r in db.query(
+        "SELECT task_id FROM daily_completions WHERE completed_date=?", (today,)
+    )}
+    done_weekly = {r['task_id'] for r in db.query(
+        "SELECT task_id FROM daily_completions WHERE completed_date >= ?", (this_monday,)
+    )}
+    return render_template('daily.html', tasks=tasks,
+                           done_daily=done_daily, done_weekly=done_weekly,
+                           today=today, this_monday=this_monday)
+
+@bp.route('/daily/complete/<int:tid>', methods=['POST'])
+def daily_complete(tid):
+    from routes.helpers import fo76_today, fo76_this_monday
+    task = db.get_one("SELECT freq FROM daily_tasks WHERE id=?", (tid,))
+    if not task:
+        return jsonify({'ok': False})
+    today = fo76_today()
+    this_monday = fo76_this_monday()
+    key_date = today if task['freq'] == 'daily' else this_monday
+    existing = db.get_one(
+        "SELECT id FROM daily_completions WHERE task_id=? AND completed_date=?",
+        (tid, key_date)
+    )
+    if not existing:
+        db.execute("INSERT INTO daily_completions (task_id, completed_date) VALUES (?,?)",
+                   (tid, key_date))
+    return jsonify({'ok': True, 'done': True})
+
+@bp.route('/daily/uncomplete/<int:tid>', methods=['POST'])
+def daily_uncomplete(tid):
+    from routes.helpers import fo76_today, fo76_this_monday
+    task = db.get_one("SELECT freq FROM daily_tasks WHERE id=?", (tid,))
+    if not task:
+        return jsonify({'ok': False})
+    today = fo76_today()
+    this_monday = fo76_this_monday()
+    key_date = today if task['freq'] == 'daily' else this_monday
+    db.execute("DELETE FROM daily_completions WHERE task_id=? AND completed_date=?",
+               (tid, key_date))
+    return jsonify({'ok': True, 'done': False})
+
+@bp.route('/daily/task/add', methods=['POST'])
+def daily_task_add():
+    name = fs('name')
+    freq = fs('freq', 'daily')
+    if name:
+        db.execute("INSERT INTO daily_tasks (name, freq) VALUES (?,?)", (name, freq))
+        flash(f'Task "{name}" added!', 'success')
+    return redirect(url_for('daily.daily_checklist'))
+
+@bp.route('/daily/task/<int:tid>/delete', methods=['POST'])
+def daily_task_delete(tid):
+    db.execute("DELETE FROM daily_completions WHERE task_id=?", (tid,))
+    db.execute("DELETE FROM daily_tasks WHERE id=?", (tid,))
+    flash('Task removed.', 'info')
+    return redirect(url_for('daily.daily_checklist'))
+
+
+# ── Legend Runs ───────────────────────────────────────────────────────────────
+
+@bp.route('/legend-runs')
+def legend_runs():
+    cid = get_active_char_id()
+    from datetime import date as _date
+    bosses = db.query("SELECT * FROM legend_runs WHERE character_id=? ORDER BY boss_name", (cid,))
+    today = _date.today()
+    boss_list = []
+    for b in bosses:
+        days_since = None
+        if b['last_run']:
+            try:
+                last = _date.fromisoformat(b['last_run'])
+                days_since = (today - last).days
+            except Exception:
+                pass
+        boss_list.append({'row': b, 'days_since': days_since})
+    return render_template('legend_runs.html', bosses=boss_list, today=str(today))
+
+@bp.route('/legend-runs/log', methods=['POST'])
+def legend_runs_log():
+    from datetime import date as _date
+    boss_id = fi('boss_id')
+    run_date = fs('run_date') or str(_date.today())
+    notes = fs('notes')
+    db.execute(
+        "UPDATE legend_runs SET last_run=?, run_count=run_count+1, notes=?, updated_at=date('now') WHERE id=?",
+        (run_date, notes, boss_id)
+    )
+    flash('Run logged!', 'success')
+    return redirect(url_for('daily.legend_runs'))
+
+@bp.route('/legend-runs/add', methods=['POST'])
+def legend_runs_add():
+    name = fs('boss_name')
+    if name:
+        db.execute("INSERT INTO legend_runs (boss_name, character_id) VALUES (?,?)", (name, get_active_char_id()))
+        flash(f'{name} added!', 'success')
+    return redirect(url_for('daily.legend_runs'))
+
+@bp.route('/legend-runs/<int:id>/delete', methods=['POST'])
+def legend_runs_delete(id):
+    db.execute("DELETE FROM legend_runs WHERE id=?", (id,))
+    flash('Removed.', 'info')
+    return redirect(url_for('daily.legend_runs'))
+
+@bp.route('/legend-runs/<int:id>/reset', methods=['POST'])
+def legend_runs_reset(id):
+    db.execute("UPDATE legend_runs SET last_run='', run_count=0, notes='' WHERE id=?", (id,))
+    flash('Reset.', 'info')
+    return redirect(url_for('daily.legend_runs'))
+
+
+# ── Nuke Codes ───────────────────────────────────────────────────────────────
+
+@bp.route('/nuke-codes')
+def nuke_codes():
+    from datetime import date as _date, timedelta as _td
+    silos = {r['silo']: r for r in db.query("SELECT * FROM nuke_codes ORDER BY silo")}
+    today = _date.today()
+    today_week = str(today - _td(days=today.weekday()))
+    fetch_status  = db.get_setting('nuke_fetch_status', '')
+    fetch_running = _nuke_fetch.get('running', False)
+    return render_template('nuke_codes.html', silos=silos, today_week=today_week,
+                           fetch_status=fetch_status, fetch_running=fetch_running)
+
+@bp.route('/nuke-codes/update', methods=['POST'])
+def nuke_codes_update():
+    from datetime import date as _date
+    today = _date.today()
+    week_of = str(today - timedelta(days=today.weekday()))
+    for silo in ('Alpha', 'Bravo', 'Charlie'):
+        code  = fs(f'code_{silo.lower()}')
+        notes = fs(f'notes_{silo.lower()}')
+        db.execute(
+            "UPDATE nuke_codes SET code=?, notes=?, week_of=?, updated_at=date('now') WHERE silo=?",
+            (code, notes, week_of, silo)
+        )
+    flash('Nuke codes updated!', 'success')
+    return redirect(url_for('daily.nuke_codes'))
+
+@bp.route('/nuke-codes/fetch', methods=['POST'])
+def nuke_codes_fetch():
+    if _nuke_fetch.get('running'):
+        flash('Fetch already in progress — refresh in a moment.', 'warning')
+        return redirect(url_for('daily.nuke_codes'))
+    _nuke_fetch['running'] = True
+    db.set_setting('nuke_fetch_status', 'running|Contacting nukacrypt.com...')
+    threading.Thread(target=_do_nuke_fetch, daemon=True).start()
+    flash('Fetching codes in background — refresh in a few seconds.', 'info')
+    return redirect(url_for('daily.nuke_codes'))
+
+

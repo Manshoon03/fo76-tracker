@@ -1,10 +1,8 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import page_header, empty_state %}
 {% block title %}Price Research{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>💰 PRICE RESEARCH</h1>
-  <span class="count-badge">{{ total_count }} records</span>
-</div>
+{{ page_header('PRICE RESEARCH', total_count, '💰') }}
 
 <section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
   <div class="panel-toggle" onclick="togglePanel('addPanel')">

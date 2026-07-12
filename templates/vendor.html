@@ -1,10 +1,11 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import page_header, status_badge, empty_state %}
 {% block title %}My Vendor{% endblock %}
 {% block content %}
 
 <div class="page-header">
   <h1>🏪 MY VENDOR</h1>
-  <span class="count-badge">{{ items|length }} listings</span>
+  <span class="count-badge">{{ items|length }}</span>
   {% set total_val = namespace(v=0) %}
   {% for item in items %}{% set total_val.v = total_val.v + (item['my_price'] * item['qty']) %}{% endfor %}
   <span class="badge badge-sell" style="font-size:12px">Total: {{ "{:,}".format(total_val.v) }} caps</span>

@@ -1,11 +1,9 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import page_header, status_badge, delete_btn, empty_state %}
 {% block title %}Armor{% endblock %}
 {% block content %}
 
-<div class="page-header">
-  <h1>🛡 ARMOR</h1>
-  <span class="count-badge">{{ items|length }} pieces</span>
-</div>
+{{ page_header('ARMOR', items|length, '🛡') }}
 
 <section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
   <div class="panel-toggle" onclick="togglePanel('addPanel')">
@@ -158,7 +156,7 @@
         <td>{{ item['er'] }}</td>
         <td>{{ item['rr'] }}</td>
         <td class="dim">{{ item['weight'] }}</td>
-        <td><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
+        <td>{{ status_badge(item['status']) }}</td>
         <td class="actions">
           <div class="status-btns">
             <form method="POST" action="/armor/{{ item['id'] }}/status" class="inline-form">
@@ -181,7 +179,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="12" class="no-data">No armor yet. Add a piece above!</td></tr>
+      {{ empty_state('No armor yet. Add a piece above!') }}
       {% endfor %}
     </tbody>
   </table>

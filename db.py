@@ -963,7 +963,6 @@ def dashboard_stats(character_id=1):
             (SELECT COUNT(*) FROM mods        WHERE character_id=:c AND status='Sell')        AS sell_mods,
             (SELECT COUNT(*) FROM plans       WHERE character_id=:c AND qty_unlearned > 0)    AS dupe_plans,
             (SELECT COALESCE(SUM(my_price*qty),0) FROM vendor_stock WHERE character_id=:c)   AS vendor_total,
-            (SELECT COUNT(*) FROM wishlist WHERE found=0)                                     AS wishlist_active,
             (SELECT COUNT(*) FROM (SELECT name FROM weapons WHERE character_id=:c GROUP BY name HAVING COUNT(*)>1)) AS dupe_weapons
     """, {'c': cid}).fetchone()
 
@@ -983,7 +982,6 @@ def dashboard_stats(character_id=1):
         'sell_mods':     row['sell_mods'],
         'dupe_plans':     row['dupe_plans'],
         'vendor_total':   row['vendor_total'],
-        'wishlist_active': row['wishlist_active'],
         'dupe_weapons':   row['dupe_weapons'],
     }
 
@@ -1045,32 +1043,33 @@ def dashboard_stats(character_id=1):
         ORDER BY pa.item_name
     """).fetchall()
 
-    # Ammo low-stock alerts
-    s['low_ammo'] = conn.execute(
-        "SELECT ammo_type, qty, low_threshold FROM ammo "
-        "WHERE character_id=? AND low_threshold > 0 AND qty < low_threshold ORDER BY ammo_type",
-        (cid,)
-    ).fetchall()
 
-    # Daily tasks pending today
-    today_str = datetime.now().strftime('%Y-%m-%d')
-    this_monday = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime('%Y-%m-%d')
+    # Daily tasks pending — uses FO76 noon reset boundary
+    now = datetime.now()
+    if now.hour < 12:
+        fo76_day = (now - timedelta(days=1)).strftime('%Y-%m-%d')
+        _effective = now - timedelta(days=1)
+    else:
+        fo76_day = now.strftime('%Y-%m-%d')
+        _effective = now
+    fo76_monday = (_effective - timedelta(days=_effective.weekday())).strftime('%Y-%m-%d')
     s['daily_pending'] = conn.execute("""
         SELECT COUNT(*) FROM daily_tasks dt
         WHERE dt.active=1 AND dt.freq='daily'
           AND dt.id NOT IN (
               SELECT task_id FROM daily_completions WHERE completed_date=?
           )
-    """, (today_str,)).fetchone()[0]
+    """, (fo76_day,)).fetchone()[0]
     s['weekly_pending'] = conn.execute("""
         SELECT COUNT(*) FROM daily_tasks dt
         WHERE dt.active=1 AND dt.freq='weekly'
           AND dt.id NOT IN (
               SELECT task_id FROM daily_completions WHERE completed_date >= ?
           )
-    """, (this_monday,)).fetchone()[0]
+    """, (fo76_monday,)).fetchone()[0]
 
-    # Session summary — what happened today
+    # Session summary — what happened today (real calendar date)
+    today_str = now.strftime('%Y-%m-%d')
     s['today_caps_delta'] = conn.execute(
         "SELECT COALESCE(SUM(end_caps - start_caps), 0) FROM caps_sessions WHERE character_id=? AND session_date=?",
         (cid, today_str)

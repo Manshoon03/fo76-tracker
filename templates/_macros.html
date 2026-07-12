@@ -1,0 +1,44 @@
+{# ── Reusable Jinja2 Macros ─────────────────────────────────────────────── #}
+
+{# Page header with title, count badge, and optional icon #}
+{% macro page_header(title, count=none, icon='') %}
+<div class="page-header">
+  <h1>{% if icon %}{{ icon }} {% endif %}{{ title }}</h1>
+  {% if count is not none %}
+  <span class="count-badge">{{ count }}</span>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# Collapsible add/edit panel #}
+{% macro add_panel(panel_id='addPanel', label='+ Add New', edit_item=none) %}
+<section class="add-panel {% if edit_item %}open{% endif %}" id="{{ panel_id }}">
+  <div class="panel-toggle" onclick="togglePanel('{{ panel_id }}')">
+    <span>{{ label if not edit_item else '✎ Edit' }}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    {{ caller() }}
+  </div>
+</section>
+{% endmacro %}
+
+{# Inline delete button with confirmation #}
+{% macro delete_btn(action_url, confirm_msg='Delete this item?') %}
+<form method="POST" action="{{ action_url }}" class="inline-form"
+      onsubmit="return confirm('{{ confirm_msg }}')">
+  <button type="submit" class="btn-sm btn-delete">✕</button>
+</form>
+{% endmacro %}
+
+{# Status badge pill #}
+{% macro status_badge(status) %}
+{% if status %}
+<span class="badge badge-{{ status|lower }}">{{ status }}</span>
+{% endif %}
+{% endmacro %}
+
+{# Empty state for tables #}
+{% macro empty_state(message='No data yet.') %}
+<tr><td colspan="99" class="no-data">{{ message }}</td></tr>
+{% endmacro %}

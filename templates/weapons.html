@@ -1,11 +1,9 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import page_header, status_badge, delete_btn, empty_state %}
 {% block title %}Weapons{% endblock %}
 {% block content %}
 
-<div class="page-header">
-  <h1>⚔ WEAPONS</h1>
-  <span class="count-badge">{{ items|length }} weapons</span>
-</div>
+{{ page_header('WEAPONS', items|length, '⚔') }}
 
 <!-- ── Screenshot Scanner ──────────────────────────────────────────────── -->
 <section class="add-panel {% if scan_active %}open{% endif %}" id="scanPanel">
@@ -200,7 +198,7 @@
         <td class="dim" style="max-width:140px;white-space:normal">{{ item['mods'] }}</td>
         <td class="{{ 'gold' if item['condition_pct'] < 50 else '' }}">{{ item['condition_pct'] }}%</td>
         <td>{{ "{:,}".format(item['value']) }}</td>
-        <td><span class="badge badge-{{ item['status']|lower }}">{{ item['status'] }}</span></td>
+        <td>{{ status_badge(item['status']) }}</td>
         <td class="dim">{{ item['notes'] }}</td>
         <td class="actions">
           <div class="status-btns">
@@ -224,7 +222,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="11" class="no-data">No weapons yet. Add one above!</td></tr>
+      {{ empty_state('No weapons yet. Add one above!') }}
       {% endfor %}
     </tbody>
   </table>
