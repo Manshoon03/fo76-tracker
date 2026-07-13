@@ -69,6 +69,7 @@ def analytics():
 
 @bp.route('/analytics/data')
 def analytics_data():
+    cid = get_active_char_id()
     conn = db.get_db()
     caps_rows = conn.execute(
         "SELECT session_date, end_caps FROM caps_sessions ORDER BY session_date, id"
@@ -82,10 +83,100 @@ def analytics_data():
         FROM vendor_stock GROUP BY name ORDER BY total_value DESC LIMIT 10
     """).fetchall()
     price_list  = list(reversed([dict(r) for r in price_rows]))
+
+    # Economy earnings per week (last 12 weeks)
+    econ_rows = db.query("""
+        SELECT strftime('%Y-W%W', txn_date) as week, currency,
+               COALESCE(SUM(CASE WHEN amount>0 THEN amount ELSE 0 END),0) as earned
+        FROM economy_log WHERE character_id=?
+          AND txn_date >= date('now', '-84 days')
+        GROUP BY week, currency ORDER BY week
+    """, (cid,))
+    econ_weeks = sorted(set(r['week'] for r in econ_rows))
+    econ_by_week = {}
+    for r in econ_rows:
+        econ_by_week.setdefault(r['week'], {})[r['currency']] = r['earned']
+    economy = {
+        'weeks': econ_weeks,
+        'scrip':   [econ_by_week.get(w, {}).get('scrip', 0) for w in econ_weeks],
+        'bullion': [econ_by_week.get(w, {}).get('bullion', 0) for w in econ_weeks],
+        'stamps':  [econ_by_week.get(w, {}).get('stamps', 0) for w in econ_weeks],
+        'modules': [econ_by_week.get(w, {}).get('modules', 0) for w in econ_weeks],
+    }
+
+    # Session history (last 20)
+    sess_rows = db.query("""
+        SELECT started_at, duration_s, caps_delta, scrip_earned, bullion_earned, stamps_earned, tasks_done
+        FROM session_history WHERE character_id=? ORDER BY started_at DESC LIMIT 20
+    """, (cid,))
+    sess_rows = list(reversed(sess_rows))
+    sessions = {
+        'labels':     [r['started_at'][:16].replace('T', ' ') for r in sess_rows],
+        'durations':  [round(r['duration_s'] / 60) for r in sess_rows],
+        'caps_delta': [r['caps_delta'] for r in sess_rows],
+        'scrip':      [r['scrip_earned'] for r in sess_rows],
+        'bullion':    [r['bullion_earned'] for r in sess_rows],
+        'stamps':     [r['stamps_earned'] for r in sess_rows],
+        'tasks':      [r['tasks_done'] for r in sess_rows],
+    }
+
+    # Daily completions per day (last 30 days)
+    comp_rows = db.query("""
+        SELECT completed_date, COUNT(*) as cnt
+        FROM daily_completions
+        WHERE completed_date >= date('now', '-30 days')
+        GROUP BY completed_date ORDER BY completed_date
+    """)
+    completions = {
+        'labels': [r['completed_date'] for r in comp_rows],
+        'values': [r['cnt'] for r in comp_rows],
+    }
+
+    # Fish rarity distribution
+    fish_rows = db.query("""
+        SELECT rarity, COUNT(*) as cnt FROM fish_log
+        WHERE character_id=? AND rarity != '' GROUP BY rarity ORDER BY cnt DESC
+    """, (cid,))
+    fish_rarity = {
+        'labels': [r['rarity'] for r in fish_rows],
+        'values': [r['cnt'] for r in fish_rows],
+    }
+
+    # Caps income vs expense per week (last 12 weeks)
+    flow_rows = db.query("""
+        SELECT strftime('%Y-W%W', txn_date) as week,
+               COALESCE(SUM(CASE WHEN txn_type='income' THEN amount ELSE 0 END),0) as income,
+               COALESCE(SUM(CASE WHEN txn_type='expense' THEN amount ELSE 0 END),0) as expense
+        FROM caps_ledger WHERE character_id=?
+          AND txn_date >= date('now', '-84 days')
+        GROUP BY week ORDER BY week
+    """, (cid,))
+    caps_flow = {
+        'weeks':   [r['week'] for r in flow_rows],
+        'income':  [r['income'] for r in flow_rows],
+        'expense': [r['expense'] for r in flow_rows],
+    }
+
+    # Legend run counts
+    leg_rows = db.query("""
+        SELECT boss_name, run_count FROM legend_runs
+        WHERE character_id=? ORDER BY run_count DESC
+    """, (cid,))
+    legend = {
+        'labels': [r['boss_name'] for r in leg_rows],
+        'values': [r['run_count'] for r in leg_rows],
+    }
+
     return jsonify({
-        'caps':    {'labels': [r['session_date'] for r in caps_rows],  'values': [r['end_caps'] for r in caps_rows]},
-        'prices':  {'labels': [r['week'] for r in price_list],         'values': [r['cnt'] for r in price_list]},
-        'vendor':  {'labels': [r['name'] for r in vendor_rows],        'values': [r['total_value'] for r in vendor_rows]},
+        'caps':       {'labels': [r['session_date'] for r in caps_rows],  'values': [r['end_caps'] for r in caps_rows]},
+        'prices':     {'labels': [r['week'] for r in price_list],         'values': [r['cnt'] for r in price_list]},
+        'vendor':     {'labels': [r['name'] for r in vendor_rows],        'values': [r['total_value'] for r in vendor_rows]},
+        'economy':    economy,
+        'sessions':   sessions,
+        'completions': completions,
+        'fish_rarity': fish_rarity,
+        'caps_flow':  caps_flow,
+        'legend':     legend,
     })
 
 

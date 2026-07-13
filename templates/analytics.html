@@ -39,7 +39,7 @@
   </div>
 </div>
 
-<!-- ── 5. Top Vendor Items by Value ──────────────────────────────────── -->
+<!-- ── 3. Top Vendor Items by Value ──────────────────────────────────── -->
 <div id="section-vendor" style="display:none">
   <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('vendor-body')">
     TOP VENDOR ITEMS BY VALUE
@@ -47,6 +47,78 @@
   <div id="vendor-body">
     <div style="height:280px;max-height:300px;margin-bottom:32px">
       <canvas id="vendorChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── 4. Economy Earnings Over Time ──────────────────────────────────── -->
+<div id="section-economy" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('economy-body')">
+    ECONOMY EARNINGS OVER TIME
+  </div>
+  <div id="economy-body">
+    <div style="height:280px;max-height:300px;margin-bottom:32px">
+      <canvas id="economyChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── 5. Session Performance ─────────────────────────────────────────── -->
+<div id="section-sessions" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('sessions-body')">
+    SESSION PERFORMANCE
+  </div>
+  <div id="sessions-body">
+    <div style="height:280px;max-height:300px;margin-bottom:32px">
+      <canvas id="sessionsChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── 6. Daily Task Completion Rate ──────────────────────────────────── -->
+<div id="section-completions" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('completions-body')">
+    DAILY TASK COMPLETIONS (30 DAYS)
+  </div>
+  <div id="completions-body">
+    <div style="height:280px;max-height:300px;margin-bottom:32px">
+      <canvas id="completionsChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── 7. Fishing Rarity Distribution ─────────────────────────────────── -->
+<div id="section-fish" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('fish-body')">
+    FISHING: RARITY DISTRIBUTION
+  </div>
+  <div id="fish-body">
+    <div style="height:300px;max-height:320px;margin-bottom:32px">
+      <canvas id="fishChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── 8. Caps Income vs Expense ──────────────────────────────────────── -->
+<div id="section-capsflow" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('capsflow-body')">
+    CAPS INCOME VS EXPENSE
+  </div>
+  <div id="capsflow-body">
+    <div style="height:280px;max-height:300px;margin-bottom:32px">
+      <canvas id="capsflowChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── 9. Legend Run Activity ─────────────────────────────────────────── -->
+<div id="section-legend" style="display:none">
+  <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('legend-body')">
+    LEGEND RUN ACTIVITY
+  </div>
+  <div id="legend-body">
+    <div style="height:280px;max-height:300px;margin-bottom:32px">
+      <canvas id="legendChart"></canvas>
     </div>
   </div>
 </div>
@@ -93,7 +165,7 @@ function makeChart(id, type, labels, values, label, color) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      indexAxis: (id === 'vendorChart') ? 'y' : 'x',
+      indexAxis: (id === 'vendorChart' || id === 'legendChart') ? 'y' : 'x',
       plugins: {
         legend: { display: false }
       },
@@ -114,6 +186,68 @@ function makeChart(id, type, labels, values, label, color) {
   });
 }
 
+// ── No-data helper ───────────────────────────────────────────────────────
+function showNoData(canvasId) {
+  const ctx = document.getElementById(canvasId);
+  if (ctx) ctx.parentElement.innerHTML = '<div class="no-data" style="padding:20px;text-align:center">No data yet.</div>';
+}
+
+// ── Multi-series line chart ──────────────────────────────────────────────
+function makeMultiLineChart(id, labels, datasets) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (!labels || labels.length === 0) { showNoData(id); return; }
+  new Chart(ctx, {
+    type: 'line',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#888' } } },
+      scales: {
+        x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#1a1a1a' } },
+        y: { ticks: { color: '#888' }, grid: { color: '#1a1a1a' } }
+      }
+    }
+  });
+}
+
+// ── Stacked bar chart ────────────────────────────────────────────────────
+function makeStackedBarChart(id, labels, datasets) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (!labels || labels.length === 0) { showNoData(id); return; }
+  new Chart(ctx, {
+    type: 'bar',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#888' } } },
+      scales: {
+        x: { stacked: true, ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#1a1a1a' } },
+        y: { stacked: true, ticks: { color: '#888', callback: function(v) { return v > 999 ? v.toLocaleString() : v; } }, grid: { color: '#1a1a1a' } }
+      }
+    }
+  });
+}
+
+// ── Doughnut chart ───────────────────────────────────────────────────────
+function makeDoughnutChart(id, labels, values, colors) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (!labels || labels.length === 0) { showNoData(id); return; }
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ data: values, backgroundColor: colors, borderColor: '#111', borderWidth: 2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'right', labels: { color: '#888', padding: 12 } } }
+    }
+  });
+}
+
 // ── Data load ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
   fetch('/analytics/data')
@@ -125,24 +259,107 @@ document.addEventListener('DOMContentLoaded', function () {
       // Hide loading, reveal sections
       document.getElementById('loadingMsg').style.display = 'none';
 
-      const sections = ['section-caps', 'section-prices', 'section-vendor'];
-      sections.forEach(function (id) {
-        const el = document.getElementById(id);
+      var allSections = [
+        'section-caps', 'section-prices', 'section-vendor',
+        'section-economy', 'section-sessions', 'section-completions',
+        'section-fish', 'section-capsflow', 'section-legend'
+      ];
+      allSections.forEach(function (id) {
+        var el = document.getElementById(id);
         if (el) el.style.display = '';
       });
 
-      // Render charts
+      // ── Original 3 charts ──
       makeChart('capsChart',     'line', data.caps.labels,    data.caps.values,    'Caps',               accent);
       makeChart('pricesChart',   'bar',  data.prices.labels,  data.prices.values,  'Prices Logged',      teal);
-      makeChart('vendorChart',   'bar',  data.vendor.labels,   data.vendor.values,   'Total Value (caps)',  accent);
+      makeChart('vendorChart',   'bar',  data.vendor.labels,  data.vendor.values,  'Total Value (caps)', accent);
+
+      // ── 4. Economy Earnings (multi-line) ──
+      makeMultiLineChart('economyChart', data.economy.weeks, [
+        { label: 'Scrip',   data: data.economy.scrip,   borderColor: '#ffb300', backgroundColor: '#ffb30022', tension: 0.3 },
+        { label: 'Bullion', data: data.economy.bullion,  borderColor: '#ffd700', backgroundColor: '#ffd70022', tension: 0.3 },
+        { label: 'Stamps',  data: data.economy.stamps,   borderColor: '#42a5f5', backgroundColor: '#42a5f522', tension: 0.3 },
+        { label: 'Modules', data: data.economy.modules,  borderColor: '#ab47bc', backgroundColor: '#ab47bc22', tension: 0.3 }
+      ]);
+
+      // ── 5. Session Performance (bar with tooltip extras) ──
+      (function() {
+        var ctx = document.getElementById('sessionsChart');
+        if (!ctx) return;
+        var s = data.sessions;
+        if (!s.labels || s.labels.length === 0) { showNoData('sessionsChart'); return; }
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: s.labels,
+            datasets: [{ label: 'Duration (min)', data: s.durations, backgroundColor: teal + '88', borderColor: teal, borderWidth: 1 }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  afterBody: function(items) {
+                    var i = items[0].dataIndex;
+                    return 'Caps: ' + (s.caps_delta[i] >= 0 ? '+' : '') + s.caps_delta[i].toLocaleString()
+                      + '\nScrip: ' + s.scrip[i] + '  Bullion: ' + s.bullion[i] + '  Stamps: ' + s.stamps[i]
+                      + '\nTasks done: ' + s.tasks[i];
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#1a1a1a' } },
+              y: { ticks: { color: '#888' }, grid: { color: '#1a1a1a' }, title: { display: true, text: 'Minutes', color: '#666' } }
+            }
+          }
+        });
+      })();
+
+      // ── 6. Daily Task Completions (area line) ──
+      (function() {
+        var ctx = document.getElementById('completionsChart');
+        if (!ctx) return;
+        var c = data.completions;
+        if (!c.labels || c.labels.length === 0) { showNoData('completionsChart'); return; }
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: c.labels,
+            datasets: [{ label: 'Tasks Completed', data: c.values, borderColor: accent, backgroundColor: accent + '22', fill: true, tension: 0.3 }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#1a1a1a' } },
+              y: { ticks: { color: '#888', stepSize: 1 }, grid: { color: '#1a1a1a' }, beginAtZero: true }
+            }
+          }
+        });
+      })();
+
+      // ── 7. Fish Rarity (doughnut) ──
+      makeDoughnutChart('fishChart', data.fish_rarity.labels, data.fish_rarity.values,
+        ['#9e9e9e', '#66bb6a', '#42a5f5', '#7e57c2', '#ffd700', '#ff7043', '#ef5350', '#26c6da']);
+
+      // ── 8. Caps Income vs Expense (stacked bar) ──
+      makeStackedBarChart('capsflowChart', data.caps_flow.weeks, [
+        { label: 'Income',  data: data.caps_flow.income,  backgroundColor: '#66bb6a88', borderColor: '#66bb6a', borderWidth: 1 },
+        { label: 'Expense', data: data.caps_flow.expense, backgroundColor: '#ef535088', borderColor: '#ef5350', borderWidth: 1 }
+      ]);
+
+      // ── 9. Legend Runs (horizontal bar) ──
+      makeChart('legendChart', 'bar', data.legend.labels, data.legend.values, 'Run Count', gold);
 
       // Last updated stamp
-      const lu = document.getElementById('lastUpdated');
+      var lu = document.getElementById('lastUpdated');
       lu.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
       lu.style.display = '';
     })
     .catch(function (err) {
-      const msg = document.getElementById('loadingMsg');
+      var msg = document.getElementById('loadingMsg');
       msg.textContent = 'Failed to load chart data. (' + err.message + ')';
       msg.style.color = 'var(--danger, #ff4444)';
     });
