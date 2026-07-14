@@ -278,6 +278,75 @@ function updateCountdowns() {
 updateCountdowns();
 setInterval(updateCountdowns, 1000);
 
+// +1 progress via AJAX
+function incrementChallenge(id) {
+  fetch('/challenges/' + id + '/progress', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'delta=1'
+  }).then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) return;
+      var ptext = document.getElementById('ptext-' + id);
+      var pbar = document.getElementById('pbar-' + id);
+      if (ptext) ptext.textContent = d.progress + '/' + d.target;
+      if (pbar) {
+        var pct = Math.min(100, Math.round(d.progress / d.target * 100));
+        pbar.style.width = pct + '%';
+        if (d.completed) pbar.classList.add('complete');
+      }
+      if (d.completed) {
+        var row = document.getElementById('crow-' + id);
+        if (row) row.classList.add('completed-row');
+        var btn = row ? row.querySelector('[onclick*="incrementChallenge"]') : null;
+        if (btn) btn.style.display = 'none';
+        var tbtn = document.getElementById('tbtn-' + id);
+        if (tbtn) { tbtn.textContent = '↩'; tbtn.classList.add('btn-secondary'); tbtn.classList.remove('btn-keep'); }
+        showToast('Challenge complete!', 'success');
+      }
+    });
+}
+
+// Toggle complete/incomplete via AJAX
+function toggleChallenge(id) {
+  fetch('/challenges/' + id + '/toggle', {
+    method: 'POST',
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  }).then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) return;
+      var row = document.getElementById('crow-' + id);
+      var tbtn = document.getElementById('tbtn-' + id);
+      if (d.completed) {
+        if (row) row.classList.add('completed-row');
+        if (tbtn) { tbtn.textContent = '↩'; tbtn.classList.add('btn-secondary'); tbtn.classList.remove('btn-keep'); }
+        // Hide +1 button if exists
+        var incBtn = row ? row.querySelector('[onclick*="incrementChallenge"]') : null;
+        if (incBtn) incBtn.style.display = 'none';
+        // Update progress display for target=1 items
+        if (d.target <= 1) {
+          var progCell = row ? row.querySelectorAll('td')[4] : null;
+          if (progCell && !progCell.querySelector('.progress-bar-wrap')) {
+            progCell.innerHTML = '<span class="accent">✓ Done</span>';
+          }
+        }
+        showToast('Challenge complete!', 'success');
+      } else {
+        if (row) row.classList.remove('completed-row');
+        if (tbtn) { tbtn.textContent = '✓'; tbtn.classList.remove('btn-secondary'); tbtn.classList.add('btn-keep'); }
+        // Show +1 button if exists
+        var incBtn2 = row ? row.querySelector('[onclick*="incrementChallenge"]') : null;
+        if (incBtn2) incBtn2.style.display = '';
+        if (d.target <= 1) {
+          var progCell2 = row ? row.querySelectorAll('td')[4] : null;
+          if (progCell2 && !progCell2.querySelector('.progress-bar-wrap')) {
+            progCell2.innerHTML = '<span class="dim">—</span>';
+          }
+        }
+      }
+    });
+}
+
 // Score booster AJAX
 function updateBooster() {
   const pct = parseInt(document.getElementById('boosterPct').value) || 0;
