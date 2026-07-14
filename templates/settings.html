@@ -6,14 +6,43 @@
   <h1>⚙ SETTINGS</h1>
 </div>
 
-<section class="add-panel open" id="discordPanel">
-  <div class="panel-toggle" onclick="togglePanel('discordPanel')">
-    <span>💬 Discord Webhook</span>
+<section class="add-panel open" id="dmPanel">
+  <div class="panel-toggle" onclick="togglePanel('dmPanel')">
+    <span>📩 Discord Bot DM <span class="dim" style="font-size:10px">(preferred)</span></span>
     <span class="toggle-icon">▼</span>
   </div>
   <div class="panel-body">
     <p class="dim" style="font-size:11px;margin-bottom:12px">
-      Paste a Discord webhook URL to receive notifications for nuke codes, price alerts, and daily summaries.
+      Send notifications as direct messages via your Discord bot. DMs are tried first; webhook is the fallback.
+    </p>
+    <form method="POST" action="/settings/discord/bot">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Bot Token</label>
+          <input type="password" name="bot_token" value="{{ bot_token }}" placeholder="Bot token from Discord Developer Portal" autocomplete="off">
+        </div>
+        <div class="form-group span2">
+          <label>Your Discord User ID</label>
+          <input type="text" name="user_id" value="{{ user_id }}" placeholder="Right-click your name → Copy User ID">
+        </div>
+      </div>
+      <div class="form-actions" style="gap:8px">
+        <button class="btn btn-primary" type="submit">Save</button>
+        <button class="btn btn-secondary" type="button" onclick="testDM()">Test DM</button>
+      </div>
+    </form>
+    <div id="dmResult" style="margin-top:8px;font-size:11px"></div>
+  </div>
+</section>
+
+<section class="add-panel" id="discordPanel">
+  <div class="panel-toggle" onclick="togglePanel('discordPanel')">
+    <span>💬 Discord Webhook <span class="dim" style="font-size:10px">(fallback)</span></span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <p class="dim" style="font-size:11px;margin-bottom:12px">
+      Webhook URL for channel notifications. Used as fallback when bot DM is not configured.
       <a href="https://support.discord.com/hc/en-us/articles/228383668" target="_blank" style="color:var(--accent)">How to create a webhook →</a>
     </p>
     <form method="POST" action="/settings/discord">
@@ -47,6 +76,18 @@
 </section>
 
 <script>
+function testDM() {
+  const el = document.getElementById('dmResult');
+  el.textContent = 'Sending test DM...';
+  el.style.color = 'var(--text-dim)';
+  fetch('/settings/discord/test-dm', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      el.textContent = d.ok ? '✓ DM sent! Check your Discord.' : '✗ ' + (d.error || 'Failed');
+      el.style.color = d.ok ? 'var(--accent)' : 'var(--red)';
+    })
+    .catch(() => { el.textContent = '✗ Request failed'; el.style.color = 'var(--red)'; });
+}
 function testWebhook() {
   const el = document.getElementById('testResult');
   el.textContent = 'Sending test...';

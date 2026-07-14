@@ -1,6 +1,6 @@
 # FO76 Reference Data
 # Populates <datalist> autocomplete on all major forms throughout the app.
-# Last updated: 2026-04-27
+# Last updated: 2026-07-13
 #
 # ── How to add new items ──────────────────────────────────────────────────────
 # Just drop the new name into the relevant list below and save.
@@ -47,8 +47,8 @@ WEAPON_STAR4 = sorted([
     "Battle-Loader's", "Bruiser's", "Bully's", "Charged", "Choo-Choo's",
     "Combo-Breaker's", "Conductor's", "Electrician's", "Encircler's",
     "Fencer's", "Fracturer's", "Icemen's", "Pin-Pointer's", "Polished",
-    "Pounder's", "Pyromaniac's", "Ranger's", "Stabilizer's", "Thrill-Seeker's",
-    "Viper's",
+    "Pounder's", "Pyromaniac's", "Ranger's", "Satiated", "Stabilizer's",
+    "Tarnished", "Thrill-Seeker's", "Viper's",
 ])
 
 # ── Armor Legendary Effects ───────────────────────────────────────────────────
@@ -79,9 +79,9 @@ ARMOR_STAR3 = sorted([
 ])
 
 ARMOR_STAR4 = sorted([
-    "Aegis", "Limit-Breaking", "Miasma's", "Propelling", "Radioactive-Powered",
-    "Reflective", "Rejuvenator's", "Runner's", "Sawbones's", "Scanner's",
-    "Stalwart's", "Tanky's",
+    "Aegis", "Hauler's", "Limit-Breaking", "Miasma's", "Propelling",
+    "Radioactive-Powered", "Raging", "Reflective", "Rejuvenator's", "Runner's",
+    "Sawbones's", "Scanner's", "Stalwart's", "Tanky's", "Vector",
 ])
 
 # ── Mutations ─────────────────────────────────────────────────────────────────
@@ -361,16 +361,24 @@ SHORTHAND_STAR4 = {
     'STB': ("Stabilizer's", '+Accuracy and less recoil while aiming'),
     'THL': ("Thrill-Seeker's", '+Damage when on a kill streak'),
     'VPR': ("Viper's", 'Attacks cause bleeding damage over time'),
+    # Infestations (Patch 68)
+    'HLR': ("Hauler's", '+30 Carrying Capacity'),
+    'RAG': ('Raging', 'On hit, +3% Damage for 10s (stacks)'),
+    'SAT': ('Satiated', 'Kills restore hunger and thirst'),
+    'TRN': ('Tarnished', 'Up to +120% damage as durability decreases'),
+    'VCT': ('Vector', '+10% V.A.T.S. accuracy vs distant targets'),
 }
 
 OUR_CODE_STAR4 = {
     "Battle-Loader's": 'BTL', "Bruiser's": 'BRS', "Bully's": 'BLY',
     'Charged': 'CHG', "Choo-Choo's": 'CCH', "Combo-Breaker's": 'CMB',
     "Conductor's": 'CND', "Electrician's": 'ELC', "Encircler's": 'ENC',
-    "Fencer's": 'FNC', "Fracturer's": 'FRC', "Icemen's": 'ICE',
-    "Pin-Pointer's": 'PIN', 'Polished': 'POL', "Pounder's": 'PND',
-    "Pyromaniac's": 'PYR', "Ranger's": 'RNG', "Stabilizer's": 'STB',
-    "Thrill-Seeker's": 'THL', "Viper's": 'VPR',
+    "Fencer's": 'FNC', "Fracturer's": 'FRC', "Hauler's": 'HLR',
+    "Icemen's": 'ICE', "Pin-Pointer's": 'PIN', 'Polished': 'POL',
+    "Pounder's": 'PND', "Pyromaniac's": 'PYR', 'Raging': 'RAG',
+    "Ranger's": 'RNG', 'Satiated': 'SAT', "Stabilizer's": 'STB',
+    'Tarnished': 'TRN', "Thrill-Seeker's": 'THL', 'Vector': 'VCT',
+    "Viper's": 'VPR',
 }
 
 # ── Chems / Aid ───────────────────────────────────────────────────────────────

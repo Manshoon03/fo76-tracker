@@ -320,13 +320,35 @@ def quick_log():
 @bp.route('/settings')
 def settings():
     webhook_url = db.get_setting('discord_webhook_url', '')
-    return render_template('settings.html', webhook_url=webhook_url)
+    bot_token = db.get_setting('discord_bot_token', '')
+    user_id = db.get_setting('discord_user_id', '')
+    return render_template('settings.html', webhook_url=webhook_url,
+                           bot_token=bot_token, user_id=user_id)
 
 @bp.route('/settings/discord', methods=['POST'])
 def settings_discord():
     db.set_setting('discord_webhook_url', fs('webhook_url'))
     flash('Discord webhook saved!', 'success')
     return redirect(url_for('tools.settings'))
+
+@bp.route('/settings/discord/bot', methods=['POST'])
+def settings_discord_bot():
+    db.set_setting('discord_bot_token', fs('bot_token'))
+    db.set_setting('discord_user_id', fs('user_id'))
+    flash('Discord bot DM settings saved!', 'success')
+    return redirect(url_for('tools.settings'))
+
+@bp.route('/settings/discord/test-dm', methods=['POST'])
+def settings_discord_test_dm():
+    from routes.helpers import _discord_dm
+    token = db.get_setting('discord_bot_token', '')
+    uid = db.get_setting('discord_user_id', '')
+    if not token or not uid:
+        return jsonify(ok=False, error='Bot token and User ID are both required')
+    ok = _discord_dm('☢ **FO76 Tracker** — DM test successful! You will receive notifications here.')
+    if ok:
+        return jsonify(ok=True)
+    return jsonify(ok=False, error='Failed to send DM. Check bot token and user ID.')
 
 @bp.route('/settings/discord/test', methods=['POST'])
 def settings_discord_test():

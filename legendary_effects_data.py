@@ -1,4 +1,4 @@
-# Legendary effects seeded from R.O.L.L. (fallout76.wiki) — 142 effects
+# Legendary effects seeded from R.O.L.L. (fallout76.wiki) — 147 effects
 # Each entry: (name, description, star, categories_csv, legendary_modules, extra_components_json, acquisition_sources_json)
 
 import json
@@ -154,6 +154,13 @@ LEGENDARY_EFFECTS = [
     ("Tanky's",         "+200 DR for 10s when standing still, 20s cooldown (up to +1000 on full stack)",               4, "Armor,Power Armor",              120, [{"item":"Ballistic Fiber","qty":5}],                ["Gleaming Depths Stage 2"]),
     ("Thrill-Seeker's", "+3% Melee Speed and +3% Reload Speed per Kill Streak stack (max 30% each)",                   4, "Weapon Ranged,Weapon Melee",     120, [{"item":"Adrenal Reaction Serum","qty":1}],         []),
     ("Viper's",         "When a combat target is poisoned, deal +50% bonus damage",                                    4, "Weapon Ranged,Weapon Melee",     120, [{"item":"Acid","qty":15}],                          ["Gleaming Depths Stage 5"]),
+
+    # ─── 4-STAR (120 modules, Infestations) ──────────────────────────────
+    ("Hauler's",        "Increases Carrying Capacity by 30",                                                          4, "Armor,Power Armor",              120, [],                                                  ["Infestations"]),
+    ("Raging",          "Upon being hit, deal +3% Damage for 10 seconds (stacks)",                                    4, "Armor,Power Armor",              120, [],                                                  ["Infestations"]),
+    ("Satiated",        "Kills restore hunger and thirst",                                                             4, "Weapon Ranged,Weapon Melee",     120, [],                                                  ["Infestations"]),
+    ("Tarnished",       "Damage increases (up to +120%) as weapon durability decreases",                               4, "Weapon Ranged,Weapon Melee",     120, [],                                                  ["Infestations"]),
+    ("Vector",          "Gain 10% bonus V.A.T.S. accuracy against distant targets",                                   4, "Armor,Power Armor",              120, [],                                                  ["Infestations"]),
 ]
 
 

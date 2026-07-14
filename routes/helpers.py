@@ -174,8 +174,40 @@ def _extract_json_array(text):
         return None
 
 
+def _discord_dm(message, embed=None):
+    """Send a DM via Discord bot. Returns True on success."""
+    token = db.get_setting('discord_bot_token', '')
+    user_id = db.get_setting('discord_user_id', '')
+    if not token or not user_id:
+        return False
+    try:
+        import requests
+        headers = {'Authorization': f'Bot {token}', 'Content-Type': 'application/json'}
+        # Open/get DM channel
+        r = requests.post('https://discord.com/api/v10/users/@me/channels',
+                          json={'recipient_id': user_id}, headers=headers, timeout=5)
+        if r.status_code not in (200, 201):
+            return False
+        channel_id = r.json()['id']
+        # Send message
+        payload = {}
+        if embed:
+            payload['embeds'] = [embed]
+        if message:
+            payload['content'] = message
+        r2 = requests.post(f'https://discord.com/api/v10/channels/{channel_id}/messages',
+                           json=payload, headers=headers, timeout=5)
+        return r2.status_code in (200, 201)
+    except Exception:
+        return False
+
+
 def discord_notify(message, embed=None):
-    """Send a notification to Discord webhook. Fails silently."""
+    """Send a notification via Discord DM (preferred) or webhook fallback. Fails silently."""
+    # Try DM first
+    if _discord_dm(message, embed):
+        return
+    # Fall back to webhook
     url = db.get_setting('discord_webhook_url', '')
     if not url:
         return
