@@ -6,7 +6,7 @@ import io
 import csv
 import zipfile
 import db
-from routes.helpers import fs, fi, ff, get_active_char_id, _scan_image, _extract_json
+from routes.helpers import fs, fi, ff, get_active_char_id, _scan_image, _extract_json, discord_notify
 
 bp = Blueprint('tools', __name__)
 
@@ -85,6 +85,13 @@ def decode():
         weapon_star1=ref.WEAPON_STAR1, weapon_star2=ref.WEAPON_STAR2,
         weapon_star3=ref.WEAPON_STAR3, weapon_star4=ref.WEAPON_STAR4,
         weapon_aliases=sorted(set(ref.WEAPON_ALIASES.values())))
+
+
+# ── Craft Calculator ─────────────────────────────────────────────────────────
+
+@bp.route('/craft-calc')
+def craft_calc():
+    return render_template('craft_calc.html')
 
 
 # ── Export ───────────────────────────────────────────────────────────────────
@@ -306,3 +313,160 @@ def quick_log():
         return jsonify(ok=False, error='Invalid'), 400
 
     return jsonify(ok=False, error='Unknown type'), 400
+
+
+# ── Settings / Discord ────────────────────────────────────────────────────────
+
+@bp.route('/settings')
+def settings():
+    webhook_url = db.get_setting('discord_webhook_url', '')
+    return render_template('settings.html', webhook_url=webhook_url)
+
+@bp.route('/settings/discord', methods=['POST'])
+def settings_discord():
+    db.set_setting('discord_webhook_url', fs('webhook_url'))
+    flash('Discord webhook saved!', 'success')
+    return redirect(url_for('tools.settings'))
+
+@bp.route('/settings/discord/test', methods=['POST'])
+def settings_discord_test():
+    url = db.get_setting('discord_webhook_url', '')
+    if not url:
+        return jsonify(ok=False, error='No webhook URL configured')
+    try:
+        import requests
+        r = requests.post(url, json={
+            'embeds': [{
+                'title': '☢ FO76 Tracker — Test',
+                'description': 'Webhook is working! You will receive notifications here.',
+                'color': 0x00FF41
+            }]
+        }, timeout=5)
+        if r.status_code in (200, 204):
+            return jsonify(ok=True)
+        return jsonify(ok=False, error=f'Discord returned {r.status_code}')
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)[:100])
+
+@bp.route('/settings/discord/summary', methods=['POST'])
+def settings_discord_summary():
+    from routes.helpers import fo76_today, fo76_this_monday
+    cid = get_active_char_id()
+    # Pending daily tasks
+    today = fo76_today()
+    this_monday = fo76_this_monday()
+    tasks = db.query("SELECT * FROM daily_tasks WHERE active=1 ORDER BY freq, sort_order")
+    done_daily = {r['task_id'] for r in db.query("SELECT task_id FROM daily_completions WHERE completed_date=?", (today,))}
+    done_weekly = {r['task_id'] for r in db.query("SELECT task_id FROM daily_completions WHERE completed_date>=?", (this_monday,))}
+    daily_lines = []
+    weekly_lines = []
+    for t in tasks:
+        done_set = done_daily if t['freq'] == 'daily' else done_weekly
+        status = '\u2705' if t['id'] in done_set else '\u2b1c'
+        line = f"{status} {t['name']}"
+        if t['freq'] == 'daily':
+            daily_lines.append(line)
+        else:
+            weekly_lines.append(line)
+    # Challenges
+    ch_incomplete = db.get_one("SELECT COUNT(*) as n FROM challenges WHERE character_id=? AND completed=0 AND active=1", (cid,))['n']
+    ch_done = db.get_one("SELECT COUNT(*) as n FROM challenges WHERE character_id=? AND completed=1 AND active=1", (cid,))['n']
+    desc = '**Daily Tasks:**\n' + '\n'.join(daily_lines) if daily_lines else ''
+    if weekly_lines:
+        desc += '\n\n**Weekly Tasks:**\n' + '\n'.join(weekly_lines)
+    desc += f'\n\n**Challenges:** {ch_done} done, {ch_incomplete} remaining'
+    embed = {
+        'title': '\U0001f4cb FO76 Daily Summary',
+        'description': desc,
+        'color': 0x00FF41
+    }
+    discord_notify(None, embed=embed)
+    return jsonify(ok=True)
+
+
+# ── Stash Optimizer ───────────────────────────────────────────────────────────
+
+@bp.route('/stash-optimizer')
+def stash_optimizer():
+    return render_template('stash_optimizer.html')
+
+@bp.route('/stash-optimizer/analyze', methods=['POST'])
+def stash_optimizer_analyze():
+    from routes.helpers import _get_anthropic
+    cid = get_active_char_id()
+    # Gather inventory data
+    weapons = db.query(
+        "SELECT name, wtype, star1, star2, star3, star4, weight, value, status, condition_pct "
+        "FROM weapons WHERE character_id=? AND status != 'Scrapped' ORDER BY name", (cid,)
+    )
+    armor = db.query(
+        "SELECT name, slot, star1, star2, star3, star4, dr, er, rr, weight, value, status "
+        "FROM armor WHERE character_id=? AND status != 'Scrapped' ORDER BY name", (cid,)
+    )
+    inventory = db.query(
+        "SELECT name, category, qty, weight_each, value_each, status "
+        "FROM inventory WHERE character_id=? AND source_table='' ORDER BY category, name", (cid,)
+    )
+    plans = db.query(
+        "SELECT name, category, qty_unlearned FROM plans WHERE character_id=? AND qty_unlearned > 0 ORDER BY name", (cid,)
+    )
+    # Build context
+    lines = []
+    if weapons:
+        lines.append("WEAPONS:")
+        for w in weapons:
+            stars = ' / '.join(filter(None, [w['star1'], w['star2'], w['star3'], w['star4']]))
+            lines.append(f"  - {w['name']} ({w['wtype'] or 'Unknown'}) [{stars or 'non-legendary'}] wt:{w['weight']} val:{w['value']} status:{w['status']}")
+    if armor:
+        lines.append("\nARMOR:")
+        for a in armor:
+            stars = ' / '.join(filter(None, [a['star1'], a['star2'], a['star3'], a['star4']]))
+            lines.append(f"  - {a['name']} ({a['slot'] or '?'}) [{stars or 'non-legendary'}] wt:{a['weight']} val:{a['value']} status:{a['status']}")
+    if inventory:
+        lines.append("\nINVENTORY:")
+        for i in inventory:
+            lines.append(f"  - {i['name']} (x{i['qty']}) cat:{i['category']} wt:{i['weight_each']} status:{i['status']}")
+    if plans:
+        lines.append("\nUNLEARNED PLAN DUPES:")
+        for p in plans:
+            lines.append(f"  - {p['name']} ({p['category']}) x{p['qty_unlearned']}")
+
+    if not lines:
+        return jsonify(ok=False, error='No items found in your stash. Add some weapons, armor, or inventory first.')
+
+    stash_text = '\n'.join(lines)
+    prompt = f"""You are a Fallout 76 stash management advisor. Based on this stash snapshot, suggest what to scrap, sell, or keep.
+
+Prioritize:
+1. Freeing weight — heavy items with low value first
+2. Legendary value — god rolls (Bloodied/Anti-Armor + FFR/Explosive + 25LVC are top tier) should be kept
+3. Duplicate plans — sell to vendors or other players
+4. Low-value non-legendary weapons/armor — scrap for materials
+
+Return a JSON object with this exact format:
+{{
+  "scrap": [{{"name": "item name", "reason": "brief reason"}}],
+  "sell": [{{"name": "item name", "reason": "brief reason", "estimated_value": "low/medium/high"}}],
+  "keep": [{{"name": "item name", "reason": "brief reason"}}],
+  "summary": "1-2 sentence overall assessment"
+}}
+
+Keep each list to the top 10-15 most important suggestions. Be concise.
+
+STASH CONTENTS:
+{stash_text}"""
+
+    try:
+        client = _get_anthropic()
+        msg = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=2048,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        from routes.helpers import _extract_json
+        result = _extract_json(msg.content[0].text)
+        if result:
+            return jsonify(ok=True, result=result)
+        return jsonify(ok=False, error='Could not parse AI response')
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)[:200])

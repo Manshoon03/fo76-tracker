@@ -15,6 +15,10 @@
     })();
   </script>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#00ff41">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 
@@ -111,6 +115,7 @@
     <a href="/economy" class="sidebar-item {% if '/economy' in ni %}active{% endif %}" title="Economy"><span class="si-icon">💹</span><span class="si-label">Economy</span></a>
     <a href="/plans"           class="sidebar-item {% if '/plans' in ni and '/plan-checklist' not in ni %}active{% endif %}"           title="Plans">    <span class="si-icon">📜</span><span class="si-label">Plans</span></a>
     <a href="/plan-checklist" class="sidebar-item {% if '/plan-checklist' in ni %}active{% endif %}" title="Plan Checklist"><span class="si-icon">📋</span><span class="si-label">Plan Checklist</span></a>
+    <a href="/recipes"        class="sidebar-item {% if '/recipes' in ni %}active{% endif %}"        title="Recipes">      <span class="si-icon">🧪</span><span class="si-label">Recipes</span></a>
   </div>
 
   <div class="sidebar-divider"></div>
@@ -119,9 +124,13 @@
     <a href="/decode"          class="sidebar-item {% if '/decode' in ni %}active{% endif %}"          title="Shorthand Decoder"><span class="si-icon">🔍</span><span class="si-label">Decoder</span></a>
     <a href="/trade-post"      class="sidebar-item {% if '/trade-post' in ni %}active{% endif %}"      title="Trade Post"><span class="si-icon">📢</span><span class="si-label">Trade Post</span></a>
 
+    <a href="/craft-calc"  class="sidebar-item {% if '/craft-calc' in ni %}active{% endif %}"  title="Craft Calculator"><span class="si-icon">🌿</span><span class="si-label">Craft Calc</span></a>
     <a href="/vendor-scan" class="sidebar-item {% if '/vendor-scan' in ni %}active{% endif %}" title="Vendor Scan"><span class="si-icon">📷</span><span class="si-label">Vendor Scan</span></a>
     <a href="/export"      class="sidebar-item {% if '/export' in ni %}active{% endif %}"      title="Export CSV"> <span class="si-icon">⬇</span><span class="si-label">Export CSV</span></a>
     <a href="/backup"      class="sidebar-item {% if '/backup' in ni %}active{% endif %}"      title="Backup">     <span class="si-icon">💾</span><span class="si-label">Backup</span></a>
+    <a href="/stash-optimizer" class="sidebar-item {% if '/stash-optimizer' in ni %}active{% endif %}" title="Stash Optimizer"><span class="si-icon">🤖</span><span class="si-label">Stash Opt.</span></a>
+    <a href="/streamers"   class="sidebar-item {% if '/streamers' in ni %}active{% endif %}"   title="Streamers">  <span class="si-icon">📺</span><span class="si-label">Streamers</span></a>
+    <a href="/settings"    class="sidebar-item {% if '/settings' in ni %}active{% endif %}"    title="Settings">   <span class="si-icon">⚙</span><span class="si-label">Settings</span></a>
   </div>
 
 

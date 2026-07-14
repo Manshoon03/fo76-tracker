@@ -548,3 +548,57 @@ def fishing_session_delete(sid):
     db.execute("DELETE FROM fish_sessions WHERE id=?", (sid,))
     flash('Session deleted.', 'info')
     return redirect(url_for('community.fishing'))
+
+
+# ── Streamers ─────────────────────────────────────────────────────────────────
+
+@bp.route('/streamers')
+def streamers():
+    items = db.query("SELECT * FROM streamers WHERE active=1 ORDER BY streaming DESC, name")
+    inactive = db.query("SELECT * FROM streamers WHERE active=0 ORDER BY name")
+    edit_id = request.args.get('edit_id', type=int)
+    edit_item = db.get_one("SELECT * FROM streamers WHERE id=?", (edit_id,)) if edit_id else None
+    return render_template('streamers.html', items=items, inactive=inactive, edit_item=edit_item)
+
+@bp.route('/streamers/add', methods=['POST'])
+def streamers_add():
+    db.execute(
+        "INSERT INTO streamers (name,platform,url,schedule,notes) VALUES (?,?,?,?,?)",
+        (fs('name'), fs('platform','Twitch'), fs('url'), fs('schedule'), fs('notes'))
+    )
+    flash('Streamer added!', 'success')
+    return redirect(url_for('community.streamers'))
+
+@bp.route('/streamers/<int:id>/update', methods=['POST'])
+def streamers_update(id):
+    db.execute(
+        "UPDATE streamers SET name=?,platform=?,url=?,schedule=?,notes=? WHERE id=?",
+        (fs('name'), fs('platform','Twitch'), fs('url'), fs('schedule'), fs('notes'), id)
+    )
+    flash('Updated!', 'success')
+    return redirect(url_for('community.streamers'))
+
+@bp.route('/streamers/<int:id>/toggle-live', methods=['POST'])
+def streamers_toggle_live(id):
+    row = db.get_one("SELECT streaming FROM streamers WHERE id=?", (id,))
+    if row:
+        db.execute("UPDATE streamers SET streaming=? WHERE id=?", (0 if row['streaming'] else 1, id))
+    return jsonify(ok=True, streaming=0 if row and row['streaming'] else 1)
+
+@bp.route('/streamers/<int:id>/deactivate', methods=['POST'])
+def streamers_deactivate(id):
+    db.execute("UPDATE streamers SET active=0 WHERE id=?", (id,))
+    flash('Streamer hidden.', 'info')
+    return redirect(url_for('community.streamers'))
+
+@bp.route('/streamers/<int:id>/activate', methods=['POST'])
+def streamers_activate(id):
+    db.execute("UPDATE streamers SET active=1 WHERE id=?", (id,))
+    flash('Streamer reactivated.', 'success')
+    return redirect(url_for('community.streamers'))
+
+@bp.route('/streamers/<int:id>/delete', methods=['POST'])
+def streamers_delete(id):
+    db.execute("DELETE FROM streamers WHERE id=?", (id,))
+    flash('Streamer removed.', 'info')
+    return redirect(url_for('community.streamers'))

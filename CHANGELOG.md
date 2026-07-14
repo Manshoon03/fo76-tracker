@@ -5,6 +5,42 @@ Format: Version | Date | What changed
 
 ---
 
+## [0.19.0] — 2026-07-14
+
+### Added
+- **Followed Streamers Page** — `/streamers` with card grid layout. Track FO76 streamers by name, platform (Twitch/YouTube/Kick/TikTok), URL, and schedule. AJAX "Mark Live" toggle with pulsing LIVE badge. Hide/unhide streamers without deleting. Open stream links in new tab.
+- **Dashboard Cross-Character Summary** — "All Characters" table on the full dashboard showing weapons, armor, inventory, vendor items, vendor value, and stash weight across all characters with totals row. Active character highlighted. Only appears when multiple characters exist.
+- **Challenge Screenshot Scanner** — "Scan Challenges Screenshot" panel on the challenges page. Upload a screenshot of in-game challenges, Claude reads and extracts name, type, description, target, score reward, and category. Editable review table before import. Uses same AI infrastructure as vendor scan.
+
+### Fixed
+- **Challenge Reset buttons** — "Reset Dailies" and "Reset Weeklies" buttons were pointing to routes that didn't exist (404). Now wired up — deletes all active Daily/Weekly challenges for the current character so new ones can be entered fresh or applied from templates.
+
+---
+
+## [0.18.0] — 2026-07-14
+
+### Added
+- **Discord Webhook Integration** (P1) — Settings page at `/settings` with webhook URL, test button, and "Send Daily Summary" to Discord. Notifications auto-fire on nuke code fetch/save and price alert hits. Rich embeds with color-coded messages.
+- **Mobile Layout / PWA** (P2) — Enhanced responsive CSS for countdown grids, stat grids, and tables at 768px/480px breakpoints. PWA manifest.json for "Add to Homescreen". Print-friendly `@media print` styles.
+- **Stash Optimizer AI** (P2) — `/stash-optimizer` page sends your weapons, armor, inventory, and unlearned plans to Claude for scrap/sell/keep recommendations. Results displayed in three-column grid.
+- **Event Schedule Widget** (P3) — Dashboard widget showing countdown to next FO76 public event (Radiation Rumble, Eviction Notice, etc.) on 15-minute rotation. Updates every second.
+- **Recipe / Crafting Tracker** (P3) — New `/recipes` page with full CRUD. Track recipes by category (Food, Drink, Chem, Serum, etc.), ingredients, learned status, and favourites. Filter by category.
+- **Bulk Vendor Price Update** (P3) — "Quick Reprice" collapsible panel on vendor page. Edit all prices in a compact list, save all at once via AJAX.
+- **Challenge Template Library** (P3) — Save challenges as reusable templates at `/challenges/templates`. Bulk-apply templates to create new challenges on weekly reset. "Save as Template" button on each challenge row.
+- **Print-Friendly Vendor Sheet** (P3) — `/vendor/print` renders a clean monospace vendor listing designed for printing. "Print Sheet" button on vendor page.
+
+---
+
+## [0.17.0] — 2026-07-14
+
+### Added
+- **Score Booster setting** — persistent `score_booster_pct` input in the challenges countdown grid. Saved via AJAX to the settings table, remembered across sessions. Accepts 0–500%.
+- **Score Earned cards** — countdown grid now shows base score earned (sum of `score_reward` from completed active challenges) and boosted score (`base × (1 + booster%/100)`). Boosted total updates instantly client-side when booster % changes.
+- **Smart score defaults on Add** — when adding a new challenge (not editing), changing the Type select auto-fills score_reward: Daily → 250, Weekly → 1000, Season/Static → 0. Only overwrites if the field is 0 or matches a previous default — manual overrides (e.g. 1500 for event challenges) are preserved.
+- New endpoint `POST /challenges/booster` saves booster percentage to settings table.
+
+---
+
 ## [0.16.0] — 2026-07-06
 
 ### Added

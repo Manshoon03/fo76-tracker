@@ -46,6 +46,18 @@ def index():
     tasks = db.query("SELECT * FROM daily_tasks WHERE active=1 ORDER BY freq, sort_order, name")
     done_daily = {r['task_id'] for r in db.query("SELECT task_id FROM daily_completions WHERE completed_date=?", (fo76_today(),))}
     done_weekly = {r['task_id'] for r in db.query("SELECT task_id FROM daily_completions WHERE completed_date >= ?", (fo76_this_monday(),))}
+    # Cross-character summary
+    cross_chars = db.query("""
+        SELECT c.id, c.name, c.platform, c.char_type,
+            (SELECT COUNT(*) FROM weapons w WHERE w.character_id=c.id AND w.status != 'Scrapped') as weapons,
+            (SELECT COUNT(*) FROM armor a WHERE a.character_id=c.id AND a.status != 'Scrapped') as armor,
+            (SELECT COUNT(*) FROM inventory i WHERE i.character_id=c.id AND i.source_table='') as inventory,
+            (SELECT COUNT(*) FROM vendor_stock v WHERE v.character_id=c.id) as vendor_items,
+            (SELECT COALESCE(SUM(v2.my_price * v2.qty),0) FROM vendor_stock v2 WHERE v2.character_id=c.id) as vendor_value,
+            (SELECT COALESCE(SUM(CASE WHEN i2.fo1st_stored=0 THEN i2.qty * i2.weight_each ELSE 0 END),0)
+             FROM inventory i2 WHERE i2.character_id=c.id AND i2.source_table='') as stash_weight
+        FROM characters c ORDER BY c.platform, c.name
+    """)
     return render_template('index.html', stats=stats,
                            silos=silos, today_week=today_week,
                            quote=quotes.get_random(),
@@ -53,7 +65,8 @@ def index():
                            econ_balances=econ_balances, econ_daily=econ_daily,
                            active_loadout_id=active_loadout_id,
                            lo_name=lo_name, lo_weapons=lo_weapons, lo_mutations=lo_mutations,
-                           session_tasks=tasks, done_daily=done_daily, done_weekly=done_weekly)
+                           session_tasks=tasks, done_daily=done_daily, done_weekly=done_weekly,
+                           cross_chars=cross_chars)
 
 
 @bp.route('/search')

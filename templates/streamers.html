@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% block title %}Streamers{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📺 FOLLOWED STREAMERS</h1>
+  <span class="count-badge">{{ items|length }}</span>
+</div>
+
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Streamer{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/streamers/{{ edit_item['id'] }}/update{% else %}/streamers/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Streamer Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Platform</label>
+          <select name="platform">
+            {% for p in ['Twitch','YouTube','Kick','TikTok'] %}
+            <option value="{{ p }}" {{ 'selected' if edit_item and edit_item['platform']==p else '' }}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>URL</label>
+          <input type="url" name="url" value="{{ edit_item['url'] if edit_item else '' }}" placeholder="https://twitch.tv/...">
+        </div>
+        <div class="form-group">
+          <label>Schedule</label>
+          <input type="text" name="schedule" value="{{ edit_item['schedule'] if edit_item else '' }}" placeholder="e.g. Mon/Wed/Fri 8pm EST">
+        </div>
+        <div class="form-group span2">
+          <label>Notes</label>
+          <input type="text" name="notes" value="{{ edit_item['notes'] if edit_item else '' }}" placeholder="e.g. Has good vendor prices, trades legacy weapons">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Add Streamer{% endif %}</button>
+        {% if edit_item %}<a href="/streamers" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+{% if items %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:12px;margin-bottom:24px">
+  {% for s in items %}
+  <div style="background:var(--bg-card);border:1px solid {{ 'var(--accent)' if s['streaming'] else 'var(--border)' }};border-radius:4px;padding:14px;position:relative">
+    {% if s['streaming'] %}
+    <span style="position:absolute;top:10px;right:10px;font-size:9px;background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-weight:700;letter-spacing:0.5px;animation:pulse 2s infinite">LIVE</span>
+    {% endif %}
+    <div style="font-size:14px;font-weight:700;color:var(--text-hi);margin-bottom:4px">{{ s['name'] }}</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+      <span class="badge" style="font-size:10px;padding:1px 6px">{{ s['platform'] }}</span>
+      {% if s['schedule'] %}<span style="margin-left:6px">📅 {{ s['schedule'] }}</span>{% endif %}
+    </div>
+    {% if s['notes'] %}
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">{{ s['notes'] }}</div>
+    {% endif %}
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      {% if s['url'] %}
+      <a href="{{ s['url'] }}" target="_blank" class="btn btn-primary" style="font-size:10px;padding:4px 10px;min-height:auto">Open ↗</a>
+      {% endif %}
+      <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px;min-height:auto" onclick="toggleLive({{ s['id'] }}, this)">
+        {{ '⏹ Not Live' if s['streaming'] else '🔴 Mark Live' }}
+      </button>
+      <a href="/streamers?edit_id={{ s['id'] }}" class="btn-sm btn-edit">✎</a>
+      <form method="POST" action="/streamers/{{ s['id'] }}/deactivate" class="inline-form">
+        <button class="btn-sm btn-secondary" title="Hide" style="font-size:10px">👁</button>
+      </form>
+      <form method="POST" action="/streamers/{{ s['id'] }}/delete" class="inline-form">
+        <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="no-data" style="padding:24px;text-align:center">No streamers followed yet. Add one above!</div>
+{% endif %}
+
+{% if inactive %}
+<details style="margin-top:16px">
+  <summary class="dim" style="cursor:pointer;font-size:12px">Hidden streamers ({{ inactive|length }})</summary>
+  <div class="table-wrap" style="margin-top:8px">
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Platform</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for s in inactive %}
+        <tr>
+          <td class="dim">{{ s['name'] }}</td>
+          <td class="dim">{{ s['platform'] }}</td>
+          <td class="actions">
+            <form method="POST" action="/streamers/{{ s['id'] }}/activate" class="inline-form">
+              <button class="btn-sm btn-edit">Unhide</button>
+            </form>
+            <form method="POST" action="/streamers/{{ s['id'] }}/delete" class="inline-form">
+              <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+
+<style>
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+</style>
+
+<script>
+function toggleLive(id, btn) {
+  fetch('/streamers/' + id + '/toggle-live', {method: 'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) location.reload();
+    });
+}
+</script>
+
+{% endblock %}

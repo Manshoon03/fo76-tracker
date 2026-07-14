@@ -451,7 +451,99 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() { startNukeCountdown('dashNukeTimer'); });
+
+// FO76 Public Event Schedule
+(function(){
+  var EVENTS = [
+    {min: 0,  names: ['Radiation Rumble', 'Moonshine Jamboree']},
+    {min: 15, names: ['Eviction Notice', 'Test Your Metal']},
+    {min: 30, names: ['Scorched Earth', 'A Colossal Problem'], note: '(nuke required)'},
+    {min: 45, names: ['Ultracite Titan', 'Mothman Equinox']},
+  ];
+  function updateEvent() {
+    var now = new Date();
+    var curMin = now.getMinutes();
+    var curSec = now.getSeconds();
+    // Find next event
+    var next = null;
+    var minsUntil = 999;
+    for (var i = 0; i < EVENTS.length; i++) {
+      var diff = EVENTS[i].min - curMin;
+      if (diff <= 0) diff += 60;
+      if (diff < minsUntil) {
+        minsUntil = diff;
+        next = EVENTS[i];
+      }
+    }
+    var secsUntil = (minsUntil - 1) * 60 + (60 - curSec);
+    if (curSec === 0) secsUntil = minsUntil * 60;
+    var mm = Math.floor(secsUntil / 60);
+    var ss = secsUntil % 60;
+    var el = document.getElementById('eventTimer');
+    var nameEl = document.getElementById('eventName');
+    var altEl = document.getElementById('eventAlt');
+    if (el) el.textContent = mm + ':' + String(ss).padStart(2, '0');
+    if (nameEl && next) nameEl.textContent = next.names[0] + ' or ' + next.names[1];
+    if (altEl && next) altEl.textContent = next.note || 'Public event — check map when timer hits 0';
+  }
+  updateEvent();
+  setInterval(updateEvent, 1000);
+})();
 </script>
+
+<!-- Cross-Character Summary -->
+{% if cross_chars|length > 1 %}
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:10px">
+    👥 ALL CHARACTERS
+    <a href="/stash-overview" style="float:right;font-size:10px;color:var(--text-dim)">Stash Overview →</a>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" style="font-size:11px">
+      <thead>
+        <tr><th>Character</th><th>Type</th><th>Weapons</th><th>Armor</th><th>Inventory</th><th>Vendor</th><th>Vendor Value</th><th>Stash Wt</th></tr>
+      </thead>
+      <tbody>
+        {% for ch in cross_chars %}
+        <tr{% if active_char and ch['id'] == active_char['id'] %} style="background:rgba(0,255,65,0.06)"{% endif %}>
+          <td class="hi">{{ ch['name'] }}{% if active_char and ch['id'] == active_char['id'] %} <span class="dim" style="font-size:9px">(active)</span>{% endif %}</td>
+          <td><span class="badge {{ 'char-tag mule' if ch['char_type']=='Mule' else 'char-tag' }}">{{ ch['char_type'] }}</span></td>
+          <td class="dim">{{ ch['weapons'] }}</td>
+          <td class="dim">{{ ch['armor'] }}</td>
+          <td class="dim">{{ ch['inventory'] }}</td>
+          <td class="dim">{{ ch['vendor_items'] }}</td>
+          <td class="gold">{{ "{:,}".format(ch['vendor_value']) }}</td>
+          <td class="dim">{{ ch['stash_weight']|int }} lbs</td>
+        </tr>
+        {% endfor %}
+        <tr style="border-top:2px solid var(--border);font-weight:700">
+          <td colspan="2">Total</td>
+          <td>{{ cross_chars|sum(attribute='weapons') }}</td>
+          <td>{{ cross_chars|sum(attribute='armor') }}</td>
+          <td>{{ cross_chars|sum(attribute='inventory') }}</td>
+          <td>{{ cross_chars|sum(attribute='vendor_items') }}</td>
+          <td class="gold">{{ "{:,}".format(cross_chars|sum(attribute='vendor_value')) }}</td>
+          <td>{{ (cross_chars|sum(attribute='stash_weight'))|int }} lbs</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Event Schedule Widget -->
+<div style="margin-top:16px">
+  <div class="section-title" style="margin-bottom:10px">
+    ⏰ NEXT PUBLIC EVENT
+  </div>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:14px;display:flex;align-items:center;gap:16px">
+    <span id="eventTimer" style="font-size:22px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;min-width:50px">--:--</span>
+    <div>
+      <div id="eventName" style="font-size:13px;color:var(--text-hi);font-weight:600">—</div>
+      <div id="eventAlt" style="font-size:10px;color:var(--text-dim);margin-top:2px">—</div>
+    </div>
+  </div>
+</div>
 
 <!-- Quote widget -->
 {% if quote %}

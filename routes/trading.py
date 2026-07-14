@@ -99,6 +99,30 @@ def vendor_delete(id):
     flash('Removed from vendor.', 'info')
     return redirect(url_for('trading.vendor'))
 
+@bp.route('/vendor/bulk-reprice', methods=['POST'])
+def vendor_bulk_reprice():
+    data = request.get_json()
+    updates = data.get('updates', [])
+    count = 0
+    for u in updates:
+        db.execute("UPDATE vendor_stock SET my_price=? WHERE id=?", (u['price'], u['id']))
+        count += 1
+    return jsonify(ok=True, count=count)
+
+@bp.route('/vendor/print')
+def vendor_print():
+    cid = get_active_char_id()
+    items = db.query("SELECT * FROM vendor_stock WHERE character_id=? ORDER BY category, name", (cid,))
+    total_items = sum(r['qty'] for r in items)
+    total_value = sum(r['my_price'] * r['qty'] for r in items)
+    # Group by category
+    categories = {}
+    for item in items:
+        cat = item['category'] or 'Uncategorized'
+        categories.setdefault(cat, []).append(item)
+    return render_template('vendor_print.html', items=items, categories=categories,
+                           total_items=total_items, total_value=total_value)
+
 @bp.route('/vendor/scan', methods=['POST'])
 def vendor_scan_import_route():
     from routes.helpers import _scan_image, _extract_json_array
@@ -225,6 +249,18 @@ def prices_add():
         "INSERT INTO price_research (item_name,category,source,price_seen,notes,created_at) VALUES (?,?,?,?,?,datetime('now'))",
         (fs('item_name'), fs('category'), fs('source'), fi('price_seen'), fs('notes'))
     )
+    # Check price alerts
+    item_name = fs('item_name')
+    price = fi('price_seen')
+    alerts = db.query("SELECT * FROM price_alerts WHERE active=1 AND item_name=? AND ?<=target_price", (item_name, price))
+    if alerts:
+        from routes.helpers import discord_notify
+        for a in alerts:
+            discord_notify(None, embed={
+                'title': f'\U0001f514 Price Alert Hit: {item_name}',
+                'description': f'Seen at **{price:,}** caps (alert target: \u2264{a["target_price"]:,})',
+                'color': 0xFFD700
+            })
     flash('Price recorded!', 'success')
     return redirect(url_for('trading.prices'))
 
@@ -301,6 +337,51 @@ def prices_history(name):
     )
     return jsonify(history=[dict(r) for r in rows])
 
+
+# ── Recipes ───────────────────────────────────────────────────────────────────
+
+@bp.route('/recipes')
+def recipes():
+    cid = get_active_char_id()
+    cat_filter = request.args.get('cat', '')
+    edit_id = request.args.get('edit_id', type=int)
+    if cat_filter:
+        items = db.query("SELECT * FROM recipes WHERE character_id=? AND category=? ORDER BY favourite DESC, name", (cid, cat_filter))
+    else:
+        items = db.query("SELECT * FROM recipes WHERE character_id=? ORDER BY favourite DESC, category, name", (cid,))
+    edit_item = db.get_one("SELECT * FROM recipes WHERE id=?", (edit_id,)) if edit_id else None
+    cats = [r['category'] for r in db.query("SELECT DISTINCT category FROM recipes WHERE character_id=? AND category!='' ORDER BY category", (cid,))]
+    return render_template('recipes.html', items=items, edit_item=edit_item, cat_filter=cat_filter, categories=cats)
+
+@bp.route('/recipes/add', methods=['POST'])
+def recipes_add():
+    db.execute(
+        "INSERT INTO recipes (name,category,ingredients,learned,favourite,notes,character_id) VALUES (?,?,?,?,?,?,?)",
+        (fs('name'), fs('category'), fs('ingredients'),
+         1 if request.form.get('learned') else 0,
+         1 if request.form.get('favourite') else 0,
+         fs('notes'), get_active_char_id())
+    )
+    flash('Recipe added!', 'success')
+    return redirect(url_for('trading.recipes'))
+
+@bp.route('/recipes/<int:id>/update', methods=['POST'])
+def recipes_update(id):
+    db.execute(
+        "UPDATE recipes SET name=?,category=?,ingredients=?,learned=?,favourite=?,notes=? WHERE id=?",
+        (fs('name'), fs('category'), fs('ingredients'),
+         1 if request.form.get('learned') else 0,
+         1 if request.form.get('favourite') else 0,
+         fs('notes'), id)
+    )
+    flash('Recipe updated!', 'success')
+    return redirect(url_for('trading.recipes'))
+
+@bp.route('/recipes/<int:id>/delete', methods=['POST'])
+def recipes_delete(id):
+    db.execute("DELETE FROM recipes WHERE id=?", (id,))
+    flash('Recipe removed.', 'info')
+    return redirect(url_for('trading.recipes'))
 
 # ── Plans ────────────────────────────────────────────────────────────────────
 

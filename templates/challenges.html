@@ -25,6 +25,21 @@
     <span class="countdown-label">{{ ctype }} Done</span>
   </div>
   {% endfor %}
+  <div class="countdown-card">
+    <input type="number" id="boosterPct" value="{{ booster_pct }}" min="0" max="500"
+           style="width:60px;text-align:center;font-size:16px;font-weight:700"
+           onchange="updateBooster()">
+    <span class="countdown-label">Score Booster %</span>
+  </div>
+  <div class="countdown-card">
+    <span class="countdown-time" style="font-size:14px">
+      <span class="gold" id="scoreDisplay">{{ total_score }}</span>
+      <span class="dim" style="font-size:11px" id="boostedDisplay">
+        ({% if booster_pct %}{{ ((total_score * (100 + booster_pct)) / 100)|int }}{% else %}{{ total_score }}{% endif %} boosted)
+      </span>
+    </span>
+    <span class="countdown-label">Score Earned</span>
+  </div>
 </div>
 
 <!-- Reset buttons -->
@@ -35,7 +50,40 @@
   <form method="POST" action="/challenges/reset/weekly" class="inline-form">
     <button class="btn btn-secondary" onclick="return confirm('Reset all Weekly challenges?')">↺ Reset Weeklies</button>
   </form>
+  <a href="/challenges/templates" class="btn btn-secondary">📝 Templates</a>
 </div>
+
+<!-- Scan Challenges panel -->
+<section class="add-panel" id="scanPanel">
+  <div class="panel-toggle" onclick="togglePanel('scanPanel')">
+    <span>📷 Scan Challenges Screenshot</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <p class="dim" style="font-size:11px;margin-bottom:10px">
+      Screenshot your in-game challenges screen. Claude reads it and shows parsed challenges to review before importing.
+    </p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label class="btn btn-secondary" style="cursor:pointer;margin-bottom:0">
+        Choose Screenshot
+        <input type="file" accept="image/*" id="challengeScanFile" style="display:none" onchange="scanChallenges(this)">
+      </label>
+      <span id="challengeScanStatus" class="dim" style="font-size:11px"></span>
+    </div>
+    <div id="challengeScanResults" style="display:none;margin-top:12px">
+      <div class="table-wrap" style="max-height:350px;overflow-y:auto">
+        <table class="data-table">
+          <thead><tr><th style="width:30px"><input type="checkbox" checked onchange="toggleAllScan(this.checked)"></th><th>Name</th><th>Type</th><th>Category</th><th>Description</th><th>Target</th><th>Score</th></tr></thead>
+          <tbody id="challengeScanBody"></tbody>
+        </table>
+      </div>
+      <div class="form-actions" style="margin-top:10px">
+        <button class="btn btn-primary" onclick="importScanned()">Import Selected</button>
+        <span id="importStatus" class="dim" style="font-size:11px;margin-left:8px"></span>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- Add / Edit panel -->
 <section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
@@ -186,6 +234,9 @@
             </button>
           {% endif %}
           <a href="/challenges?edit_id={{ item['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/challenges/templates/save-from/{{ item['id'] }}" class="inline-form">
+            <button class="btn-sm btn-secondary" title="Save as template">📝</button>
+          </form>
           <form method="POST" action="/challenges/{{ item['id'] }}/delete" class="inline-form">
             <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
           </form>
@@ -226,5 +277,128 @@ function updateCountdowns() {
 }
 updateCountdowns();
 setInterval(updateCountdowns, 1000);
+
+// Score booster AJAX
+function updateBooster() {
+  const pct = parseInt(document.getElementById('boosterPct').value) || 0;
+  fetch('/challenges/booster', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'pct=' + pct
+  });
+  const base = {{ total_score }};
+  const boosted = Math.round(base * (100 + pct) / 100);
+  document.getElementById('boostedDisplay').textContent =
+    '(' + boosted.toLocaleString() + ' boosted)';
+}
+
+// Auto-fill score_reward defaults on Add form (not Edit)
+{% if not edit_item %}
+(function() {
+  const typeSelect = document.querySelector('select[name="ctype"]');
+  const scoreInput = document.querySelector('input[name="score_reward"]');
+  const SCORE_DEFAULTS = { Daily: 250, Weekly: 1000, Season: 0, Static: 0 };
+  let lastDefault = SCORE_DEFAULTS[typeSelect.value] || 0;
+  typeSelect.addEventListener('change', function() {
+    const cur = parseInt(scoreInput.value) || 0;
+    if (cur === 0 || cur === lastDefault) {
+      scoreInput.value = SCORE_DEFAULTS[this.value] || 0;
+    }
+    lastDefault = SCORE_DEFAULTS[this.value] || 0;
+  });
+  if ((parseInt(scoreInput.value) || 0) === 0) {
+    scoreInput.value = SCORE_DEFAULTS[typeSelect.value] || 0;
+  }
+})();
+{% endif %}
+
+// Challenge screenshot scan
+var _scannedChallenges = [];
+
+function scanChallenges(input) {
+  if (!input.files || !input.files[0]) return;
+  var status = document.getElementById('challengeScanStatus');
+  status.textContent = 'Scanning...';
+  status.style.color = 'var(--text-dim)';
+  var fd = new FormData();
+  fd.append('image', input.files[0]);
+  fetch('/challenges/scan', {method: 'POST', body: fd})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) {
+        status.textContent = '✗ ' + (d.error || 'Scan failed');
+        status.style.color = 'var(--red)';
+        return;
+      }
+      _scannedChallenges = d.challenges || [];
+      status.textContent = '✓ Found ' + _scannedChallenges.length + ' challenge(s)';
+      status.style.color = 'var(--accent)';
+      renderScanResults();
+    })
+    .catch(function() {
+      status.textContent = '✗ Request failed';
+      status.style.color = 'var(--red)';
+    });
+}
+
+function renderScanResults() {
+  var tbody = document.getElementById('challengeScanBody');
+  var wrap = document.getElementById('challengeScanResults');
+  if (!_scannedChallenges.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  tbody.innerHTML = '';
+  _scannedChallenges.forEach(function(ch, i) {
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="checkbox" checked class="scan-cb" data-idx="' + i + '"></td>' +
+      '<td><input type="text" value="' + esc(ch.name) + '" class="inline-input" data-idx="' + i + '" data-field="name" style="width:100%"></td>' +
+      '<td><select class="inline-input" data-idx="' + i + '" data-field="type">' +
+        '<option' + (ch.type === 'Daily' ? ' selected' : '') + '>Daily</option>' +
+        '<option' + (ch.type === 'Weekly' ? ' selected' : '') + '>Weekly</option></select></td>' +
+      '<td><input type="text" value="' + esc(ch.category || '') + '" class="inline-input" data-idx="' + i + '" data-field="category" style="width:80px"></td>' +
+      '<td><input type="text" value="' + esc(ch.description || '') + '" class="inline-input" data-idx="' + i + '" data-field="description" style="width:100%"></td>' +
+      '<td><input type="number" value="' + (ch.target || 1) + '" class="inline-input" data-idx="' + i + '" data-field="target" style="width:50px"></td>' +
+      '<td><input type="number" value="' + (ch.score_reward || 0) + '" class="inline-input" data-idx="' + i + '" data-field="score_reward" style="width:60px"></td>';
+    tbody.appendChild(tr);
+  });
+  // Sync edits back
+  tbody.querySelectorAll('.inline-input').forEach(function(inp) {
+    inp.addEventListener('change', function() {
+      _scannedChallenges[parseInt(this.dataset.idx)][this.dataset.field] =
+        this.type === 'number' ? parseInt(this.value) || 0 : this.value;
+    });
+  });
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML.replace(/"/g, '&quot;'); }
+
+function toggleAllScan(checked) {
+  document.querySelectorAll('.scan-cb').forEach(function(cb) { cb.checked = checked; });
+}
+
+function importScanned() {
+  var selected = [];
+  document.querySelectorAll('.scan-cb:checked').forEach(function(cb) {
+    selected.push(_scannedChallenges[parseInt(cb.dataset.idx)]);
+  });
+  if (!selected.length) { showToast('No challenges selected', 'warning'); return; }
+  var status = document.getElementById('importStatus');
+  status.textContent = 'Importing...';
+  fetch('/challenges/scan/import', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({items: selected})
+  }).then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        status.textContent = '✓ ' + d.count + ' imported';
+        status.style.color = 'var(--accent)';
+        setTimeout(function() { location.reload(); }, 800);
+      } else {
+        status.textContent = '✗ Failed';
+        status.style.color = 'var(--red)';
+      }
+    });
+}
 </script>
 {% endblock %}

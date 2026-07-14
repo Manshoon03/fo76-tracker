@@ -1349,3 +1349,29 @@ html:not(.sidebar-open) .sidebar-item:hover::after {
 }
 .perishable-badge.perishable { background: rgba(220,38,38,0.2); color: var(--red); }
 .perishable-badge.stable { background: rgba(34,197,94,0.15); color: var(--accent); }
+
+/* ── Enhanced mobile: card-layout tables ──────────────────────────────────── */
+@media (max-width: 768px) {
+  .data-table .actions { white-space: nowrap; }
+  .page-header h1 { font-size: 16px; }
+  .countdown-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .countdown-card { padding: 10px; }
+  .section-title { font-size: 11px; }
+  .add-panel .panel-toggle { padding: 12px 14px; }
+}
+@media (max-width: 480px) {
+  .countdown-grid { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr; gap: 6px; }
+  .page-header { gap: 6px; }
+  .count-badge { font-size: 11px; }
+}
+
+/* ── Print styles ─────────────────────────────────────────────────────────── */
+@media print {
+  .app-header, .app-sidebar, .sidebar-backdrop, .ql-fab, .ql-overlay,
+  .toast-container, #scrollTopBtn, .add-panel, .table-controls,
+  .form-actions, .btn-delete, .btn-edit, .flash-container { display: none !important; }
+  .app-main { margin: 0 !important; padding: 0 !important; }
+  body { background: #fff; color: #111; }
+  .data-table, .data-table th, .data-table td { border: 1px solid #ccc; }
+}

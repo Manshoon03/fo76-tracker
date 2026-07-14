@@ -15,7 +15,7 @@ app = Flask(__name__)
 app.secret_key = 'fo76-vault-tec-2024'
 app.permanent_session_lifetime = timedelta(days=30)
 
-APP_VERSION = '0.17.0'
+APP_VERSION = '0.19.0'
 APP_START   = datetime.now()
 
 # ── Init DB ──────────────────────────────────────────────────────────────────

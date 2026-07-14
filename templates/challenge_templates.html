@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% block title %}Challenge Templates{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>📝 CHALLENGE TEMPLATES</h1>
+  <span class="count-badge">{{ templates|length }}</span>
+  <a href="/challenges" class="btn btn-secondary" style="font-size:11px;margin-left:auto">← Back to Challenges</a>
+</div>
+
+<p class="dim" style="font-size:11px;margin-bottom:16px">
+  Save common challenges as templates. When weekly/daily challenges reset, select templates and click "Add to Challenges" to bulk-insert them.
+</p>
+
+<!-- Bulk apply -->
+{% if templates %}
+<form method="POST" action="/challenges/templates/apply" id="applyForm">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <strong style="font-size:12px">Quick Add:</strong>
+    <button class="btn btn-secondary" type="button" onclick="selectByType('Daily')">All Dailies</button>
+    <button class="btn btn-secondary" type="button" onclick="selectByType('Weekly')">All Weeklies</button>
+    <button class="btn btn-secondary" type="button" onclick="toggleAllTpl(true)">Select All</button>
+    <button class="btn btn-secondary" type="button" onclick="toggleAllTpl(false)">Select None</button>
+    <button class="btn btn-primary" type="submit" style="margin-left:auto">Add Selected to Challenges</button>
+  </div>
+{% endif %}
+
+<!-- Add / Edit template -->
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addPanel">
+  <div class="panel-toggle" onclick="togglePanel('addPanel')">
+    <span>{% if edit_item %}✎ Editing: {{ edit_item['name'] }}{% else %}+ Add Template{% endif %}</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <form method="POST" action="{% if edit_item %}/challenges/templates/{{ edit_item['id'] }}/update{% else %}/challenges/templates/add{% endif %}">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Challenge Name *</label>
+          <input type="text" name="name" required value="{{ edit_item['name'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select name="ctype">
+            {% for t in ['Daily','Weekly','Season','Static'] %}
+            <option value="{{ t }}" {{ 'selected' if edit_item and edit_item['ctype']==t else '' }}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category">
+            {% for c in ['','Combat','Exploration','Social','Crafting','Survival','Collection','Event','Seasonal'] %}
+            <option value="{{ c }}" {{ 'selected' if edit_item and edit_item['category']==c else '' }}>{{ c or '— select —' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Description</label>
+          <input type="text" name="description" value="{{ edit_item['description'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Target</label>
+          <input type="number" name="target" min="1" value="{{ edit_item['target'] if edit_item else 1 }}">
+        </div>
+        <div class="form-group">
+          <label>Score Reward</label>
+          <input type="number" name="score_reward" min="0" value="{{ edit_item['score_reward'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Atoms Reward</label>
+          <input type="number" name="atoms_reward" min="0" value="{{ edit_item['atoms_reward'] if edit_item else 0 }}">
+        </div>
+        <div class="form-group">
+          <label>Other Reward</label>
+          <input type="text" name="reward" value="{{ edit_item['reward'] if edit_item else '' }}">
+        </div>
+        <div class="form-group">
+          <label class="toggle-label">
+            <input type="checkbox" name="repeatable" value="1" {{ 'checked' if edit_item and edit_item['repeatable'] else '' }}>
+            Repeatable
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Update{% else %}Save Template{% endif %}</button>
+        {% if edit_item %}<a href="/challenges/templates" class="btn btn-secondary">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="table-wrap">
+  <table class="data-table" id="tplTable">
+    <thead>
+      <tr>
+        <th style="width:32px"><input type="checkbox" onchange="toggleAllTpl(this.checked)"></th>
+        <th>Name</th><th>Type</th><th>Category</th><th>Description</th>
+        <th>Target</th><th>Score</th><th>Atoms</th><th>Reward</th><th>↺</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in templates %}
+      <tr data-ctype="{{ t['ctype'] }}">
+        <td><input type="checkbox" name="template_ids" value="{{ t['id'] }}" form="applyForm" class="tpl-cb"></td>
+        <td class="hi">{{ t['name'] }}</td>
+        <td><span class="badge challenge-type-{{ t['ctype']|lower }}">{{ t['ctype'] }}</span></td>
+        <td class="dim">{{ t['category'] }}</td>
+        <td class="dim">{{ t['description'] }}</td>
+        <td class="dim">{{ t['target'] }}</td>
+        <td>{% if t['score_reward'] %}<span class="gold">{{ t['score_reward'] }}</span>{% else %}—{% endif %}</td>
+        <td>{% if t['atoms_reward'] %}<span style="color:var(--blue)">{{ t['atoms_reward'] }}</span>{% else %}—{% endif %}</td>
+        <td class="dim">{{ t['reward'] }}</td>
+        <td>{% if t['repeatable'] %}<span class="dim">↺</span>{% endif %}</td>
+        <td class="actions">
+          <a href="/challenges/templates?edit_id={{ t['id'] }}" class="btn-sm btn-edit">✎</a>
+          <form method="POST" action="/challenges/templates/{{ t['id'] }}/delete" class="inline-form">
+            <button class="btn-sm btn-delete" onclick="return confirmDelete()">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" class="no-data">No templates yet. Add one above or save from an existing challenge.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if templates %}
+</form>
+{% endif %}
+
+<script>
+function toggleAllTpl(checked) {
+  document.querySelectorAll('.tpl-cb').forEach(function(cb) { cb.checked = checked; });
+}
+function selectByType(ctype) {
+  document.querySelectorAll('.tpl-cb').forEach(function(cb) { cb.checked = false; });
+  document.querySelectorAll('#tplTable tr[data-ctype="' + ctype + '"] .tpl-cb').forEach(function(cb) { cb.checked = true; });
+}
+</script>
+
+{% endblock %}

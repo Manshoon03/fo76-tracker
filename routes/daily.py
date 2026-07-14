@@ -88,6 +88,16 @@ def _do_nuke_fetch():
                 )
             found = ', '.join(sorted(codes.keys()))
             db.set_setting('nuke_fetch_status', f'ok|Fetched {found} — {datetime.now().strftime("%b %d %H:%M")}')
+            try:
+                from routes.helpers import discord_notify
+                code_list = ' / '.join(f'{s}: {c}' for s, c in sorted(codes.items()))
+                discord_notify(None, embed={
+                    'title': '☢ Nuke Codes Updated',
+                    'description': code_list,
+                    'color': 0xFF6600
+                })
+            except Exception:
+                pass
         else:
             db.set_setting('nuke_fetch_status',
                            f'fail|Could not parse codes from nukacrypt.com — enter manually '
@@ -126,8 +136,83 @@ def challenges():
         'Static':  db.get_one("SELECT COUNT(*) as n, SUM(completed) as done FROM challenges WHERE character_id=? AND ctype='Static' AND active=1", (cid,)),
         'dormant': db.get_one("SELECT COUNT(*) as n, 0 as done FROM challenges WHERE character_id=? AND active=0", (cid,)),
     }
+    total_score = db.get_one(
+        "SELECT COALESCE(SUM(score_reward),0) as total FROM challenges "
+        "WHERE character_id=? AND completed=1 AND active=1", (cid,)
+    )['total']
+    booster_pct = int(db.get_setting('score_booster_pct', '0'))
     return render_template('challenges.html', items=items, edit_item=edit_item,
-                           ctype_filter=ctype_filter, counts=counts)
+                           ctype_filter=ctype_filter, counts=counts,
+                           total_score=total_score, booster_pct=booster_pct)
+
+@bp.route('/challenges/booster', methods=['POST'])
+def challenges_booster():
+    db.set_setting('score_booster_pct', str(fi('pct', 0)))
+    return jsonify(ok=True)
+
+@bp.route('/challenges/scan', methods=['POST'])
+def challenges_scan():
+    """Scan a screenshot of the challenges screen and return parsed challenges."""
+    from routes.helpers import _scan_image, _extract_json
+    api_key = db.get_setting('anthropic_api_key', '')
+    if not api_key:
+        return jsonify(ok=False, error='Set your Anthropic API key in Vendor Scan settings first.')
+    f = request.files.get('image')
+    if not f or not f.filename:
+        return jsonify(ok=False, error='No image uploaded.')
+    import os
+    MIME = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'}
+    ext = os.path.splitext(f.filename)[1].lower()
+    media_type = MIME.get(ext, 'image/png')
+    prompt = """You are reading a Fallout 76 challenges screen screenshot (from the in-game menu).
+Extract every challenge visible. Return ONLY valid JSON — no markdown, no explanation.
+
+Format:
+{
+  "challenges": [
+    {
+      "name": "<challenge name>",
+      "type": "<Daily or Weekly>",
+      "description": "<what to do, e.g. 'Kill 5 Super Mutants'>",
+      "target": <integer goal number, default 1>,
+      "score_reward": <SCORE points awarded, integer, default 250 for Daily / 1000 for Weekly>,
+      "category": "<Combat/Exploration/Social/Crafting/Survival/Collection/Event or empty>"
+    }
+  ]
+}
+
+Rules:
+- type: "Daily" if it says Daily or resets daily. "Weekly" if it says Weekly or resets weekly.
+- target: the number you need to reach (e.g. "Kill 5 enemies" → 5, "Complete an event" → 1)
+- score_reward: read from the screenshot if visible. If not visible, default 250 for Daily, 1000 for Weekly.
+- category: infer from the challenge description. Combat for kills, Exploration for locations, etc.
+- If no challenges are visible, return {"challenges": []}
+"""
+    try:
+        raw = _scan_image(f.read(), media_type, api_key, prompt=prompt)
+        data = _extract_json(raw)
+        if data is None or 'challenges' not in data:
+            return jsonify(ok=False, error='Could not parse challenges from screenshot.')
+        return jsonify(ok=True, challenges=data['challenges'])
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)[:200])
+
+@bp.route('/challenges/scan/import', methods=['POST'])
+def challenges_scan_import():
+    """Import scanned challenges."""
+    cid = get_active_char_id()
+    data = request.get_json()
+    items = data.get('items', [])
+    count = 0
+    for item in items:
+        db.execute(
+            "INSERT INTO challenges (name,ctype,category,description,progress,target,completed,score_reward,atoms_reward,reward,repeatable,notes,character_id) VALUES (?,?,?,?,0,?,0,?,0,'',0,'',?)",
+            (item.get('name', ''), item.get('type', 'Daily'), item.get('category', ''),
+             item.get('description', ''), int(item.get('target', 1)),
+             int(item.get('score_reward', 0)), cid)
+        )
+        count += 1
+    return jsonify(ok=True, count=count)
 
 @bp.route('/challenges/add', methods=['POST'])
 def challenges_add():
@@ -180,6 +265,20 @@ def challenges_progress(id):
                    (new_prog, new_prog, id))
     return jsonify(ok=True)
 
+@bp.route('/challenges/reset/daily', methods=['POST'])
+def challenges_reset_daily():
+    cid = get_active_char_id()
+    db.execute("DELETE FROM challenges WHERE character_id=? AND ctype='Daily' AND active=1", (cid,))
+    flash('Daily challenges cleared — ready for new entries.', 'success')
+    return redirect(url_for('daily.challenges'))
+
+@bp.route('/challenges/reset/weekly', methods=['POST'])
+def challenges_reset_weekly():
+    cid = get_active_char_id()
+    db.execute("DELETE FROM challenges WHERE character_id=? AND ctype='Weekly' AND active=1", (cid,))
+    flash('Weekly challenges cleared — ready for new entries.', 'success')
+    return redirect(url_for('daily.challenges'))
+
 @bp.route('/challenges/<int:id>/dormant', methods=['POST'])
 def challenges_dormant(id):
     db.execute("UPDATE challenges SET active=0 WHERE id=?", (id,))
@@ -190,6 +289,77 @@ def challenges_dormant(id):
 def challenges_activate(id):
     db.execute("UPDATE challenges SET active=1 WHERE id=?", (id,))
     flash('Challenge reactivated.', 'success')
+    return redirect(url_for('daily.challenges'))
+
+# ── Challenge Templates ──────────────────────────────────────────────────────
+
+@bp.route('/challenges/templates')
+def challenge_templates():
+    cid = get_active_char_id()
+    templates = db.query("SELECT * FROM challenge_templates WHERE character_id=? ORDER BY ctype, name", (cid,))
+    edit_id = request.args.get('edit_id', type=int)
+    edit_item = db.get_one("SELECT * FROM challenge_templates WHERE id=?", (edit_id,)) if edit_id else None
+    return render_template('challenge_templates.html', templates=templates, edit_item=edit_item)
+
+@bp.route('/challenges/templates/add', methods=['POST'])
+def challenge_template_add():
+    db.execute(
+        "INSERT INTO challenge_templates (name,ctype,category,description,target,score_reward,atoms_reward,reward,repeatable,character_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (fs('name'), fs('ctype','Daily'), fs('category'), fs('description'),
+         fi('target',1), fi('score_reward'), fi('atoms_reward'), fs('reward'),
+         1 if request.form.get('repeatable') else 0, get_active_char_id())
+    )
+    flash('Template saved!', 'success')
+    return redirect(url_for('daily.challenge_templates'))
+
+@bp.route('/challenges/templates/<int:id>/update', methods=['POST'])
+def challenge_template_update(id):
+    db.execute(
+        "UPDATE challenge_templates SET name=?,ctype=?,category=?,description=?,target=?,score_reward=?,atoms_reward=?,reward=?,repeatable=? WHERE id=?",
+        (fs('name'), fs('ctype','Daily'), fs('category'), fs('description'),
+         fi('target',1), fi('score_reward'), fi('atoms_reward'), fs('reward'),
+         1 if request.form.get('repeatable') else 0, id)
+    )
+    flash('Template updated!', 'success')
+    return redirect(url_for('daily.challenge_templates'))
+
+@bp.route('/challenges/templates/<int:id>/delete', methods=['POST'])
+def challenge_template_delete(id):
+    db.execute("DELETE FROM challenge_templates WHERE id=?", (id,))
+    flash('Template removed.', 'info')
+    return redirect(url_for('daily.challenge_templates'))
+
+@bp.route('/challenges/templates/save-from/<int:id>', methods=['POST'])
+def challenge_template_save_from(id):
+    """Save an existing challenge as a template."""
+    row = db.get_one("SELECT * FROM challenges WHERE id=?", (id,))
+    if row:
+        db.execute(
+            "INSERT INTO challenge_templates (name,ctype,category,description,target,score_reward,atoms_reward,reward,repeatable,character_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (row['name'], row['ctype'], row['category'], row['description'],
+             row['target'], row['score_reward'], row['atoms_reward'], row['reward'],
+             row['repeatable'], row['character_id'])
+        )
+        flash(f'Template saved from "{row["name"]}"!', 'success')
+    return redirect(url_for('daily.challenge_templates'))
+
+@bp.route('/challenges/templates/apply', methods=['POST'])
+def challenge_templates_apply():
+    """Bulk-insert selected templates as new challenges."""
+    cid = get_active_char_id()
+    ids = request.form.getlist('template_ids')
+    count = 0
+    for tid in ids:
+        t = db.get_one("SELECT * FROM challenge_templates WHERE id=?", (int(tid),))
+        if t:
+            db.execute(
+                "INSERT INTO challenges (name,ctype,category,description,progress,target,completed,score_reward,atoms_reward,reward,repeatable,notes,character_id) VALUES (?,?,?,?,0,?,0,?,?,?,?,?,?)",
+                (t['name'], t['ctype'], t['category'], t['description'],
+                 t['target'], t['score_reward'], t['atoms_reward'], t['reward'],
+                 t['repeatable'], '', cid)
+            )
+            count += 1
+    flash(f'{count} challenge(s) added from templates!', 'success')
     return redirect(url_for('daily.challenges'))
 
 
@@ -339,6 +509,14 @@ def nuke_codes_update():
             (code, notes, week_of, silo)
         )
     flash('Nuke codes updated!', 'success')
+    try:
+        from routes.helpers import discord_notify
+        codes = {s: fs(f'code_{s.lower()}') for s in ('Alpha', 'Bravo', 'Charlie') if fs(f'code_{s.lower()}')}
+        if codes:
+            code_list = ' / '.join(f'{s}: {c}' for s, c in sorted(codes.items()))
+            discord_notify(None, embed={'title': '☢ Nuke Codes Updated', 'description': code_list, 'color': 0xFF6600})
+    except Exception:
+        pass
     return redirect(url_for('daily.nuke_codes'))
 
 @bp.route('/nuke-codes/fetch', methods=['POST'])

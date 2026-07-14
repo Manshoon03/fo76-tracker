@@ -172,3 +172,20 @@ def _extract_json_array(text):
         return json.loads(text)
     except Exception:
         return None
+
+
+def discord_notify(message, embed=None):
+    """Send a notification to Discord webhook. Fails silently."""
+    url = db.get_setting('discord_webhook_url', '')
+    if not url:
+        return
+    try:
+        import requests
+        payload = {}
+        if embed:
+            payload['embeds'] = [embed]
+        else:
+            payload['content'] = message
+        requests.post(url, json=payload, timeout=5)
+    except Exception:
+        pass

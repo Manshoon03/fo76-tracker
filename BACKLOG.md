@@ -17,7 +17,7 @@ Each item has:
 
 ## P1 — High Impact, Build These First
 
-### [ ] Discord Webhook Integration
+### [x] Discord Webhook Integration
 **Why:** Discord is always open. This makes every tracker alert actionable in real-time.
 **Files:** `db.py`, `app.py`, `templates/settings.html` (new or extend existing settings page)
 **What to build:**
@@ -119,7 +119,7 @@ Each item has:
 
 ---
 
-### [ ] Improved Mobile Layout / PWA
+### [x] Improved Mobile Layout / PWA
 **Why:** App is network-accessible. Would be useful to check on phone while playing on PC.
 **Files:** `static/style.css`, `templates/base.html`, `static/manifest.json`
 **What to build:**
@@ -134,7 +134,7 @@ Each item has:
 
 ---
 
-### [ ] Stash Optimizer (AI)
+### [x] Stash Optimizer (AI)
 **Why:** "What should I drop?" is the #1 daily FO76 question. Automate it.
 **Files:** `app.py`, `templates/stash_optimizer.html` (new), `templates/base.html`
 **What to build:**
@@ -151,37 +151,37 @@ Each item has:
 
 ## P3 — Nice to Have
 
-### [ ] Event Schedule Widget
+### [x] Event Schedule Widget
 **Files:** `templates/index.html`, `templates/base.html` or new page
 **Notes:** FO76 public events follow a known hourly schedule. Add a static lookup table of event times (hardcoded since Bethesda rarely changes them) and show "Next Event: Radiation Rumble in 23 min" on dashboard. No external API needed — just JavaScript comparing current time to a static schedule table.
 
 ---
 
-### [ ] Recipe / Crafting Tracker
+### [x] Recipe / Crafting Tracker
 **Files:** `db.py`, `app.py`, `templates/recipes.html` (new)
 **Notes:** Track which recipes/plans you know. Fields: name, category, ingredients, learned, notes. Separate from Plans (which tracks sellable plans). Focus on crafting recipes you actually use.
 
 ---
 
-### [ ] Bulk Vendor Price Update
+### [x] Bulk Vendor Price Update
 **Files:** `templates/vendor.html`, `app.py`
 **Notes:** Add a "Quick Reprice" mode on the vendor page — show all items in a compact list with just name + price input, "Save All" button at bottom. Faster than editing one at a time. POST to a new `/vendor/bulk-reprice` route that updates all prices in a single transaction.
 
 ---
 
-### [ ] Nuke Code History
+### [ ] Nuke Code History (Maybe)
 **Files:** `db.py`, `app.py`, `templates/nuke_codes.html`
-**Notes:** Log historical nuke codes to a new `nuke_code_history` table (silo, code, week_of, added_at). Show last 4 weeks in a collapsible panel on the nuke codes page. Useful for verifying codes from previous weeks.
+**Notes:** Log historical nuke codes to a new `nuke_code_history` table (silo, code, week_of, added_at). Show last 4 weeks in a collapsible panel on the nuke codes page. Useful for verifying codes from previous weeks. Codes are cryptographically generated each week (keyword cipher) — no prediction possible, but history helps with verification ("was this code already used?").
 
 ---
 
-### [ ] Challenge Template Library
+### [x] Challenge Template Library
 **Files:** `db.py`, `app.py`, `templates/challenges.html`
 **Notes:** Weekly challenges repeat. Add a "Templates" tab that stores common challenge templates (name, type, target, reward). "Add from Template" bulk-inserts them for the new week. Saves re-entering the same 15 challenges every Tuesday reset.
 
 ---
 
-### [ ] Print-Friendly Vendor Sheet
+### [x] Print-Friendly Vendor Sheet
 **Files:** `templates/vendor.html` or new `templates/vendor_print.html`
 **Notes:** Add a `/vendor/print` route that renders a clean, print-styled page of your vendor stock with item names, notations (for weapons), and prices. `@media print` CSS. No nav, no sidebar, just the table. Add a "Print Sheet" button on the vendor page.
 
@@ -189,7 +189,7 @@ Each item has:
 
 ## Community / Streaming
 
-### [ ] Followed Streamers Page
+### [x] Followed Streamers Page
 **Files:** `db.py`, `app.py`, `templates/streamers.html` (new), `templates/base.html`
 **What to build:**
 - New table `streamers`: `id, name TEXT, platform TEXT (Twitch/YouTube), url TEXT, notes TEXT, active INTEGER DEFAULT 1`
@@ -207,7 +207,7 @@ Each item has:
 - Export page could use a "Print All" / "Export as ZIP" option that packages all CSVs at once (a zip route already exists at `/backup/download-zip`).
 - **Server-side pagination for inventory** — 600 items still renders all rows in HTML. Consider paginating or lazy-loading when item count is high.
 - **Inventory duplicate detection** — weapons page has DUP badges, inventory doesn't. Could flag duplicate entries.
-- **Dashboard cross-character summary** — dashboard only shows active char stats. Could show a quick cross-char breakdown.
+- ~~**Dashboard cross-character summary**~~ — DONE in v0.19.0
 - **Inventory CSV import** — manual text/CSV import as alternative to screenshot scanning for bulk data entry.
 
 ---
@@ -242,3 +242,16 @@ Each item has:
 - [x] Multi-screenshot scan — upload multiple Pip-Boy screenshots, merged review table, dedup
 - [x] Scan dedup + missing flag — update existing items, flag missing as "Missing?" status
 - [x] Inventory performance — event delegation for 600+ items, CSS-based editable cell styles
+- [x] Score Booster & Defaults — persistent booster %, smart score defaults (Daily 250, Weekly 1000), score earned cards in countdown grid
+- [x] Discord Webhook Integration — settings page, test webhook, nuke code + price alert notifications, daily summary to Discord
+- [x] Mobile Layout / PWA — enhanced responsive CSS, manifest.json for PWA install, print styles
+- [x] Stash Optimizer (AI) — Claude-powered scrap/sell/keep recommendations from inventory
+- [x] Event Schedule Widget — dashboard countdown to next FO76 public event
+- [x] Recipe / Crafting Tracker — CRUD for crafting recipes with category, ingredients, favourites
+- [x] Bulk Vendor Price Update — Quick Reprice panel with save-all AJAX
+- [x] Challenge Template Library — save/apply challenge templates for weekly resets
+- [x] Print-Friendly Vendor Sheet — clean printable vendor listing at /vendor/print
+- [x] Followed Streamers Page — card grid with live toggle, platform/schedule/notes, hide/unhide
+- [x] Dashboard Cross-Character Summary — all-characters table with weapons, armor, inventory, vendor, stash weight totals
+- [x] Challenge Screenshot Scanner — scan in-game challenges screen, AI extracts challenges, editable review before import
+- [x] Challenge Reset Routes — fixed broken Reset Dailies/Weeklies buttons (were 404)

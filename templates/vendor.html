@@ -9,6 +9,7 @@
   {% set total_val = namespace(v=0) %}
   {% for item in items %}{% set total_val.v = total_val.v + (item['my_price'] * item['qty']) %}{% endfor %}
   <span class="badge badge-sell" style="font-size:12px">Total: {{ "{:,}".format(total_val.v) }} caps</span>
+  <a href="/vendor/print" target="_blank" class="btn btn-secondary" style="font-size:11px">Print Sheet</a>
   {% if items %}
   <form method="POST" action="/vendor/wipe" class="inline-form" style="margin-left:auto">
     <button class="btn btn-danger btn-sm" onclick="return confirm('Wipe all vendor listings? This cannot be undone.')">Wipe Vendor</button>
@@ -208,6 +209,40 @@
   </div>
 </section>
 
+{% if items %}
+<section class="add-panel" id="repricePanel">
+  <div class="panel-toggle" onclick="togglePanel('repricePanel')">
+    <span>💰 Quick Reprice</span>
+    <span class="toggle-icon">▼</span>
+  </div>
+  <div class="panel-body">
+    <p class="dim" style="font-size:11px;margin-bottom:10px">
+      Update prices for all listings at once. Change prices and click Save All.
+    </p>
+    <div class="table-wrap" style="max-height:400px;overflow-y:auto">
+      <table class="data-table">
+        <thead><tr><th>Item</th><th>Category</th><th>Qty</th><th>Current Price</th><th>New Price</th></tr></thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td class="hi">{{ item['name'] }}</td>
+            <td class="dim">{{ item['category'] }}</td>
+            <td class="dim">{{ item['qty'] }}</td>
+            <td class="dim">{{ "{:,}".format(item['my_price']) }}</td>
+            <td><input type="number" min="0" value="{{ item['my_price'] }}" data-id="{{ item['id'] }}" class="reprice-input inline-input" style="width:90px"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="form-actions" style="margin-top:10px">
+      <button class="btn btn-primary" onclick="bulkReprice()">Save All Prices</button>
+      <span id="repriceStatus" class="dim" style="font-size:11px;margin-left:8px"></span>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <div class="table-controls">
   <input type="text" placeholder="Filter listings..." oninput="filterTable(this.value,'vendorTable')">
 </div>
@@ -393,6 +428,34 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sel) updateVendorCategory(sel.value);
   initItemAutocomplete('vendorNameInput', 'vendorCategorySelect');
 });
+
+// Bulk reprice
+function bulkReprice() {
+  const inputs = document.querySelectorAll('.reprice-input');
+  const updates = [];
+  inputs.forEach(inp => {
+    updates.push({id: parseInt(inp.dataset.id), price: parseInt(inp.value) || 0});
+  });
+  const status = document.getElementById('repriceStatus');
+  status.textContent = 'Saving...';
+  fetch('/vendor/bulk-reprice', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({updates: updates})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      status.textContent = '✓ ' + d.count + ' prices updated';
+      status.style.color = 'var(--accent)';
+      setTimeout(() => location.reload(), 800);
+    } else {
+      status.textContent = '✗ Failed';
+      status.style.color = 'var(--red)';
+    }
+  }).catch(() => {
+    status.textContent = '✗ Request failed';
+    status.style.color = 'var(--red)';
+  });
+}
 </script>
 
 {% endblock %}

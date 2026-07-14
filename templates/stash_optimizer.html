@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% block title %}Stash Optimizer{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🤖 STASH OPTIMIZER</h1>
+</div>
+
+<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:16px;margin-bottom:16px">
+  <p class="dim" style="font-size:12px;margin-bottom:12px">
+    Analyzes your weapons, armor, inventory, and unlearned plans. Claude will suggest what to scrap, sell, or keep based on weight, legendary value, and market demand.
+  </p>
+  <button class="btn btn-primary" id="analyzeBtn" onclick="runAnalysis()">Analyze My Stash</button>
+  <span id="analyzeStatus" class="dim" style="font-size:11px;margin-left:12px"></span>
+</div>
+
+<div id="results" style="display:none">
+  <div id="summaryCard" style="background:var(--bg-card);border:1px solid var(--accent);border-radius:4px;padding:14px;margin-bottom:16px">
+    <div style="font-size:11px;color:var(--text-dim);letter-spacing:1px;margin-bottom:6px">ASSESSMENT</div>
+    <div id="summaryText" style="font-size:13px;color:var(--text-hi)"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px">
+    <div>
+      <div class="section-title" style="color:var(--red)">🗑 SCRAP</div>
+      <div class="table-wrap">
+        <table class="data-table" id="scrapTable">
+          <thead><tr><th>Item</th><th>Reason</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="section-title" style="color:var(--gold)">💰 SELL</div>
+      <div class="table-wrap">
+        <table class="data-table" id="sellTable">
+          <thead><tr><th>Item</th><th>Reason</th><th>Value</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="section-title" style="color:var(--accent)">✓ KEEP</div>
+      <div class="table-wrap">
+        <table class="data-table" id="keepTable">
+          <thead><tr><th>Item</th><th>Reason</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function runAnalysis() {
+  var btn = document.getElementById('analyzeBtn');
+  var status = document.getElementById('analyzeStatus');
+  btn.disabled = true;
+  status.textContent = 'Analyzing your stash... this may take a few seconds';
+  fetch('/stash-optimizer/analyze', {method: 'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      btn.disabled = false;
+      if (!d.ok) {
+        status.textContent = '✗ ' + (d.error || 'Analysis failed');
+        status.style.color = 'var(--red)';
+        return;
+      }
+      status.textContent = '✓ Analysis complete';
+      status.style.color = 'var(--accent)';
+      var r = d.result;
+      document.getElementById('summaryText').textContent = r.summary || 'No summary available';
+      document.getElementById('results').style.display = '';
+      // Populate tables
+      fillTable('scrapTable', r.scrap || [], ['name', 'reason']);
+      fillSellTable('sellTable', r.sell || []);
+      fillTable('keepTable', r.keep || [], ['name', 'reason']);
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      status.textContent = '✗ Request failed';
+      status.style.color = 'var(--red)';
+    });
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function fillTable(id, items, cols) {
+  var tbody = document.querySelector('#' + id + ' tbody');
+  tbody.innerHTML = '';
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="' + cols.length + '" class="no-data">None</td></tr>'; return; }
+  items.forEach(function(item) {
+    var tr = document.createElement('tr');
+    cols.forEach(function(c) {
+      var td = document.createElement('td');
+      td.className = c === 'name' ? 'hi' : 'dim';
+      td.textContent = item[c] || '';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function fillSellTable(id, items) {
+  var tbody = document.querySelector('#' + id + ' tbody');
+  tbody.innerHTML = '';
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="3" class="no-data">None</td></tr>'; return; }
+  items.forEach(function(item) {
+    var tr = document.createElement('tr');
+    var td1 = document.createElement('td'); td1.className = 'hi'; td1.textContent = item.name || '';
+    var td2 = document.createElement('td'); td2.className = 'dim'; td2.textContent = item.reason || '';
+    var td3 = document.createElement('td'); td3.className = 'gold'; td3.textContent = item.estimated_value || '';
+    tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+    tbody.appendChild(tr);
+  });
+}
+</script>
+
+{% endblock %}

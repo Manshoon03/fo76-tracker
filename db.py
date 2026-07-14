@@ -764,6 +764,51 @@ def init_db():
     except Exception:
         pass
 
+    # Challenge templates + Recipes tables
+    for stmt in [
+        """CREATE TABLE IF NOT EXISTS challenge_templates (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            ctype        TEXT DEFAULT 'Daily',
+            category     TEXT DEFAULT '',
+            description  TEXT DEFAULT '',
+            target       INTEGER DEFAULT 1,
+            score_reward INTEGER DEFAULT 0,
+            atoms_reward INTEGER DEFAULT 0,
+            reward       TEXT DEFAULT '',
+            repeatable   INTEGER DEFAULT 0,
+            character_id INTEGER DEFAULT 1,
+            created_at   TEXT DEFAULT (date('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS recipes (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            category     TEXT DEFAULT '',
+            ingredients  TEXT DEFAULT '',
+            learned      INTEGER DEFAULT 1,
+            favourite    INTEGER DEFAULT 0,
+            notes        TEXT DEFAULT '',
+            character_id INTEGER DEFAULT 1,
+            created_at   TEXT DEFAULT (date('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS streamers (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            platform     TEXT DEFAULT 'Twitch',
+            url          TEXT DEFAULT '',
+            schedule     TEXT DEFAULT '',
+            streaming    INTEGER DEFAULT 0,
+            notes        TEXT DEFAULT '',
+            active       INTEGER DEFAULT 1,
+            created_at   TEXT DEFAULT (date('now'))
+        )""",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
     # Seed default daily tasks (only if table is empty)
     if conn.execute("SELECT COUNT(*) FROM daily_tasks").fetchone()[0] == 0:
         defaults = [
@@ -845,6 +890,12 @@ def init_db():
             ('Organ Grinder',            'Local Legend',  'Organ Cave / The Forest'),
             ('Ryl-Tkannoth Maw-Begotten','Local Legend',  'Big Maw / The Mire'),
             ('Wavy Willard',             'Local Legend',  "Wavy Willard's / Toxic Valley"),
+            # Seasonal — catchable only during their season (Patch 68+)
+            ('Fernskipper',              'Seasonal',      'Mire / Cranberry Bog / Skyline Valley'),
+            ('Glass Ghost',              'Seasonal',      'Glassed Cavern'),
+            ('Festerkoi',                'Seasonal',      'TBD (Fall)'),
+            ('Bogsucker',                'Seasonal',      'TBD (Winter)'),
+            ('Orange Overseer',          'Seasonal',      'TBD (Spring)'),
             # Axolotls — rainy weather, one type per month
             ('Banded Axolotl',           'Axolotl',       'Varies (Monthly)'),
             ('Charcoal Axolotl',         'Axolotl',       'Varies (Monthly)'),
@@ -865,11 +916,19 @@ def init_db():
         conn.commit()
 
     # Add missing fish species (safe to run on existing DBs)
-    conn.execute(
-        "INSERT OR IGNORE INTO fish_species (name, rarity, biome) "
-        "SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM fish_species WHERE name=?)",
-        ('Stormswimmer', 'Uncommon', 'Skyline Valley', 'Stormswimmer')
-    )
+    for fish_add in [
+        ('Stormswimmer', 'Uncommon', 'Skyline Valley'),
+        ('Fernskipper',  'Seasonal', 'Mire / Cranberry Bog / Skyline Valley'),
+        ('Glass Ghost',  'Seasonal', 'Glassed Cavern'),
+        ('Festerkoi',    'Seasonal', 'TBD (Fall)'),
+        ('Bogsucker',    'Seasonal', 'TBD (Winter)'),
+        ('Orange Overseer', 'Seasonal', 'TBD (Spring)'),
+    ]:
+        conn.execute(
+            "INSERT OR IGNORE INTO fish_species (name, rarity, biome) "
+            "SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM fish_species WHERE name=?)",
+            (fish_add[0], fish_add[1], fish_add[2], fish_add[0])
+        )
     conn.commit()
 
     # Seed plan catalog (only if table is empty)
