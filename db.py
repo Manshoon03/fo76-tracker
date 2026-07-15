@@ -946,6 +946,37 @@ def init_db():
         except Exception:
             pass
 
+    # Activity type column for legend_runs (Boss vs Public Event)
+    for stmt in [
+        "ALTER TABLE legend_runs ADD COLUMN activity_type TEXT DEFAULT 'Boss'",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
+    # Seed public events for all characters (only if none exist yet)
+    if conn.execute("SELECT COUNT(*) FROM legend_runs WHERE activity_type='Public Event'").fetchone()[0] == 0:
+        events = [
+            'Radiation Rumble', 'Moonshine Jamboree', 'Eviction Notice',
+            'Test Your Metal', 'Scorched Earth', 'A Colossal Problem',
+            'Ultracite Titan', 'Mothman Equinox',
+        ]
+        char_ids = [r[0] for r in conn.execute("SELECT id FROM characters").fetchall()]
+        for cid in char_ids:
+            for ev in events:
+                # Don't dupe if an entry with this name already exists for this character
+                exists = conn.execute(
+                    "SELECT 1 FROM legend_runs WHERE boss_name=? AND character_id=?", (ev, cid)
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO legend_runs (boss_name, character_id, activity_type) VALUES (?,?,?)",
+                        (ev, cid, 'Public Event')
+                    )
+        conn.commit()
+
     # Performance indexes on character_id columns
     for stmt in [
         "CREATE INDEX IF NOT EXISTS idx_inventory_char    ON inventory(character_id)",

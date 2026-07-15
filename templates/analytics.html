@@ -111,10 +111,10 @@
   </div>
 </div>
 
-<!-- ── 9. Legend Run Activity ─────────────────────────────────────────── -->
+<!-- ── 9. Activity Tracker ──────────────────────────────────────────── -->
 <div id="section-legend" style="display:none">
   <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleSection('legend-body')">
-    LEGEND RUN ACTIVITY
+    ACTIVITY TRACKER
   </div>
   <div id="legend-body">
     <div style="height:280px;max-height:300px;margin-bottom:32px">
@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function () {
         { label: 'Expense', data: data.caps_flow.expense, backgroundColor: '#ef535088', borderColor: '#ef5350', borderWidth: 1 }
       ]);
 
-      // ── 9. Legend Runs (horizontal bar) ──
+      // ── 9. Activities (horizontal bar) ──
       makeChart('legendChart', 'bar', data.legend.labels, data.legend.values, 'Run Count', gold);
 
       // Last updated stamp

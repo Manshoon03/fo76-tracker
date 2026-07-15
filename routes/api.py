@@ -1,5 +1,5 @@
-"""API blueprint: item search, challenge APIs, fish APIs, legend run APIs, caps APIs,
-economy APIs, daily task APIs, session APIs."""
+"""API blueprint: item search, challenge APIs, fish APIs, activity APIs (formerly legend run),
+caps APIs, economy APIs, daily task APIs, session APIs."""
 from flask import Blueprint, request, jsonify
 from datetime import datetime, date
 import db
@@ -71,26 +71,38 @@ def fish_log():
     return jsonify(ok=True, message=f'Logged: {fish_name}!')
 
 
-# ── Legend Run APIs (companion) ──────────────────────────────────────────────
+# ── Activity APIs (companion) — formerly Legend Run ─────────────────────────
 
-@bp.route('/legend-runs/bosses')
-def legend_runs_bosses():
+@bp.route('/activities/list')
+def activities_list():
     cid = get_active_char_id()
-    bosses = db.query("SELECT id, boss_name, run_count, last_run FROM legend_runs WHERE character_id=? ORDER BY boss_name", (cid,))
-    return jsonify([dict(r) for r in bosses])
+    rows = db.query(
+        "SELECT id, boss_name, run_count, last_run, activity_type FROM legend_runs WHERE character_id=? ORDER BY activity_type, boss_name",
+        (cid,))
+    return jsonify([dict(r) for r in rows])
 
 
-@bp.route('/legend-run/log', methods=['POST'])
-def legend_run_log():
+@bp.route('/activities/log', methods=['POST'])
+def activities_log():
     data = request.get_json(force=True)
     boss_id = data.get('boss_id')
     if not boss_id:
-        return jsonify(ok=False, error='Boss ID required'), 400
+        return jsonify(ok=False, error='Activity ID required'), 400
     db.execute(
         "UPDATE legend_runs SET last_run=date('now'), run_count=run_count+1, updated_at=date('now') WHERE id=?",
         (boss_id,)
     )
     return jsonify(ok=True, message='Run logged!')
+
+
+# Old API endpoints kept as aliases for backward compat
+@bp.route('/legend-runs/bosses')
+def legend_runs_bosses():
+    return activities_list()
+
+@bp.route('/legend-run/log', methods=['POST'])
+def legend_run_log():
+    return activities_log()
 
 
 # ── Caps API (companion) ────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-"""Daily blueprint: challenges, daily checklist, legend runs,
+"""Daily blueprint: challenges, daily checklist, activities (formerly legend runs),
 nuke codes, season, ammo."""
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from datetime import datetime, timedelta, date
@@ -446,16 +446,24 @@ def daily_task_delete(tid):
     return redirect(url_for('daily.daily_checklist'))
 
 
-# ── Legend Runs ───────────────────────────────────────────────────────────────
+# ── Activities (formerly Legend Runs) ──────────────────────────────────────────
 
-@bp.route('/legend-runs')
-def legend_runs():
+@bp.route('/activities')
+def activities():
     cid = get_active_char_id()
     from datetime import date as _date
-    bosses = db.query("SELECT * FROM legend_runs WHERE character_id=? ORDER BY boss_name", (cid,))
+    type_filter = request.args.get('type', 'all')
+    sql = "SELECT * FROM legend_runs WHERE character_id=?"
+    params = [cid]
+    if type_filter == 'boss':
+        sql += " AND activity_type='Boss'"
+    elif type_filter == 'event':
+        sql += " AND activity_type='Public Event'"
+    sql += " ORDER BY activity_type, boss_name"
+    rows = db.query(sql, tuple(params))
     today = _date.today()
     boss_list = []
-    for b in bosses:
+    for b in rows:
         days_since = None
         if b['last_run']:
             try:
@@ -464,10 +472,11 @@ def legend_runs():
             except Exception:
                 pass
         boss_list.append({'row': b, 'days_since': days_since})
-    return render_template('legend_runs.html', bosses=boss_list, today=str(today))
+    return render_template('activities.html', bosses=boss_list, today=str(today),
+                           type_filter=type_filter)
 
-@bp.route('/legend-runs/log', methods=['POST'])
-def legend_runs_log():
+@bp.route('/activities/log', methods=['POST'])
+def activities_log():
     from datetime import date as _date
     boss_id = fi('boss_id')
     run_date = fs('run_date') or str(_date.today())
@@ -477,27 +486,50 @@ def legend_runs_log():
         (run_date, notes, boss_id)
     )
     flash('Run logged!', 'success')
-    return redirect(url_for('daily.legend_runs'))
+    return redirect(url_for('daily.activities'))
+
+@bp.route('/activities/add', methods=['POST'])
+def activities_add():
+    name = fs('boss_name')
+    activity_type = fs('activity_type') or 'Boss'
+    if name:
+        db.execute("INSERT INTO legend_runs (boss_name, character_id, activity_type) VALUES (?,?,?)",
+                   (name, get_active_char_id(), activity_type))
+        flash(f'{name} added!', 'success')
+    return redirect(url_for('daily.activities'))
+
+@bp.route('/activities/<int:id>/delete', methods=['POST'])
+def activities_delete(id):
+    db.execute("DELETE FROM legend_runs WHERE id=?", (id,))
+    flash('Removed.', 'info')
+    return redirect(url_for('daily.activities'))
+
+@bp.route('/activities/<int:id>/reset', methods=['POST'])
+def activities_reset(id):
+    db.execute("UPDATE legend_runs SET last_run='', run_count=0, notes='' WHERE id=?", (id,))
+    flash('Reset.', 'info')
+    return redirect(url_for('daily.activities'))
+
+# Old URL redirects for backward compat
+@bp.route('/legend-runs')
+def legend_runs():
+    return redirect(url_for('daily.activities', **request.args), code=301)
+
+@bp.route('/legend-runs/log', methods=['POST'])
+def legend_runs_log():
+    return redirect(url_for('daily.activities_log'), code=307)
 
 @bp.route('/legend-runs/add', methods=['POST'])
 def legend_runs_add():
-    name = fs('boss_name')
-    if name:
-        db.execute("INSERT INTO legend_runs (boss_name, character_id) VALUES (?,?)", (name, get_active_char_id()))
-        flash(f'{name} added!', 'success')
-    return redirect(url_for('daily.legend_runs'))
+    return redirect(url_for('daily.activities_add'), code=307)
 
 @bp.route('/legend-runs/<int:id>/delete', methods=['POST'])
 def legend_runs_delete(id):
-    db.execute("DELETE FROM legend_runs WHERE id=?", (id,))
-    flash('Removed.', 'info')
-    return redirect(url_for('daily.legend_runs'))
+    return redirect(url_for('daily.activities_delete', id=id), code=307)
 
 @bp.route('/legend-runs/<int:id>/reset', methods=['POST'])
 def legend_runs_reset(id):
-    db.execute("UPDATE legend_runs SET last_run='', run_count=0, notes='' WHERE id=?", (id,))
-    flash('Reset.', 'info')
-    return redirect(url_for('daily.legend_runs'))
+    return redirect(url_for('daily.activities_reset', id=id), code=307)
 
 
 # ── Nuke Codes ───────────────────────────────────────────────────────────────
