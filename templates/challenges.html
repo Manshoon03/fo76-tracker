@@ -278,14 +278,28 @@ function updateCountdowns() {
 updateCountdowns();
 setInterval(updateCountdowns, 1000);
 
+// Track score for live updates
+var _totalScore = {{ total_score }};
+
+function _updateScoreDisplay() {
+  var el = document.getElementById('scoreDisplay');
+  if (el) el.textContent = _totalScore;
+  var pct = parseInt(document.getElementById('boosterPct').value) || 0;
+  var boosted = Math.round(_totalScore * (100 + pct) / 100);
+  var bel = document.getElementById('boostedDisplay');
+  if (bel) bel.textContent = '(' + boosted.toLocaleString() + ' boosted)';
+}
+
 // +1 progress via AJAX
 function incrementChallenge(id) {
   fetch('/challenges/' + id + '/progress', {
     method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
     body: 'delta=1'
-  }).then(function(r) { return r.json(); })
-    .then(function(d) {
+  }).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function(d) {
       if (!d.ok) return;
       var ptext = document.getElementById('ptext-' + id);
       var pbar = document.getElementById('pbar-' + id);
@@ -302,9 +316,11 @@ function incrementChallenge(id) {
         if (btn) btn.style.display = 'none';
         var tbtn = document.getElementById('tbtn-' + id);
         if (tbtn) { tbtn.textContent = '↩'; tbtn.classList.add('btn-secondary'); tbtn.classList.remove('btn-keep'); }
+        // Update score total
+        if (d.score_reward) { _totalScore += d.score_reward; _updateScoreDisplay(); }
         showToast('Challenge complete!', 'success');
       }
-    });
+  }).catch(function(e) { console.error('incrementChallenge error:', e); showToast('Error: ' + e.message, 'error'); });
 }
 
 // Toggle complete/incomplete via AJAX
@@ -312,29 +328,29 @@ function toggleChallenge(id) {
   fetch('/challenges/' + id + '/toggle', {
     method: 'POST',
     headers: {'X-Requested-With': 'XMLHttpRequest'}
-  }).then(function(r) { return r.json(); })
-    .then(function(d) {
+  }).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function(d) {
       if (!d.ok) return;
       var row = document.getElementById('crow-' + id);
       var tbtn = document.getElementById('tbtn-' + id);
       if (d.completed) {
         if (row) row.classList.add('completed-row');
         if (tbtn) { tbtn.textContent = '↩'; tbtn.classList.add('btn-secondary'); tbtn.classList.remove('btn-keep'); }
-        // Hide +1 button if exists
         var incBtn = row ? row.querySelector('[onclick*="incrementChallenge"]') : null;
         if (incBtn) incBtn.style.display = 'none';
-        // Update progress display for target=1 items
         if (d.target <= 1) {
           var progCell = row ? row.querySelectorAll('td')[4] : null;
           if (progCell && !progCell.querySelector('.progress-bar-wrap')) {
             progCell.innerHTML = '<span class="accent">✓ Done</span>';
           }
         }
+        if (d.score_reward) { _totalScore += d.score_reward; _updateScoreDisplay(); }
         showToast('Challenge complete!', 'success');
       } else {
         if (row) row.classList.remove('completed-row');
         if (tbtn) { tbtn.textContent = '✓'; tbtn.classList.remove('btn-secondary'); tbtn.classList.add('btn-keep'); }
-        // Show +1 button if exists
         var incBtn2 = row ? row.querySelector('[onclick*="incrementChallenge"]') : null;
         if (incBtn2) incBtn2.style.display = '';
         if (d.target <= 1) {
@@ -343,22 +359,20 @@ function toggleChallenge(id) {
             progCell2.innerHTML = '<span class="dim">—</span>';
           }
         }
+        if (d.score_reward) { _totalScore -= d.score_reward; _updateScoreDisplay(); }
       }
-    });
+  }).catch(function(e) { console.error('toggleChallenge error:', e); showToast('Error: ' + e.message, 'error'); });
 }
 
 // Score booster AJAX
 function updateBooster() {
-  const pct = parseInt(document.getElementById('boosterPct').value) || 0;
+  var pct = parseInt(document.getElementById('boosterPct').value) || 0;
   fetch('/challenges/booster', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: 'pct=' + pct
   });
-  const base = {{ total_score }};
-  const boosted = Math.round(base * (100 + pct) / 100);
-  document.getElementById('boostedDisplay').textContent =
-    '(' + boosted.toLocaleString() + ' boosted)';
+  _updateScoreDisplay();
 }
 
 // Auto-fill score_reward defaults on Add form (not Edit)

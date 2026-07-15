@@ -246,26 +246,28 @@ def challenges_delete(id):
 
 @bp.route('/challenges/<int:id>/toggle', methods=['POST'])
 def challenges_toggle(id):
-    row = db.get_one("SELECT completed, name, repeatable, target, progress FROM challenges WHERE id=?", (id,))
+    row = db.get_one("SELECT completed, name, repeatable, target, progress, score_reward FROM challenges WHERE id=?", (id,))
     new_val = 0 if row['completed'] else 1
     db.execute("UPDATE challenges SET completed=?, completed_at=CASE WHEN ?=1 THEN datetime('now') ELSE NULL END WHERE id=?",
                (new_val, new_val, id))
     if new_val and row['repeatable']:
         db.execute("UPDATE challenges SET times_completed = times_completed + 1 WHERE id=?", (id,))
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return jsonify(ok=True, completed=new_val, progress=row['progress'], target=row['target'])
+        return jsonify(ok=True, completed=new_val, progress=row['progress'], target=row['target'],
+                       score_reward=row['score_reward'] or 0)
     return redirect(url_for('daily.challenges', type='incomplete'))
 
 @bp.route('/challenges/<int:id>/progress', methods=['POST'])
 def challenges_progress(id):
     delta = fi('delta', 1)
-    row = db.get_one("SELECT progress, target FROM challenges WHERE id=?", (id,))
+    row = db.get_one("SELECT progress, target, score_reward FROM challenges WHERE id=?", (id,))
     if row:
         new_prog = max(0, row['progress'] + delta)
         completed = 1 if new_prog >= row['target'] else 0
         db.execute("UPDATE challenges SET progress=?, completed=CASE WHEN ?>=target THEN 1 ELSE completed END WHERE id=?",
                    (new_prog, new_prog, id))
-        return jsonify(ok=True, progress=new_prog, target=row['target'], completed=completed)
+        return jsonify(ok=True, progress=new_prog, target=row['target'], completed=completed,
+                       score_reward=row['score_reward'] or 0)
     return jsonify(ok=False)
 
 @bp.route('/challenges/reset/daily', methods=['POST'])
