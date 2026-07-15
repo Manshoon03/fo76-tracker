@@ -279,6 +279,13 @@ updateCountdowns();
 setInterval(updateCountdowns, 1000);
 
 // Score booster AJAX
+function _updateScoreDisplay() {
+  var pct = parseInt(document.getElementById('boosterPct').value) || 0;
+  var base = {{ total_score }};
+  var boosted = Math.floor(base * (100 + pct) / 100);
+  document.getElementById('boostedDisplay').textContent =
+    pct ? '(' + boosted + ' boosted)' : '';
+}
 function updateBooster() {
   var pct = parseInt(document.getElementById('boosterPct').value) || 0;
   fetch('/challenges/booster', {
