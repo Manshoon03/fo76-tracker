@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160" fill="none" stroke="#f0b429" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Head -->
+  <circle cx="60" cy="30" r="18"/>
+  <!-- Eyes (confused X's) -->
+  <path d="M50 25 L56 31 M56 25 L50 31"/>
+  <path d="M64 25 L70 31 M70 25 L64 31"/>
+  <!-- Wavy mouth -->
+  <path d="M50 38 Q55 35 60 38 Q65 41 70 38"/>
+  <!-- Question mark -->
+  <path d="M82 10 Q88 6 88 14 Q88 18 82 20" stroke-width="2.5"/>
+  <circle cx="82" cy="26" r="1.5" fill="#f0b429"/>
+  <!-- Hair tuft -->
+  <path d="M48 14 Q55 8 62 14"/>
+  <!-- Body -->
+  <line x1="60" y1="48" x2="60" y2="95"/>
+  <!-- Left arm (shrug) -->
+  <path d="M60 60 L35 50"/>
+  <path d="M35 50 L30 55"/>
+  <!-- Right arm (shrug) -->
+  <path d="M60 60 L85 50"/>
+  <path d="M85 50 L90 55"/>
+  <!-- Left leg -->
+  <line x1="60" y1="95" x2="45" y2="135"/>
+  <line x1="45" y1="135" x2="39" y2="135"/>
+  <!-- Right leg -->
+  <line x1="60" y1="95" x2="75" y2="135"/>
+  <line x1="75" y1="135" x2="81" y2="135"/>
+</svg>

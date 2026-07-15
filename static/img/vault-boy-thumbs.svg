@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160" fill="none" stroke="#f0b429" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Head -->
+  <circle cx="60" cy="30" r="18"/>
+  <!-- Eyes -->
+  <circle cx="53" cy="27" r="2" fill="#f0b429"/>
+  <circle cx="67" cy="27" r="2" fill="#f0b429"/>
+  <!-- Smile -->
+  <path d="M52 34 Q60 42 68 34"/>
+  <!-- Hair tuft -->
+  <path d="M48 14 Q55 8 62 14"/>
+  <!-- Body -->
+  <line x1="60" y1="48" x2="60" y2="95"/>
+  <!-- Left arm (thumbs up!) -->
+  <path d="M60 60 L35 55 L30 42"/>
+  <!-- Thumb -->
+  <line x1="30" y1="42" x2="28" y2="32"/>
+  <!-- Fist -->
+  <path d="M26 42 L34 42"/>
+  <!-- Right arm -->
+  <path d="M60 60 L82 75"/>
+  <!-- Left leg -->
+  <line x1="60" y1="95" x2="42" y2="135"/>
+  <!-- Left foot -->
+  <line x1="42" y1="135" x2="36" y2="135"/>
+  <!-- Right leg -->
+  <line x1="60" y1="95" x2="78" y2="135"/>
+  <!-- Right foot -->
+  <line x1="78" y1="135" x2="84" y2="135"/>
+</svg>

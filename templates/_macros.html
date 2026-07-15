@@ -40,5 +40,10 @@
 
 {# Empty state for tables #}
 {% macro empty_state(message='No data yet.') %}
-<tr><td colspan="99" class="no-data">{{ message }}</td></tr>
+<tr><td colspan="99" class="no-data">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 0">
+    <img src="/static/img/vault-boy-lost.svg" alt="" style="height:48px;opacity:0.2">
+    <span>{{ message }}</span>
+  </div>
+</td></tr>
 {% endmacro %}
