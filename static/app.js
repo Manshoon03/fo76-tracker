@@ -291,7 +291,7 @@ function qlRepeatableUpdateBadge(id, timesCompleted) {
 }
 
 async function qlRepeatableIncrement(id) {
-  const r = await fetch(`/challenges/${id}/increment`, {method:'POST'}).then(r => r.json());
+  const r = await fetch(`/challenges/${id}/progress`, {method:'POST'}).then(r => r.json());
   if (!r.ok) return;
   const prog = document.getElementById(`ql-rep-prog-${id}`);
   if (r.repeatable) {
@@ -402,7 +402,7 @@ function lunchboxBurst(fromEl) {
 // ── Challenge AJAX actions ─────────────────────────────────────────────────
 async function toggleChallenge(id) {
   try {
-    const resp = await fetch(`/challenges/${id}/toggle`, { method: 'POST' });
+    const resp = await fetch(`/challenges/${id}/toggle`, { method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'} });
     const r = await resp.json();
     if (!r.ok) return;
     const row = document.getElementById('crow-' + id);
@@ -445,7 +445,7 @@ async function toggleChallenge(id) {
 
 async function incrementChallenge(id) {
   try {
-    const resp = await fetch(`/challenges/${id}/increment`, { method: 'POST' });
+    const resp = await fetch(`/challenges/${id}/progress`, { method: 'POST' });
     const r = await resp.json();
     if (!r.ok) return;
     const pbar  = document.getElementById('pbar-' + id);

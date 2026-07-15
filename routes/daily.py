@@ -253,21 +253,33 @@ def challenges_toggle(id):
     if new_val and row['repeatable']:
         db.execute("UPDATE challenges SET times_completed = times_completed + 1 WHERE id=?", (id,))
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        times = db.get_one("SELECT times_completed FROM challenges WHERE id=?", (id,))
         return jsonify(ok=True, completed=new_val, progress=row['progress'], target=row['target'],
-                       score_reward=row['score_reward'] or 0)
+                       score_reward=row['score_reward'] or 0, name=row['name'],
+                       repeatable=bool(row['repeatable']),
+                       times_completed=times['times_completed'] if times else 0)
     return redirect(url_for('daily.challenges', type='incomplete'))
 
 @bp.route('/challenges/<int:id>/progress', methods=['POST'])
 def challenges_progress(id):
     delta = fi('delta', 1)
-    row = db.get_one("SELECT progress, target, score_reward FROM challenges WHERE id=?", (id,))
+    row = db.get_one("SELECT progress, target, score_reward, name, repeatable, times_completed FROM challenges WHERE id=?", (id,))
     if row:
         new_prog = max(0, row['progress'] + delta)
         completed = 1 if new_prog >= row['target'] else 0
-        db.execute("UPDATE challenges SET progress=?, completed=CASE WHEN ?>=target THEN 1 ELSE completed END WHERE id=?",
-                   (new_prog, new_prog, id))
-        return jsonify(ok=True, progress=new_prog, target=row['target'], completed=completed,
-                       score_reward=row['score_reward'] or 0)
+        if completed and row['repeatable']:
+            # Auto-reset repeatable challenges
+            db.execute("UPDATE challenges SET progress=0, completed=0, times_completed=times_completed+1 WHERE id=?", (id,))
+            updated = db.get_one("SELECT times_completed FROM challenges WHERE id=?", (id,))
+            return jsonify(ok=True, progress=0, target=row['target'], completed=0,
+                           score_reward=row['score_reward'] or 0, name=row['name'],
+                           repeatable=True, times_completed=updated['times_completed'])
+        else:
+            db.execute("UPDATE challenges SET progress=?, completed=CASE WHEN ?>=target THEN 1 ELSE completed END WHERE id=?",
+                       (new_prog, new_prog, id))
+            return jsonify(ok=True, progress=new_prog, target=row['target'], completed=completed,
+                           score_reward=row['score_reward'] or 0, name=row['name'],
+                           repeatable=bool(row['repeatable']), times_completed=row['times_completed'] or 0)
     return jsonify(ok=False)
 
 @bp.route('/challenges/reset/daily', methods=['POST'])
