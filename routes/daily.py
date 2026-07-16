@@ -472,8 +472,10 @@ def activities():
             except Exception:
                 pass
         boss_list.append({'row': b, 'days_since': days_since})
+    edit_id = request.args.get('edit_id', type=int)
+    edit_item = db.get_one("SELECT * FROM legend_runs WHERE id=?", (edit_id,)) if edit_id else None
     return render_template('activities.html', bosses=boss_list, today=str(today),
-                           type_filter=type_filter)
+                           type_filter=type_filter, edit_item=edit_item)
 
 @bp.route('/activities/log', methods=['POST'])
 def activities_log():
@@ -502,6 +504,29 @@ def activities_add():
 def activities_delete(id):
     db.execute("DELETE FROM legend_runs WHERE id=?", (id,))
     flash('Removed.', 'info')
+    return redirect(url_for('daily.activities'))
+
+@bp.route('/activities/<int:id>/edit', methods=['POST'])
+def activities_edit(id):
+    name = fs('boss_name')
+    run_count = fi('run_count', -1)
+    activity_type = fs('activity_type')
+    updates = []
+    params = []
+    if name:
+        updates.append('boss_name=?')
+        params.append(name)
+    if run_count >= 0:
+        updates.append('run_count=?')
+        params.append(run_count)
+    if activity_type:
+        updates.append('activity_type=?')
+        params.append(activity_type)
+    if updates:
+        updates.append("updated_at=date('now')")
+        params.append(id)
+        db.execute(f"UPDATE legend_runs SET {', '.join(updates)} WHERE id=?", tuple(params))
+        flash('Activity updated!', 'success')
     return redirect(url_for('daily.activities'))
 
 @bp.route('/activities/<int:id>/reset', methods=['POST'])

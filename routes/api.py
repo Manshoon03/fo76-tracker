@@ -95,6 +95,34 @@ def activities_log():
     return jsonify(ok=True, message='Run logged!')
 
 
+@bp.route('/activities/edit', methods=['POST'])
+def activities_edit():
+    data = request.get_json(force=True)
+    boss_id = data.get('boss_id')
+    if not boss_id:
+        return jsonify(ok=False, error='Activity ID required'), 400
+    updates = []
+    params = []
+    if 'boss_name' in data and data['boss_name'].strip():
+        updates.append('boss_name=?')
+        params.append(data['boss_name'].strip())
+    if 'run_count' in data:
+        try:
+            count = int(data['run_count'])
+            if count < 0:
+                return jsonify(ok=False, error='Run count cannot be negative'), 400
+            updates.append('run_count=?')
+            params.append(count)
+        except (ValueError, TypeError):
+            return jsonify(ok=False, error='Invalid run count'), 400
+    if not updates:
+        return jsonify(ok=False, error='Nothing to update'), 400
+    updates.append("updated_at=date('now')")
+    params.append(boss_id)
+    db.execute(f"UPDATE legend_runs SET {', '.join(updates)} WHERE id=?", tuple(params))
+    return jsonify(ok=True, message='Activity updated!')
+
+
 # Old API endpoints kept as aliases for backward compat
 @bp.route('/legend-runs/bosses')
 def legend_runs_bosses():

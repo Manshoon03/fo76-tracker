@@ -59,9 +59,7 @@
           </td>
           <td style="text-align:right;white-space:nowrap">
             <button class="btn-sm btn-keep" onclick="quickLogActivity({{ row['id'] }}, '{{ row['boss_name']|e }}')" title="Log run now">⚡</button>
-            <form method="POST" action="/activities/{{ row['id'] }}/reset" class="inline-form" onsubmit="return confirm('Reset {{ row['boss_name'] }}?')">
-              <button class="btn-sm btn-secondary" title="Reset" style="font-size:11px">↺</button>
-            </form>
+            <a href="/activities?edit_id={{ row['id'] }}" class="btn-sm btn-edit" title="Edit">✎</a>
             <form method="POST" action="/activities/{{ row['id'] }}/delete" class="inline-form" onsubmit="return confirmDelete()">
               <button class="btn-sm btn-delete" title="Delete">✕</button>
             </form>
@@ -154,6 +152,7 @@
         </form>
       </div>
       <div style="display:flex;gap:6px">
+        <a href="/activities?edit_id={{ row['id'] }}" class="btn btn-secondary" style="flex:1;text-align:center;font-size:11px;text-decoration:none">✎ Edit</a>
         <form method="POST" action="/activities/{{ row['id'] }}/reset" class="inline-form" style="flex:1">
           <button class="btn btn-secondary" style="width:100%;justify-content:center;font-size:11px"
                   onclick="return confirm('Reset run count for {{ row['boss_name'] }}?')">
@@ -175,29 +174,39 @@
 </div>
 {% endif %}
 
-<!-- ── Add Activity Panel ─────────────────────────────────────────────── -->
-<section class="add-panel" id="addActivityPanel">
+<!-- ── Add / Edit Activity Panel ────────────────────────────────────────── -->
+<section class="add-panel {% if edit_item %}open{% endif %}" id="addActivityPanel">
   <div class="panel-toggle" onclick="togglePanel('addActivityPanel')">
-    <span>+ Add Activity</span>
+    <span>{% if edit_item %}✎ Edit Activity{% else %}+ Add Activity{% endif %}</span>
     <span class="toggle-icon">▼</span>
   </div>
   <div class="panel-body">
-    <form method="POST" action="/activities/add">
+    <form method="POST" action="{% if edit_item %}/activities/{{ edit_item['id'] }}/edit{% else %}/activities/add{% endif %}">
       <div class="form-grid">
         <div class="form-group span2">
           <label>Activity Name *</label>
-          <input type="text" name="boss_name" required placeholder="e.g. Earle Williams, Radiation Rumble, Daily Ops...">
+          <input type="text" name="boss_name" required placeholder="e.g. Earle Williams, Radiation Rumble, Daily Ops..."
+                 value="{{ edit_item['boss_name'] if edit_item else '' }}">
         </div>
         <div class="form-group">
           <label>Type</label>
           <select name="activity_type">
-            <option value="Boss">Boss</option>
-            <option value="Public Event">Public Event</option>
+            <option value="Boss" {{ 'selected' if not edit_item or edit_item['activity_type'] == 'Boss' }}>Boss</option>
+            <option value="Public Event" {{ 'selected' if edit_item and edit_item['activity_type'] == 'Public Event' }}>Public Event</option>
           </select>
         </div>
+        {% if edit_item %}
+        <div class="form-group">
+          <label>Run Count</label>
+          <input type="number" name="run_count" min="0" value="{{ edit_item['run_count'] or 0 }}">
+        </div>
+        {% endif %}
       </div>
       <div class="form-actions">
-        <button class="btn btn-primary" type="submit">+ Add Activity</button>
+        <button class="btn btn-primary" type="submit">{% if edit_item %}Save Changes{% else %}+ Add Activity{% endif %}</button>
+        {% if edit_item %}
+        <a href="/activities" class="btn btn-secondary">Cancel</a>
+        {% endif %}
       </div>
     </form>
   </div>
