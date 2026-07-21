@@ -172,7 +172,7 @@ Format:
   "challenges": [
     {
       "name": "<challenge name>",
-      "type": "<Daily or Weekly>",
+      "type": "<Daily, Weekly, Season, or Static>",
       "description": "<what to do, e.g. 'Kill 5 Super Mutants'>",
       "target": <integer goal number, default 1>,
       "score_reward": <SCORE points awarded, integer, default 250 for Daily / 1000 for Weekly>,
@@ -182,7 +182,7 @@ Format:
 }
 
 Rules:
-- type: "Daily" if it says Daily or resets daily. "Weekly" if it says Weekly or resets weekly.
+- type: "Daily" if it resets daily. "Weekly" if it resets weekly. "Season" for seasonal/scoreboard challenges. "Static" for lifetime or permanent challenges.
 - target: the number you need to reach (e.g. "Kill 5 enemies" → 5, "Complete an event" → 1)
 - score_reward: read from the screenshot if visible. If not visible, default 250 for Daily, 1000 for Weekly.
 - category: infer from the challenge description. Combat for kills, Exploration for locations, etc.

@@ -358,7 +358,9 @@ function renderScanResults() {
       '<td><input type="text" value="' + esc(ch.name) + '" class="inline-input" data-idx="' + i + '" data-field="name" style="width:100%"></td>' +
       '<td><select class="inline-input" data-idx="' + i + '" data-field="type">' +
         '<option' + (ch.type === 'Daily' ? ' selected' : '') + '>Daily</option>' +
-        '<option' + (ch.type === 'Weekly' ? ' selected' : '') + '>Weekly</option></select></td>' +
+        '<option' + (ch.type === 'Weekly' ? ' selected' : '') + '>Weekly</option>' +
+        '<option' + (ch.type === 'Season' ? ' selected' : '') + '>Season</option>' +
+        '<option' + (ch.type === 'Static' ? ' selected' : '') + '>Static</option></select></td>' +
       '<td><input type="text" value="' + esc(ch.category || '') + '" class="inline-input" data-idx="' + i + '" data-field="category" style="width:80px"></td>' +
       '<td><input type="text" value="' + esc(ch.description || '') + '" class="inline-input" data-idx="' + i + '" data-field="description" style="width:100%"></td>' +
       '<td><input type="number" value="' + (ch.target || 1) + '" class="inline-input" data-idx="' + i + '" data-field="target" style="width:50px"></td>' +
