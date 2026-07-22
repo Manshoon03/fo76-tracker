@@ -99,6 +99,22 @@ def vendor_delete(id):
     flash('Removed from vendor.', 'info')
     return redirect(url_for('trading.vendor'))
 
+@bp.route('/vendor/<int:id>/quick-update', methods=['POST'])
+def vendor_quick_update(id):
+    data = request.get_json(force=True)
+    field = data.get('field')
+    value = data.get('value')
+    if field == 'qty':
+        value = max(1, int(value))
+        db.execute("UPDATE vendor_stock SET qty=? WHERE id=?", (value, id))
+    elif field == 'my_price':
+        value = max(0, int(value))
+        db.execute("UPDATE vendor_stock SET my_price=? WHERE id=?", (value, id))
+        return jsonify(ok=True, value=f"{value:,}")
+    else:
+        return jsonify(ok=False), 400
+    return jsonify(ok=True, value=value)
+
 @bp.route('/vendor/bulk-reprice', methods=['POST'])
 def vendor_bulk_reprice():
     data = request.get_json()

@@ -151,8 +151,8 @@
     <thead>
       <tr>
         <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
-        <th>Name</th><th>Category</th><th>Sub-type</th>
-        <th>Qty</th><th>In Vendor</th><th>Total Weight</th><th>Total Value</th><th>Status</th><th title="Stored in FO1st container (excluded from stash weight)">F1</th><th>Notes</th><th>Actions</th>
+        <th style="cursor:pointer" onclick="sortTable('invTable',1,'text')">Name</th><th style="cursor:pointer" onclick="sortTable('invTable',2,'text')">Category</th><th>Sub-type</th>
+        <th style="cursor:pointer" onclick="sortTable('invTable',4,'num')">Qty</th><th>In Vendor</th><th>Total Weight</th><th>Total Value</th><th style="cursor:pointer" onclick="sortTable('invTable',8,'badge')">Status</th><th title="Stored in FO1st container (excluded from stash weight)">F1</th><th>Notes</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>

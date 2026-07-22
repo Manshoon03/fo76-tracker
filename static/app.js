@@ -9,6 +9,45 @@ function filterTable(query, tableId) {
   });
 }
 
+// ── Sortable table columns ────────────────────────────────────────────────
+function sortTable(tableId, col, type) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const th = table.querySelectorAll('thead th')[col];
+  const dir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+  // Clear all sort indicators in this table
+  table.querySelectorAll('thead th').forEach(h => {
+    h.dataset.sortDir = '';
+    const ind = h.querySelector('.sort-ind');
+    if (ind) ind.textContent = '';
+  });
+  th.dataset.sortDir = dir;
+  let ind = th.querySelector('.sort-ind');
+  if (!ind) { ind = document.createElement('span'); ind.className = 'sort-ind'; ind.style.cssText = 'margin-left:4px;font-size:10px'; th.appendChild(ind); }
+  ind.textContent = dir === 'asc' ? '\u25B2' : '\u25BC';
+  const tbody = table.querySelector('tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => !r.querySelector('.no-data') && !r.classList.contains('totals-row'));
+  rows.sort((a, b) => {
+    let av = (a.children[col]?.textContent || '').trim();
+    let bv = (b.children[col]?.textContent || '').trim();
+    if (type === 'num') {
+      av = parseFloat(av.replace(/[,%]/g, '')) || 0;
+      bv = parseFloat(bv.replace(/[,%]/g, '')) || 0;
+    } else if (type === 'badge') {
+      const ba = a.children[col]?.querySelector('.badge, span');
+      const bb = b.children[col]?.querySelector('.badge, span');
+      av = (ba ? ba.textContent : av).trim().toLowerCase();
+      bv = (bb ? bb.textContent : bv).trim().toLowerCase();
+    } else {
+      av = av.toLowerCase();
+      bv = bv.toLowerCase();
+    }
+    let cmp = type === 'num' ? av - bv : (av < bv ? -1 : av > bv ? 1 : 0);
+    return dir === 'desc' ? -cmp : cmp;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
 // ── Panel toggle ──────────────────────────────────────────────────────────
 function togglePanel(id) {
   const el = document.getElementById(id);
@@ -400,6 +439,22 @@ function lunchboxBurst(fromEl) {
 }
 
 // ── Challenge AJAX actions ─────────────────────────────────────────────────
+function _updateParentRow(p) {
+  if (!p) return;
+  const pbar  = document.getElementById('pbar-' + p.id);
+  const ptext = document.getElementById('ptext-' + p.id);
+  const prow  = document.getElementById('crow-' + p.id);
+  const pbtn  = document.getElementById('tbtn-' + p.id);
+  const pct   = Math.min(Math.round(p.progress / p.target * 100), 100);
+  if (pbar)  { pbar.style.width = pct + '%'; pbar.classList.toggle('complete', !!p.completed); }
+  if (ptext) ptext.textContent = `${p.progress}/${p.target}`;
+  if (prow)  prow.classList.toggle('completed-row', !!p.completed);
+  if (pbtn) {
+    if (p.completed) { pbtn.textContent = '↩'; pbtn.className = 'btn-sm btn-secondary'; }
+    else             { pbtn.textContent = '✓'; pbtn.className = 'btn-sm btn-keep'; }
+  }
+}
+
 async function toggleChallenge(id) {
   try {
     const resp = await fetch(`/challenges/${id}/toggle`, { method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'} });
@@ -438,6 +493,7 @@ async function toggleChallenge(id) {
       if (btn) { btn.textContent = '✓'; btn.className = 'btn-sm btn-keep'; btn.title = 'Mark complete'; }
       showToast(`Unmarked: ${r.name}`, 'info');
     }
+    _updateParentRow(r.parent);
   } catch {
     showToast('Error', 'error');
   }
@@ -471,6 +527,7 @@ async function incrementChallenge(id) {
     } else {
       showToast(`${r.name}: ${r.progress}/${r.target}`, 'info');
     }
+    _updateParentRow(r.parent);
   } catch {
     showToast('Error', 'error');
   }

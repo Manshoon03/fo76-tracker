@@ -209,58 +209,76 @@ function updateProgress(freq) {
   if (pctEl) pctEl.textContent = pctClamped;
 }
 
+// AJAX task add
+document.querySelector('#addTaskPanel form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const form = this;
+  const nameInput = form.querySelector('input[name=name]');
+  const freqSelect = form.querySelector('select[name=freq]');
+  const name = nameInput.value.trim();
+  const freq = freqSelect.value;
+  if (!name) return;
+  fetch('/daily/task/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+    body: `name=${encodeURIComponent(name)}&freq=${encodeURIComponent(freq)}`
+  }).then(r => r.json()).then(data => {
+    if (!data.ok) return;
+    const list = document.getElementById(freq + '-task-list');
+    // Remove "no tasks" placeholder if present
+    const noData = list.querySelector('.no-data');
+    if (noData) noData.remove();
+    const row = document.createElement('div');
+    row.className = 'task-row';
+    row.id = 'task-row-' + data.id;
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:6px;border-radius:4px;background:var(--bg-card);border:1px solid var(--border);border-left:4px solid var(--border);transition:border-color 0.2s,opacity 0.2s';
+    row.innerHTML = `<label style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;min-width:0">
+      <input type="checkbox" class="task-checkbox" data-id="${data.id}" data-freq="${freq}"
+             style="width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;cursor:pointer">
+      <span class="task-label" id="task-label-${data.id}" style="font-size:13px">${data.name.replace(/</g,'&lt;')}</span>
+    </label>
+    <form method="POST" action="/daily/task/${data.id}/delete" class="inline-form" onsubmit="return confirm('Remove this task?')">
+      <button class="btn-sm btn-delete" title="Remove task" type="submit">🗑</button>
+    </form>`;
+    list.appendChild(row);
+    // Wire up checkbox
+    row.querySelector('.task-checkbox').addEventListener('change', handleTaskCheckbox);
+    // Update counts
+    _counts[freq].total++;
+    updateProgress(freq);
+    nameInput.value = '';
+    showToast(`Task "${data.name}" added!`, 'success');
+  }).catch(() => showToast('Failed to add task', 'error'));
+});
+
+function handleTaskCheckbox() {
+  const cb = this;
+  const id = cb.dataset.id;
+  const freq = cb.dataset.freq;
+  const checked = cb.checked;
+  const url = checked ? `/daily/complete/${id}` : `/daily/uncomplete/${id}`;
+  fetch(url, { method: 'POST', headers: { 'Accept': 'application/json' } })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) { cb.checked = !checked; return; }
+      const row = document.getElementById('task-row-' + id);
+      const label = document.getElementById('task-label-' + id);
+      if (checked) {
+        if (row) { row.classList.add('task-done'); row.style.borderLeftColor = 'var(--accent)'; row.style.opacity = '0.75'; }
+        if (label) { label.style.textDecoration = 'line-through'; label.style.color = 'var(--text-dim)'; }
+        _counts[freq].done = Math.min(_counts[freq].done + 1, _counts[freq].total);
+      } else {
+        if (row) { row.classList.remove('task-done'); row.style.borderLeftColor = 'var(--border)'; row.style.opacity = ''; }
+        if (label) { label.style.textDecoration = ''; label.style.color = ''; }
+        _counts[freq].done = Math.max(_counts[freq].done - 1, 0);
+      }
+      updateProgress(freq);
+    })
+    .catch(function() { cb.checked = !checked; });
+}
+
 document.querySelectorAll('.task-checkbox').forEach(function(cb) {
-  cb.addEventListener('change', function() {
-    const id = this.dataset.id;
-    const freq = this.dataset.freq;
-    const checked = this.checked;
-    const url = checked
-      ? `/daily/complete/${id}`
-      : `/daily/uncomplete/${id}`;
-
-    fetch(url, { method: 'POST', headers: { 'Accept': 'application/json' } })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.error) {
-          // Revert checkbox on error
-          cb.checked = !checked;
-          return;
-        }
-
-        const row = document.getElementById('task-row-' + id);
-        const label = document.getElementById('task-label-' + id);
-
-        if (checked) {
-          if (row) {
-            row.classList.add('task-done');
-            row.style.borderLeftColor = 'var(--accent)';
-            row.style.opacity = '0.75';
-          }
-          if (label) {
-            label.style.textDecoration = 'line-through';
-            label.style.color = 'var(--text-dim)';
-          }
-          _counts[freq].done = Math.min(_counts[freq].done + 1, _counts[freq].total);
-        } else {
-          if (row) {
-            row.classList.remove('task-done');
-            row.style.borderLeftColor = 'var(--border)';
-            row.style.opacity = '';
-          }
-          if (label) {
-            label.style.textDecoration = '';
-            label.style.color = '';
-          }
-          _counts[freq].done = Math.max(_counts[freq].done - 1, 0);
-        }
-
-        updateProgress(freq);
-      })
-      .catch(function() {
-        // Revert on network failure
-        cb.checked = !checked;
-      });
-  });
+  cb.addEventListener('change', handleTaskCheckbox);
 });
 </script>
 

@@ -110,6 +110,40 @@ def _do_nuke_fetch():
         _nuke_fetch['running'] = False
 
 
+# ── Challenge parent/child helpers ─────────────────────────────────────────
+
+def _update_parent_progress(child_id, delta):
+    """Adjust a parent challenge's progress when a child is completed/uncompleted.
+    delta: +1 when child completed, -1 when uncompleted.
+    Returns dict with parent state for live UI update, or None."""
+    child = db.get_one("SELECT parent_id FROM challenges WHERE id=?", (child_id,))
+    if not child or not child['parent_id']:
+        return None
+    parent = db.get_one("SELECT id, progress, target, completed FROM challenges WHERE id=?", (child['parent_id'],))
+    if not parent:
+        return None
+    new_prog = max(0, parent['progress'] + delta)
+    new_completed = 1 if new_prog >= parent['target'] else 0
+    db.execute("UPDATE challenges SET progress=?, completed=?, completed_at=CASE WHEN ?=1 AND completed=0 THEN datetime('now') WHEN ?=0 THEN NULL ELSE completed_at END WHERE id=?",
+               (new_prog, new_completed, new_completed, new_completed, parent['id']))
+    return {'id': parent['id'], 'progress': new_prog, 'target': parent['target'], 'completed': new_completed}
+
+def _would_create_cycle(challenge_id, parent_id):
+    """Check if setting parent_id on challenge_id would create a circular chain."""
+    if not parent_id or not challenge_id:
+        return False
+    seen = set()
+    current = parent_id
+    while current:
+        if current == challenge_id:
+            return True
+        if current in seen:
+            break
+        seen.add(current)
+        row = db.get_one("SELECT parent_id FROM challenges WHERE id=?", (current,))
+        current = row['parent_id'] if row else None
+    return False
+
 # ── Challenges ───────────────────────────────────────────────────────────────
 
 @bp.route('/challenges')
@@ -141,9 +175,15 @@ def challenges():
         "WHERE character_id=? AND completed=1 AND active=1", (cid,)
     )['total']
     booster_pct = int(db.get_setting('score_booster_pct', '0'))
+    # Potential parents: active challenges with target > 1 (multi-step)
+    potential_parents = db.query(
+        "SELECT id, name FROM challenges WHERE character_id=? AND active=1 AND target > 1 ORDER BY name", (cid,))
+    # Lookup map for parent names (for child indicator display)
+    parent_names = {p['id']: p['name'] for p in potential_parents}
     return render_template('challenges.html', items=items, edit_item=edit_item,
                            ctype_filter=ctype_filter, counts=counts,
-                           total_score=total_score, booster_pct=booster_pct)
+                           total_score=total_score, booster_pct=booster_pct,
+                           potential_parents=potential_parents, parent_names=parent_names)
 
 @bp.route('/challenges/booster', methods=['POST'])
 def challenges_booster():
@@ -216,30 +256,43 @@ def challenges_scan_import():
 
 @bp.route('/challenges/add', methods=['POST'])
 def challenges_add():
-    db.execute(
-        "INSERT INTO challenges (name,ctype,category,description,progress,target,completed,score_reward,atoms_reward,reward,repeatable,notes,character_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (fs('name'), fs('ctype','Daily'), fs('category'), fs('description'),
-         fi('progress',0), fi('target',1), 1 if request.form.get('completed') else 0,
-         fi('score_reward'), fi('atoms_reward'), fs('reward'),
-         1 if request.form.get('repeatable') else 0, fs('notes'), get_active_char_id())
+    parent_id = fi('parent_id', None) or None
+    ctype = fs('ctype', 'Daily')
+    name = fs('name')
+    target = fi('target', 1)
+    score_reward = fi('score_reward')
+    new_id = db.insert(
+        "INSERT INTO challenges (name,ctype,category,description,progress,target,completed,score_reward,atoms_reward,reward,repeatable,notes,character_id,parent_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (name, ctype, fs('category'), fs('description'),
+         fi('progress',0), target, 1 if request.form.get('completed') else 0,
+         score_reward, fi('atoms_reward'), fs('reward'),
+         1 if request.form.get('repeatable') else 0, fs('notes'), get_active_char_id(), parent_id)
     )
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(ok=True, id=new_id, name=name, ctype=ctype, target=target, score_reward=score_reward)
     flash('Challenge added!', 'success')
     return redirect(url_for('daily.challenges'))
 
 @bp.route('/challenges/<int:id>/update', methods=['POST'])
 def challenges_update(id):
+    parent_id = fi('parent_id', None) or None
+    if _would_create_cycle(id, parent_id):
+        flash('Cannot set parent — would create a circular link.', 'error')
+        return redirect(url_for('daily.challenges', edit_id=id))
     db.execute(
-        "UPDATE challenges SET name=?,ctype=?,category=?,description=?,progress=?,target=?,completed=?,score_reward=?,atoms_reward=?,reward=?,repeatable=?,notes=? WHERE id=?",
+        "UPDATE challenges SET name=?,ctype=?,category=?,description=?,progress=?,target=?,completed=?,score_reward=?,atoms_reward=?,reward=?,repeatable=?,notes=?,parent_id=? WHERE id=?",
         (fs('name'), fs('ctype','Daily'), fs('category'), fs('description'),
          fi('progress',0), fi('target',1), 1 if request.form.get('completed') else 0,
          fi('score_reward'), fi('atoms_reward'), fs('reward'),
-         1 if request.form.get('repeatable') else 0, fs('notes'), id)
+         1 if request.form.get('repeatable') else 0, fs('notes'), parent_id, id)
     )
     flash('Challenge updated!', 'success')
     return redirect(url_for('daily.challenges'))
 
 @bp.route('/challenges/<int:id>/delete', methods=['POST'])
 def challenges_delete(id):
+    # Unlink any children pointing to this challenge
+    db.execute("UPDATE challenges SET parent_id=NULL WHERE parent_id=?", (id,))
     db.execute("DELETE FROM challenges WHERE id=?", (id,))
     flash('Deleted.', 'info')
     return redirect(url_for('daily.challenges'))
@@ -252,52 +305,96 @@ def challenges_toggle(id):
                (new_val, new_val, id))
     if new_val and row['repeatable']:
         db.execute("UPDATE challenges SET times_completed = times_completed + 1 WHERE id=?", (id,))
+    parent_info = _update_parent_progress(id, 1 if new_val else -1)
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         times = db.get_one("SELECT times_completed FROM challenges WHERE id=?", (id,))
-        return jsonify(ok=True, completed=new_val, progress=row['progress'], target=row['target'],
-                       score_reward=row['score_reward'] or 0, name=row['name'],
-                       repeatable=bool(row['repeatable']),
-                       times_completed=times['times_completed'] if times else 0)
+        resp = dict(ok=True, completed=new_val, progress=row['progress'], target=row['target'],
+                    score_reward=row['score_reward'] or 0, name=row['name'],
+                    repeatable=bool(row['repeatable']),
+                    times_completed=times['times_completed'] if times else 0)
+        if parent_info:
+            resp['parent'] = parent_info
+        return jsonify(resp)
     return redirect(url_for('daily.challenges', type='incomplete'))
 
 @bp.route('/challenges/<int:id>/progress', methods=['POST'])
 def challenges_progress(id):
     delta = fi('delta', 1)
-    row = db.get_one("SELECT progress, target, score_reward, name, repeatable, times_completed FROM challenges WHERE id=?", (id,))
+    row = db.get_one("SELECT progress, target, score_reward, name, repeatable, times_completed, completed FROM challenges WHERE id=?", (id,))
     if row:
         new_prog = max(0, row['progress'] + delta)
         completed = 1 if new_prog >= row['target'] else 0
+        was_completed = row['completed']
         if completed and row['repeatable']:
             # Auto-reset repeatable challenges
             db.execute("UPDATE challenges SET progress=0, completed=0, times_completed=times_completed+1 WHERE id=?", (id,))
+            parent_info = _update_parent_progress(id, 1)
             updated = db.get_one("SELECT times_completed FROM challenges WHERE id=?", (id,))
-            return jsonify(ok=True, progress=0, target=row['target'], completed=0,
-                           score_reward=row['score_reward'] or 0, name=row['name'],
-                           repeatable=True, times_completed=updated['times_completed'])
+            resp = dict(ok=True, progress=0, target=row['target'], completed=0,
+                        score_reward=row['score_reward'] or 0, name=row['name'],
+                        repeatable=True, times_completed=updated['times_completed'])
+            if parent_info:
+                resp['parent'] = parent_info
+            return jsonify(resp)
         else:
             db.execute("UPDATE challenges SET progress=?, completed=CASE WHEN ?>=target THEN 1 ELSE completed END WHERE id=?",
                        (new_prog, new_prog, id))
-            return jsonify(ok=True, progress=new_prog, target=row['target'], completed=completed,
-                           score_reward=row['score_reward'] or 0, name=row['name'],
-                           repeatable=bool(row['repeatable']), times_completed=row['times_completed'] or 0)
+            # Parent auto-progress: only when crossing the completion boundary
+            parent_info = None
+            if completed and not was_completed:
+                parent_info = _update_parent_progress(id, 1)
+            elif not completed and was_completed:
+                parent_info = _update_parent_progress(id, -1)
+            resp = dict(ok=True, progress=new_prog, target=row['target'], completed=completed,
+                        score_reward=row['score_reward'] or 0, name=row['name'],
+                        repeatable=bool(row['repeatable']), times_completed=row['times_completed'] or 0)
+            if parent_info:
+                resp['parent'] = parent_info
+            return jsonify(resp)
     return jsonify(ok=False)
 
 @bp.route('/challenges/reset/daily', methods=['POST'])
 def challenges_reset_daily():
     cid = get_active_char_id()
+    # Decrement parent progress for completed children being deleted
+    completed_children = db.query(
+        "SELECT id FROM challenges WHERE character_id=? AND ctype='Daily' AND active=1 AND completed=1 AND parent_id IS NOT NULL", (cid,))
+    for child in completed_children:
+        _update_parent_progress(child['id'], -1)
+    # Unlink any children of challenges being deleted
+    daily_ids = db.query("SELECT id FROM challenges WHERE character_id=? AND ctype='Daily' AND active=1", (cid,))
+    for d in daily_ids:
+        db.execute("UPDATE challenges SET parent_id=NULL WHERE parent_id=?", (d['id'],))
+    count = len(daily_ids)
     db.execute("DELETE FROM challenges WHERE character_id=? AND ctype='Daily' AND active=1", (cid,))
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(ok=True, count=count, ctype='Daily')
     flash('Daily challenges cleared — ready for new entries.', 'success')
     return redirect(url_for('daily.challenges'))
 
 @bp.route('/challenges/reset/weekly', methods=['POST'])
 def challenges_reset_weekly():
     cid = get_active_char_id()
+    # Decrement parent progress for completed children being deleted
+    completed_children = db.query(
+        "SELECT id FROM challenges WHERE character_id=? AND ctype='Weekly' AND active=1 AND completed=1 AND parent_id IS NOT NULL", (cid,))
+    for child in completed_children:
+        _update_parent_progress(child['id'], -1)
+    # Unlink any children of challenges being deleted
+    weekly_ids = db.query("SELECT id FROM challenges WHERE character_id=? AND ctype='Weekly' AND active=1", (cid,))
+    for w in weekly_ids:
+        db.execute("UPDATE challenges SET parent_id=NULL WHERE parent_id=?", (w['id'],))
+    count = len(weekly_ids)
     db.execute("DELETE FROM challenges WHERE character_id=? AND ctype='Weekly' AND active=1", (cid,))
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(ok=True, count=count, ctype='Weekly')
     flash('Weekly challenges cleared — ready for new entries.', 'success')
     return redirect(url_for('daily.challenges'))
 
 @bp.route('/challenges/<int:id>/dormant', methods=['POST'])
 def challenges_dormant(id):
+    # Unlink any children pointing to this challenge
+    db.execute("UPDATE challenges SET parent_id=NULL WHERE parent_id=?", (id,))
     db.execute("UPDATE challenges SET active=0 WHERE id=?", (id,))
     flash('Challenge moved to dormant.', 'info')
     return redirect(url_for('daily.challenges'))
@@ -434,7 +531,9 @@ def daily_task_add():
     name = fs('name')
     freq = fs('freq', 'daily')
     if name:
-        db.execute("INSERT INTO daily_tasks (name, freq) VALUES (?,?)", (name, freq))
+        new_id = db.insert("INSERT INTO daily_tasks (name, freq) VALUES (?,?)", (name, freq))
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify(ok=True, id=new_id, name=name, freq=freq)
         flash(f'Task "{name}" added!', 'success')
     return redirect(url_for('daily.daily_checklist'))
 

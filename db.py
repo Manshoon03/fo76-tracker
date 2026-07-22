@@ -956,6 +956,16 @@ def init_db():
         except Exception:
             pass
 
+    # Challenge parent/child linking
+    for stmt in [
+        "ALTER TABLE challenges ADD COLUMN parent_id INTEGER DEFAULT NULL",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            pass
+
     # Seed public events for all characters (per-event dedup so new events added here auto-seed)
     events = [
         # Permanent public events
