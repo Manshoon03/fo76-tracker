@@ -175,9 +175,9 @@ def challenges():
         "WHERE character_id=? AND completed=1 AND active=1", (cid,)
     )['total']
     booster_pct = int(db.get_setting('score_booster_pct', '0'))
-    # Potential parents: active challenges with target > 1 (multi-step)
+    # Potential parents: active, incomplete challenges with target > 1 that aren't children themselves
     potential_parents = db.query(
-        "SELECT id, name FROM challenges WHERE character_id=? AND active=1 AND target > 1 ORDER BY name", (cid,))
+        "SELECT id, name FROM challenges WHERE character_id=? AND active=1 AND target > 1 AND completed=0 AND parent_id IS NULL ORDER BY name", (cid,))
     # Lookup map for parent names (for child indicator display)
     parent_names = {p['id']: p['name'] for p in potential_parents}
     return render_template('challenges.html', items=items, edit_item=edit_item,
